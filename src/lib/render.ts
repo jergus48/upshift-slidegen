@@ -124,3 +124,30 @@ export async function renderSlideshow(show: Slideshow): Promise<string[]> {
   }
   return out;
 }
+
+function slugify(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'slideshow'
+  );
+}
+
+// Render every slide to a PNG and save each to disk via a temporary <a download>
+// link. Browsers throttle back-to-back programmatic downloads, so we space them
+// out a little rather than firing all of them in the same tick.
+export async function downloadSlideshow(show: Slideshow): Promise<void> {
+  const slides = await renderSlideshow(show);
+  const base = slugify(show.hook || show.caption || show.id);
+  for (let i = 0; i < slides.length; i++) {
+    const a = document.createElement('a');
+    a.href = slides[i];
+    a.download = `${base}-${i + 1}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    if (i < slides.length - 1) await new Promise((r) => setTimeout(r, 200));
+  }
+}

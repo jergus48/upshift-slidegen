@@ -1,9 +1,11 @@
-import { Check, X, Sparkles, RefreshCw, Loader2, Pencil } from 'lucide-react';
+import { useState } from 'react';
+import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Download } from 'lucide-react';
 import type { Slideshow } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { SlidePreview } from '../components/SlidePreview';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
+import { downloadSlideshow } from '../lib/render';
 
 interface QueueViewProps {
   slideshows: Slideshow[];
@@ -126,6 +128,17 @@ interface CardProps {
 }
 
 function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onReject, onEdit }: CardProps) {
+  const [downloading, setDownloading] = useState(false);
+
+  const download = async () => {
+    setDownloading(true);
+    try {
+      await downloadSlideshow(slideshow);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className={`bg-card border rounded-xl overflow-hidden animate-fadeIn transition-colors ${selected ? 'border-ink ring-1 ring-ink' : 'border-line'}`}>
       {/* Slide strip */}
@@ -177,6 +190,13 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
           >
             Approve
           </Button>
+          <IconButton
+            variant="secondary"
+            icon={downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            label="Download slides"
+            onClick={download}
+            disabled={downloading}
+          />
           <IconButton
             variant="secondary"
             icon={<X size={13} />}

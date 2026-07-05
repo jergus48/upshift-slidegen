@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images } from 'lucide-react';
+import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images, ImagePlus } from 'lucide-react';
 import type { ViewKey, Project } from '../types';
 
 interface SidebarProps {
@@ -15,6 +15,7 @@ interface SidebarProps {
 
 const nav: { key: ViewKey; label: string; icon: typeof LayoutGrid; badge?: 'queue' | 'scheduled' }[] = [
   { key: 'queue', label: 'Queue', icon: LayoutGrid, badge: 'queue' },
+  { key: 'create', label: 'Create', icon: ImagePlus },
   { key: 'library', label: 'Library', icon: Images },
   { key: 'schedule', label: 'Schedule', icon: CalendarClock, badge: 'scheduled' },
   { key: 'results', label: 'Results', icon: LineChart },
@@ -45,8 +46,8 @@ export function Sidebar({
         <div className="flex items-center gap-2.5">
           <img src="/android-chrome-192x192.png" alt="Slidesmith" className="w-7 h-7 rounded-[7px] shrink-0" />
           <div className="flex flex-col leading-none">
-            <span className="text-[14px] font-semibold text-ink">Slidesmith</span>
-            <span className="text-[11px] text-ink-5 mt-0.5">Open Source Generator</span>
+            <span className="text-[14px] font-semibold text-ink">Upshift SlideGen</span>
+            <span className="text-[11px] text-ink-5 mt-0.5">Slideshows Generator</span>
           </div>
         </div>
       </div>
@@ -110,16 +111,14 @@ export function Sidebar({
               <button
                 key={key}
                 onClick={() => onSelectView(key)}
-                className={`w-full h-9 flex items-center gap-2.5 rounded-lg px-2 text-left border border-transparent transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink/10 ${
-                  isActive ? 'bg-raised text-ink' : 'text-ink-4 hover:bg-raised hover:text-ink-3'
-                }`}
+                className={`w-full h-9 flex items-center gap-2.5 rounded-lg px-2 text-left border border-transparent transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink/10 ${isActive ? 'bg-raised text-ink' : 'text-ink-4 hover:bg-raised hover:text-ink-3'
+                  }`}
               >
                 <Icon size={14} className="shrink-0" />
                 <span className="text-[13px] font-medium flex-1 truncate">{label}</span>
                 {count !== undefined && count > 0 && (
-                  <span className={`text-[10px] font-medium leading-none px-1.5 h-[18px] inline-flex items-center rounded-md border ${
-                    isActive ? 'bg-ink text-bg border-ink' : 'bg-raised text-ink-5 border-line'
-                  }`}>
+                  <span className={`text-[10px] font-medium leading-none px-1.5 h-[18px] inline-flex items-center rounded-md border ${isActive ? 'bg-ink text-bg border-ink' : 'bg-raised text-ink-5 border-line'
+                    }`}>
                     {count}
                   </span>
                 )}
@@ -133,9 +132,8 @@ export function Sidebar({
       <div className="border-t border-line p-2">
         <button
           onClick={() => onSelectView('settings')}
-          className={`w-full h-9 flex items-center gap-2.5 rounded-lg px-2 border border-transparent transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink/10 ${
-            activeView === 'settings' ? 'bg-raised text-ink' : 'text-ink-6 hover:text-ink-4 hover:bg-raised'
-          }`}
+          className={`w-full h-9 flex items-center gap-2.5 rounded-lg px-2 border border-transparent transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink/10 ${activeView === 'settings' ? 'bg-raised text-ink' : 'text-ink-6 hover:text-ink-4 hover:bg-raised'
+            }`}
         >
           <Settings size={14} className="shrink-0" />
           <span className="text-[13px]">Settings</span>

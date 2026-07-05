@@ -22,7 +22,7 @@ import {
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
 import { generateSlideshows } from './generate.js'
 import { listModels, validateKey } from './openrouter.js'
-import { listLibrary, listPacks, scrapePinterest, removeScraped, getScrapedFile } from './library.js'
+import { listLibrary, listPacks, scrapePinterest, removeScraped, getScrapedFile, addUploaded } from './library.js'
 import { logger } from './log.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -99,7 +99,14 @@ app.post('/api/generate', h(async (req, res) => {
   const { keys, model } = getConfig()
   const project = getActiveProject()
   const count = Math.min(Math.max(Math.round(Number(req.body?.count) || 4), 1), 100)
-  const slideshows = await generateSlideshows({ apiKey: keys.openrouter, model, brain: project.brain, count })
+
+  // Per-batch audience/style-memory override (from the Generate modal) wins;
+  // an empty/missing override falls back to the project's saved Brain values.
+  const audience = String(req.body?.audience || '').trim() || project.brain.audience
+  const styleMemory = String(req.body?.styleMemory || '').trim() || project.brain.styleMemory
+  const brain = { ...project.brain, audience, styleMemory }
+
+  const slideshows = await generateSlideshows({ apiKey: keys.openrouter, model, brain, count })
 
   // Auto-assign background images. A per-batch `packs` override (from the
   // Generate modal) wins; otherwise fall back to the project's saved packs.
@@ -128,6 +135,34 @@ app.delete('/api/queue/:id', h(async (req, res) =>
   res.json(removeFromQueue(getActiveProject().id, req.params.id))
 ))
 
+// Manually created slideshow (Create page): the user supplies their own text
+// and images instead of asking the model. Same Slideshow shape as /api/generate,
+// so it flows through the existing queue/approve/schedule pipeline untouched.
+app.post('/api/queue/custom', h(async (req, res) => {
+  const project = getActiveProject()
+  const { caption, hashtags, slides } = req.body || {}
+  if (!Array.isArray(slides) || !slides.length) throw new Error('Add at least one slide.')
+
+  const stamp = Date.now()
+  const show = {
+    id: `q-${stamp}-custom`,
+    hook: slides[0]?.text || caption || 'Custom slideshow',
+    caption: caption || '',
+    hashtags: Array.isArray(hashtags) ? hashtags : [],
+    rationale: 'Manually created',
+    createdAt: new Date(stamp).toISOString(),
+    slides: slides.map((s, i) => ({
+      id: `slide-${stamp}-${i}`,
+      text: s.text || '',
+      imageUrl: s.imageUrl || undefined,
+      bgFrom: s.bgFrom || '#0f172a',
+      bgTo: s.bgTo || '#1e293b',
+    })),
+  }
+  addToQueue(project.id, [show])
+  res.json(getQueue(project.id))
+}))
+
 // Edit a queued slideshow: caption, hashtags, hook, and/or per-slide text+image.
 app.put('/api/queue/:id', h(async (req, res) => {
   const pid = getActiveProject().id
@@ -150,6 +185,11 @@ app.post('/api/library/scrape', h(async (req, res) => {
   const { keys, pinterestActor } = getConfig()
   const { searches, count } = req.body || {}
   res.json(await scrapePinterest({ apiKey: keys.apify, actor: pinterestActor, searches, count }))
+}))
+
+app.post('/api/library/upload', h(async (req, res) => {
+  const { pack, images } = req.body || {}
+  res.json(addUploaded({ pack, images }))
 }))
 
 app.delete('/api/library/:id', h(async (req, res) => res.json(removeScraped(req.params.id))))

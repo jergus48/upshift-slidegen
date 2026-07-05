@@ -1,13 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Download, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, Download, Trash2, Upload } from 'lucide-react';
 import type { LibraryImage } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
-import { getLibrary, scrapePinterest, deleteLibraryImage } from '../lib/api';
+import { getLibrary, scrapePinterest, deleteLibraryImage, uploadLibraryImages } from '../lib/api';
+
+// Read a File as a base64 data URL for shipping to the server as JSON.
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
 
 interface LibraryViewProps {
   hasApify: boolean;
 }
+
+// Sentinel for "create a new pack" in the upload target picker.
+const NEW_PACK = '__new__';
 
 export function LibraryView({ hasApify }: LibraryViewProps) {
   const [images, setImages] = useState<LibraryImage[] | null>(null);
@@ -16,6 +29,10 @@ export function LibraryView({ hasApify }: LibraryViewProps) {
   const [scraping, setScraping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [uploadTarget, setUploadTarget] = useState(NEW_PACK);
+  const [uploadPack, setUploadPack] = useState('My Uploads');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = () => getLibrary().then(setImages).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
@@ -39,6 +56,25 @@ export function LibraryView({ hasApify }: LibraryViewProps) {
 
   const remove = async (id: string) => setImages(await deleteLibraryImage(id));
 
+  const upload = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setError(null);
+    setNote(null);
+    setUploading(true);
+    const pack = uploadTarget === NEW_PACK ? uploadPack.trim() || 'My Uploads' : uploadTarget;
+    try {
+      const dataUrls = await Promise.all([...files].map(fileToDataUrl));
+      const { added, library } = await uploadLibraryImages(pack, dataUrls);
+      setImages(library);
+      setNote(`Added ${added.length} image${added.length === 1 ? '' : 's'} to "${pack}".`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   // Group by pack, scraped packs first.
   const groups = useMemo(() => {
     const map = new Map<string, LibraryImage[]>();
@@ -48,6 +84,8 @@ export function LibraryView({ hasApify }: LibraryViewProps) {
     }
     return [...map.entries()];
   }, [images]);
+
+  const existingPacks = useMemo(() => groups.map(([pack]) => pack), [groups]);
 
   return (
     <>
@@ -105,6 +143,58 @@ export function LibraryView({ hasApify }: LibraryViewProps) {
           </div>
         </div>
 
+        {/* Upload own photos */}
+        <div className="px-8 py-4 border-b border-line bg-surface">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-end gap-2 flex-wrap">
+              <div className="flex-1 min-w-[220px]">
+                <label className="text-[11px] text-ink-5 mb-1 block">Pack</label>
+                <select
+                  value={uploadTarget}
+                  onChange={(e) => setUploadTarget(e.target.value)}
+                  className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
+                >
+                  <option value={NEW_PACK}>+ New pack…</option>
+                  {existingPacks.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+              {uploadTarget === NEW_PACK && (
+                <div className="flex-1 min-w-[220px]">
+                  <label className="text-[11px] text-ink-5 mb-1 block">New pack name</label>
+                  <input
+                    value={uploadPack}
+                    onChange={(e) => setUploadPack(e.target.value)}
+                    placeholder="e.g. My Uploads"
+                    className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink placeholder:text-ink-6 outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
+                  />
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => upload(e.target.files)}
+                className="hidden"
+              />
+              <Button
+                variant="primary"
+                size="lg"
+                icon={uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? 'Uploading…' : 'Upload photos'}
+              </Button>
+            </div>
+            <p className="text-[12px] text-ink-5 mt-2">
+              Upload your own images to use as slide backgrounds — drop them into an existing pack or start a new one.
+            </p>
+          </div>
+        </div>
+
         {/* Packs */}
         <div className="p-8">
           <div className="max-w-5xl mx-auto space-y-8">
@@ -123,7 +213,7 @@ export function LibraryView({ hasApify }: LibraryViewProps) {
                     {imgs.map((img) => (
                       <div key={img.id} className="group relative aspect-[9/16] rounded-lg overflow-hidden bg-raised">
                         <img src={img.url} alt="" loading="lazy" className="w-full h-full object-cover" />
-                        {img.source === 'scraped' && (
+                        {img.source !== 'bundled' && (
                           <button
                             onClick={() => remove(img.id)}
                             aria-label="Remove image"

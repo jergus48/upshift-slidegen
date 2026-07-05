@@ -5,16 +5,40 @@ import { PackPicker } from './PackPicker';
 
 interface GenerateModalProps {
   defaultPacks: string[];
+  defaultAudience: string;
+  defaultStyleMemory: string;
   generating: boolean;
   onClose: () => void;
-  onGenerate: (count: number, packs: string[]) => void;
+  onGenerate: (opts: { count: number; packs: string[]; audience?: string; styleMemory?: string }) => void;
 }
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
 
-export function GenerateModal({ defaultPacks, generating, onClose, onGenerate }: GenerateModalProps) {
+const textareaClass =
+  'w-full bg-card border border-line rounded-lg px-3 py-2.5 text-[13px] text-ink ' +
+  'placeholder:text-ink-6 outline-none transition-colors resize-none ' +
+  'focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50';
+
+export function GenerateModal({
+  defaultPacks,
+  defaultAudience,
+  defaultStyleMemory,
+  generating,
+  onClose,
+  onGenerate,
+}: GenerateModalProps) {
   const [count, setCount] = useState(3);
   const [packs, setPacks] = useState<string[]>(defaultPacks);
+  const [audience, setAudience] = useState('');
+  const [styleMemory, setStyleMemory] = useState('');
+
+  const submit = () =>
+    onGenerate({
+      count,
+      packs,
+      audience: audience.trim() || undefined,
+      styleMemory: styleMemory.trim() || undefined,
+    });
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={generating ? undefined : onClose}>
@@ -61,6 +85,41 @@ export function GenerateModal({ defaultPacks, generating, onClose, onGenerate }:
             <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Background packs</label>
             <PackPicker selected={packs} onChange={setPacks} disabled={generating} />
           </div>
+
+          {/* Audience override */}
+          <div>
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
+              Audience <span className="normal-case font-normal text-ink-6">(optional)</span>
+            </label>
+            <input
+              value={audience}
+              onChange={(e) => setAudience(e.target.value)}
+              placeholder={defaultAudience || 'e.g. busy parents in their 30s'}
+              disabled={generating}
+              className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink placeholder:text-ink-6 outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
+            />
+            <p className="text-[11px] text-ink-6 mt-1">Leave blank to use the Brain default for this project.</p>
+          </div>
+
+          {/* Style memory override */}
+          <div>
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
+              Style memory <span className="normal-case font-normal text-ink-6">(optional)</span>
+            </label>
+            <p className="text-[11px] text-ink-5 mb-1.5">
+              The voice and patterns that work for you. Describe your hooks, slide structure, and CTAs — the AI
+              follows this closely.
+            </p>
+            <textarea
+              value={styleMemory}
+              onChange={(e) => setStyleMemory(e.target.value)}
+              placeholder={defaultStyleMemory || 'Leave blank to use your saved Style memory from Brain.'}
+              rows={5}
+              disabled={generating}
+              className={`${textareaClass} font-mono text-[12px] leading-relaxed`}
+            />
+            <p className="text-[11px] text-ink-6 mt-1">Leave blank to use the Brain default for this project.</p>
+          </div>
         </div>
 
         <div className="px-5 py-4 border-t border-line flex justify-end gap-2">
@@ -68,7 +127,7 @@ export function GenerateModal({ defaultPacks, generating, onClose, onGenerate }:
           <Button
             variant="primary"
             icon={generating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-            onClick={() => onGenerate(count, packs)}
+            onClick={submit}
             disabled={generating}
           >
             {generating ? 'Generating…' : `Generate ${count}`}

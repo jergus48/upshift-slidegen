@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { X, Loader2, CalendarClock, Info, CheckCircle2, ExternalLink } from 'lucide-react';
+import { X, Loader2, CalendarClock, Info, CheckCircle2, ExternalLink, Download } from 'lucide-react';
 import type { Slideshow, SocialAccount } from '../types';
 import { getScheduledPosts } from '../lib/api';
+import { downloadSlideshow } from '../lib/render';
 import { Button } from './Button';
 import { SlidePreview } from './SlidePreview';
 
@@ -39,6 +40,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
     toLocalInput(new Date(Date.now() + DEFAULT_GAP_HOURS * 3600_000))
   );
   const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Which mode succeeded, or null while still on the form. Drives the success screen.
   const [doneMode, setDoneMode] = useState<'draft' | 'schedule' | null>(null);
@@ -57,6 +59,15 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
 
   const toggle = (id: number) =>
     setSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const download = async () => {
+    setDownloading(true);
+    try {
+      await downloadSlideshow(slideshow);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const confirm = async () => {
     setError(null);
@@ -133,7 +144,19 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
                 <SlidePreview key={s.id} slide={s} />
               ))}
             </div>
-            <p className="text-[12px] text-ink-4 mt-2 line-clamp-2">{slideshow.caption}</p>
+            <div className="flex items-start justify-between gap-2 mt-2">
+              <p className="text-[12px] text-ink-4 line-clamp-2">{slideshow.caption}</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                onClick={download}
+                disabled={downloading}
+                className="shrink-0"
+              >
+                Download
+              </Button>
+            </div>
           </div>
 
           {/* Accounts */}

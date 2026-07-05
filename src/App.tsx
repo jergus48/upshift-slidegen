@@ -5,6 +5,7 @@ import { BulkScheduleModal } from './components/BulkScheduleModal';
 import { GenerateModal } from './components/GenerateModal';
 import { SlideshowEditorModal } from './components/SlideshowEditorModal';
 import { QueueView } from './views/QueueView';
+import { CreateView } from './views/CreateView';
 import { LibraryView } from './views/LibraryView';
 import { ScheduleView } from './views/ScheduleView';
 import { ResultsView } from './views/ResultsView';
@@ -56,11 +57,11 @@ export default function App() {
     })();
   }, [loadAccounts]);
 
-  const generate = async (count: number, packs: string[]) => {
+  const generate = async (opts: { count: number; packs: string[]; audience?: string; styleMemory?: string }) => {
     setError(null);
     setGenerating(true);
     try {
-      await api.generate(count, packs);
+      await api.generate(opts);
       setQueue(await api.getQueue());
       setGenerateOpen(false);
     } catch (e) {
@@ -72,6 +73,10 @@ export default function App() {
 
   const reject = async (id: string) => {
     setQueue(await api.removeFromQueue(id));
+  };
+
+  const addManualSlideshow = async (payload: { caption: string; hashtags: string[]; slides: Slide[] }) => {
+    setQueue(await api.createManualSlideshow(payload));
   };
 
   // Keep the multi-select in sync as queue items come and go.
@@ -210,6 +215,7 @@ export default function App() {
             onBulkSchedule={() => setBulkOpen(true)}
           />
         )}
+        {activeView === 'create' && <CreateView onAddToQueue={addManualSlideshow} />}
         {activeView === 'library' && <LibraryView hasApify={hasApify} />}
         {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
         {activeView === 'results' && <ResultsView configured={hasPostbridge} />}
@@ -264,6 +270,8 @@ export default function App() {
       {generateOpen && (
         <GenerateModal
           defaultPacks={activeProject.imagePacks}
+          defaultAudience={activeProject.brain.audience}
+          defaultStyleMemory={activeProject.brain.styleMemory}
           generating={generating}
           onClose={() => setGenerateOpen(false)}
           onGenerate={generate}

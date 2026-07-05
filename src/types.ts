@@ -1,4 +1,4 @@
-export type ViewKey = 'queue' | 'library' | 'schedule' | 'results' | 'brain' | 'settings';
+export type ViewKey = 'queue' | 'create' | 'library' | 'schedule' | 'results' | 'brain' | 'settings';
 
 export interface Slide {
   id: string;
@@ -53,12 +53,12 @@ export interface LibraryImage {
   id: string;
   url: string;
   pack: string;
-  source: 'bundled' | 'scraped';
+  source: 'bundled' | 'scraped' | 'uploaded';
 }
 
 export interface LibraryPack {
   name: string;
-  source: 'bundled' | 'scraped';
+  source: 'bundled' | 'scraped' | 'uploaded';
   count: number;
   covers: string[];
 }

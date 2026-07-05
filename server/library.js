@@ -55,7 +55,7 @@ function reconcileOrphans() {
   let changed = false
   for (const file of readdirSync(MEDIA_DIR)) {
     if (!/\.(jpe?g|png|webp)$/i.test(file) || known.has(file)) continue
-    index.push({ id: `scraped:${file.replace(/\.[^.]+$/, '')}`, file, pack: 'Scraped', addedAt: new Date().toISOString() })
+    index.push({ id: `scraped:${file.replace(/\.[^.]+$/, '')}`, file, pack: 'Scraped', addedAt: new Date().toISOString(), source: 'scraped' })
     changed = true
   }
   if (changed) writeJson(INDEX_PATH, index)
@@ -72,7 +72,7 @@ export function listLibrary() {
       id: s.id,
       url: `/api/library/img/${encodeURIComponent(s.id)}`,
       pack: s.pack || 'Scraped',
-      source: 'scraped',
+      source: s.source || 'scraped',
     }))
   // Scraped first (newest), then the bundled packs.
   return [...scraped, ...bundled()]
@@ -113,6 +113,42 @@ export function removeScraped(id) {
 function writeJson(p, v) {
   ensure()
   writeFileSync(p, JSON.stringify(v, null, 2))
+}
+
+// Save user-uploaded images (sent as data URLs) into a pack of their choosing.
+export function addUploaded({ pack, images }) {
+  const list = Array.isArray(images) ? images : []
+  if (!list.length) throw new Error('No images provided.')
+  const packName = (pack || '').trim() || 'My Uploads'
+
+  ensure()
+  const index = scrapedIndex()
+  const addedRecords = []
+  for (const dataUrl of list) {
+    const m = /^data:image\/(\w+);base64,(.+)$/i.exec(String(dataUrl))
+    if (!m) continue
+    const ext = (m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase()).slice(0, 5)
+    const buf = Buffer.from(m[2], 'base64')
+    if (buf.length < 100) continue // skip empty/corrupt uploads
+    const id = `scraped:${Date.now()}-${Math.round(Math.random() * 1e6)}`
+    const file = `${id.replace('scraped:', '')}.${ext}`
+    writeFileSync(join(MEDIA_DIR, file), buf)
+    const rec = { id, file, pack: packName, addedAt: new Date().toISOString(), source: 'uploaded' }
+    index.unshift(rec)
+    addedRecords.push(rec)
+  }
+  if (!addedRecords.length) throw new Error('No valid images to upload.')
+  writeJson(INDEX_PATH, index)
+  return {
+    // Newly added images, in the same order as the input files.
+    added: addedRecords.map((r) => ({
+      id: r.id,
+      url: `/api/library/img/${encodeURIComponent(r.id)}`,
+      pack: r.pack,
+      source: r.source,
+    })),
+    library: listLibrary(),
+  }
 }
 
 // Pull image URLs out of whatever the Pinterest actor returns. Pinterest actors
@@ -208,7 +244,7 @@ export async function scrapePinterest({ apiKey, actor, searches, count }) {
       const id = `scraped:${Date.now()}-${Math.round(Math.random() * 1e6)}`
       const file = `${id.replace('scraped:', '')}${ext}`
       writeFileSync(join(MEDIA_DIR, file), buf)
-      index.unshift({ id, file, pack, addedAt: new Date().toISOString() })
+      index.unshift({ id, file, pack, addedAt: new Date().toISOString(), source: 'scraped' })
       added++
       if (added % 5 === 0 || added === urls.length) log.progress(added, urls.length, 'downloaded')
     } catch {

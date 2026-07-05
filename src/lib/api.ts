@@ -5,6 +5,7 @@ import type {
   AppConfig,
   Project,
   Slideshow,
+  Slide,
   SocialAccount,
   ScheduledPost,
   PostResult,
@@ -55,8 +56,14 @@ export const getModels = () => req<ModelOption[]>('/models');
 
 export const getQueue = () => req<Slideshow[]>('/queue');
 
-export const generate = (count = 4, packs?: string[]) =>
-  req<Slideshow[]>('/generate', { method: 'POST', body: JSON.stringify({ count, packs }) });
+// `audience`/`styleMemory` are per-batch overrides — leave them out (or blank)
+// to fall back to the project's saved Brain values.
+export const generate = (opts: {
+  count: number;
+  packs?: string[];
+  audience?: string;
+  styleMemory?: string;
+}) => req<Slideshow[]>('/generate', { method: 'POST', body: JSON.stringify(opts) });
 
 export const removeFromQueue = (id: string) =>
   req<Slideshow[]>(`/queue/${id}`, { method: 'DELETE' });
@@ -65,6 +72,14 @@ export const updateSlideshow = (
   id: string,
   patch: Partial<Pick<Slideshow, 'slides' | 'caption' | 'hashtags' | 'hook'>>
 ) => req<Slideshow[]>(`/queue/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
+
+// Manually created slideshow (Create page) — same shape as a generated one,
+// just supplied by the user instead of the model.
+export const createManualSlideshow = (payload: {
+  caption: string;
+  hashtags: string[];
+  slides: Pick<Slide, 'text' | 'imageUrl' | 'bgFrom' | 'bgTo'>[];
+}) => req<Slideshow[]>('/queue/custom', { method: 'POST', body: JSON.stringify(payload) });
 
 // ── Image library ─────────────────────────────────────────────────────────────
 export const getLibrary = () => req<LibraryImage[]>('/library');
@@ -79,6 +94,13 @@ export const scrapePinterest = (searches: string[], count: number) =>
 
 export const deleteLibraryImage = (id: string) =>
   req<LibraryImage[]>(`/library/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+// `images` are data URLs read client-side from the files the user picked.
+export const uploadLibraryImages = (pack: string, images: string[]) =>
+  req<{ added: LibraryImage[]; library: LibraryImage[] }>('/library/upload', {
+    method: 'POST',
+    body: JSON.stringify({ pack, images }),
+  });
 
 export const getAccounts = () => req<SocialAccount[]>('/accounts');
 
