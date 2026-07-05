@@ -13,7 +13,12 @@ import { join } from 'node:path'
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { Redis } from '@upstash/redis'
 
-const DIR = process.env.SLIDESMITH_DIR || join(homedir(), '.slidesmith')
+// On Vercel, $HOME isn't a writable directory (self-hosted mkdir there works
+// fine, but the same path on a Lambda-style filesystem throws ENOENT) — /tmp
+// is the only writable path there. It's also wiped between cold starts, so
+// this is only a stopgap until Redis + Blob are attached; see the CLOUD
+// warning below.
+const DIR = process.env.SLIDESMITH_DIR || join(process.env.VERCEL ? '/tmp' : homedir(), '.slidesmith')
 const MEDIA_DIR = join(DIR, 'library')
 
 // Vercel's own KV product and the newer Marketplace Redis integrations name
@@ -22,6 +27,16 @@ const REDIS_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_
 const REDIS_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN
 
 export const CLOUD = !!(REDIS_URL && REDIS_TOKEN)
+
+if (process.env.VERCEL && !CLOUD) {
+  // Not fatal — falls back to /tmp so the app still works for a quick look —
+  // but nothing persists across cold starts/deploys and nothing is shared
+  // between users until a Redis store is attached in the project's Storage tab.
+  console.warn(
+    '[storage] Deployed on Vercel without a Redis store attached — using ' +
+    'ephemeral /tmp storage. Attach Redis (Storage tab) for real, shared persistence.'
+  )
+}
 
 const redis = CLOUD ? new Redis({ url: REDIS_URL, token: REDIS_TOKEN }) : null
 
