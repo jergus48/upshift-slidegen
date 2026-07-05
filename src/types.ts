@@ -41,13 +41,19 @@ export interface Project {
   imagePacks: string[]; // background packs generation draws from ([] = gradients only)
 }
 
+// Keys are never sent to the browser as real values — only whether each one
+// is set, so Settings can show "already set" without ever exposing the secret.
 export interface AppConfig {
-  keys: { postbridge: string; openrouter: string; apify: string };
+  keys: { postbridge: boolean; openrouter: boolean; apify: boolean };
   model: string;
   pinterestActor: string;
   projects: Project[];
   activeProjectId: string;
 }
+
+// Write-only: real secret values, sent up to replace a key. Settings only
+// includes a field here if the user actually typed something new.
+export type KeysPatch = Partial<{ postbridge: string; openrouter: string; apify: string }>;
 
 export interface LibraryImage {
   id: string;

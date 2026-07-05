@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check, X, Loader2, KeyRound, Trash2, Info } from 'lucide-react';
-import type { AppConfig, Project, SocialAccount, ModelOption } from '../types';
+import type { AppConfig, KeysPatch, Project, SocialAccount, ModelOption } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { testKeys, getModels } from '../lib/api';
@@ -12,7 +12,7 @@ interface SettingsViewProps {
   accounts: SocialAccount[];
   canDelete: boolean;
   onSave: (patch: {
-    keys?: AppConfig['keys'];
+    keys?: KeysPatch;
     model?: string;
     pinterestActor?: string;
     name?: string;
@@ -45,9 +45,11 @@ export function SettingsView({
   onDeleteProject,
   onReloadAccounts,
 }: SettingsViewProps) {
-  const [postbridge, setPostbridge] = useState(config.keys.postbridge);
-  const [openrouter, setOpenrouter] = useState(config.keys.openrouter);
-  const [apify, setApify] = useState(config.keys.apify);
+  // Real key values never come back from the server (see AppConfig) — these
+  // start blank and only carry a NEW value if the user types one.
+  const [postbridge, setPostbridge] = useState('');
+  const [openrouter, setOpenrouter] = useState('');
+  const [apify, setApify] = useState('');
   const [pinterestActor, setPinterestActor] = useState(config.pinterestActor);
   const [model, setModel] = useState(config.model);
   const [name, setName] = useState(project.name);
@@ -78,15 +80,26 @@ export function SettingsView({
     setSaving(true);
     setSaved(false);
     setSaveError(null);
+    // Only send keys the user actually typed something new for — blank
+    // fields must never overwrite an already-saved key.
+    const keys: KeysPatch = {};
+    if (postbridge.trim()) keys.postbridge = postbridge.trim();
+    if (openrouter.trim()) keys.openrouter = openrouter.trim();
+    if (apify.trim()) keys.apify = apify.trim();
     try {
       await onSave({
-        keys: { postbridge, openrouter, apify },
+        keys: Object.keys(keys).length ? keys : undefined,
         model,
         pinterestActor,
         name,
         defaults: { socialAccountIds: selected, mode },
         imagePacks,
       });
+      // Clear typed values — they're saved now, and the field goes back to
+      // showing "already set" via its placeholder.
+      setPostbridge('');
+      setOpenrouter('');
+      setApify('');
       onReloadAccounts();
       setSaved(true);
     } catch (e) {
@@ -123,7 +136,7 @@ export function SettingsView({
     <>
       <ViewHeader
         title="Settings"
-        subtitle="Your own API keys, stored locally on this machine — never sent anywhere but the services they belong to."
+        subtitle="Your own API keys — stored server-side only, never sent anywhere but the services they belong to."
       />
 
       <div className="flex-1 overflow-y-auto">
@@ -146,7 +159,7 @@ export function SettingsView({
           {/* Keys (global) */}
           <Section
             title="API keys"
-            description="Shared across all projects. Stored in ~/.slidesmith/config.json on your computer."
+            description="Shared across all projects. Never sent back to the browser once saved — these fields are write-only."
           >
             <Field
               label="post-bridge API key"
@@ -155,7 +168,7 @@ export function SettingsView({
               <input
                 value={postbridge}
                 onChange={(e) => setPostbridge(e.target.value)}
-                placeholder="pb_..."
+                placeholder={config.keys.postbridge ? '•••• already set — leave blank to keep' : 'pb_...'}
                 className={`${inputClass} font-mono`}
               />
               <TestBadge ok={test?.postbridge} error={test?.errors?.postbridge} />
@@ -164,7 +177,7 @@ export function SettingsView({
               <input
                 value={openrouter}
                 onChange={(e) => setOpenrouter(e.target.value)}
-                placeholder="sk-or-..."
+                placeholder={config.keys.openrouter ? '•••• already set — leave blank to keep' : 'sk-or-...'}
                 className={`${inputClass} font-mono`}
               />
               <TestBadge ok={test?.openrouter} error={test?.errors?.openrouter} />
@@ -173,7 +186,7 @@ export function SettingsView({
               <input
                 value={apify}
                 onChange={(e) => setApify(e.target.value)}
-                placeholder="apify_api_..."
+                placeholder={config.keys.apify ? '•••• already set — leave blank to keep' : 'apify_api_...'}
                 className={`${inputClass} font-mono`}
               />
               <TestBadge ok={test?.apify} error={test?.errors?.apify} />

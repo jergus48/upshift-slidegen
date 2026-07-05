@@ -63,6 +63,37 @@ npm run build   # build the UI
 npm start       # serves the UI + API from one Node process (port 8787)
 ```
 
+### Deploying for a team (Vercel)
+
+Slidesmith can also run as a small shared deployment — e.g. two people using
+the same queue and image library from a Vercel URL instead of each running it
+locally. Local files don't survive on Vercel's serverless filesystem, so this
+mode swaps them for two Vercel integrations, detected automatically via env
+vars (no code changes, no separate config):
+
+- **Redis** (Storage tab → connect a Redis integration, e.g. Upstash) — replaces
+  `~/.slidesmith/config.json` and `queue.json`.
+- **Blob** (Storage tab → Blob) — replaces `~/.slidesmith/library/` for
+  scraped/uploaded images. Bundled aesthetic packs are unaffected either way —
+  they ship as static files and are served the same way locally or on Vercel.
+
+Steps:
+1. Push this repo to GitHub and import it into a new Vercel project.
+2. In the project's **Storage** tab, attach a Redis store and a Blob store.
+   Vercel injects the right env vars automatically.
+3. Set an **`APP_PASSWORD`** env var. Without it, anyone with the deployment
+   URL could read your OpenRouter/post-bridge/Apify keys — see below.
+4. Deploy. Open the URL, enter the shared password once, then Settings to add
+   your keys — from then on everyone hitting that URL shares one queue,
+   library, and set of keys.
+
+**On security:** self-hosted Slidesmith trusts "whoever can reach 127.0.0.1"
+(only you). A public Vercel URL has no such boundary, so `APP_PASSWORD` gates
+every `/api/*` route behind a simple shared login, and API keys are never
+sent to the browser at all (Settings shows "already set", not the value).
+This is meant for a small trusted group, not a multi-tenant SaaS — everyone
+who logs in shares the same keys, queue, and library.
+
 ## Using it
 
 1. **Projects** — each project is one brand/account, with its own Brain and default posting accounts. Switch/create them from the top-left. (Your keys and chosen model are shared across all projects.)
@@ -79,18 +110,22 @@ Slidesmith ships with ~140 curated background images organized into aesthetic pa
 
 ## Where your data lives
 
+Self-hosted (default):
 - **API keys + Brain + settings:** `~/.slidesmith/config.json`
 - **Generated-but-not-yet-scheduled drafts:** `~/.slidesmith/queue.json`
-- **Scraped library images:** `~/.slidesmith/library/` (bundled packs live in the repo at `public/library/`)
-- **Everything else** (media, scheduled posts, results) lives in your post-bridge account.
+- **Scraped/uploaded library images:** `~/.slidesmith/library/` (bundled packs live in the repo at `public/library/`)
 
-Your keys never leave your machine except to reach the services they belong to (OpenRouter, post-bridge). The browser never sees them — they stay on the local server.
+Deployed on Vercel (see above) — same shape, different address, shared by everyone using the deployment:
+- **API keys + Brain + settings + queue:** your attached Redis store
+- **Scraped/uploaded library images:** your attached Blob store
+
+Either way: **everything else** (media, scheduled posts, results) lives in your post-bridge account, and your keys never leave the server to reach anywhere but the services they belong to (OpenRouter, post-bridge, Apify) — the browser never sees the actual values, only whether each one is set.
 
 You can override the storage location with `SLIDESMITH_DIR` and the server port with `PORT` (see `.env.example`).
 
 ## Tech
 
-React 19 + Vite + Tailwind (UI), a small Express server (keys + OpenRouter + post-bridge proxy), the OpenRouter API, and the post-bridge API. No database.
+React 19 + Vite + Tailwind (UI), a small Express server (keys + OpenRouter + post-bridge proxy), the OpenRouter API, and the post-bridge API. No database self-hosted; an optional Redis + Blob pair only if you deploy the shared-team setup on Vercel.
 
 ## License
 

@@ -4,6 +4,7 @@ import { ScheduleModal } from './components/ScheduleModal';
 import { BulkScheduleModal } from './components/BulkScheduleModal';
 import { GenerateModal } from './components/GenerateModal';
 import { SlideshowEditorModal } from './components/SlideshowEditorModal';
+import { LoginGate } from './components/LoginGate';
 import { QueueView } from './views/QueueView';
 import { CreateView } from './views/CreateView';
 import { LibraryView } from './views/LibraryView';
@@ -13,10 +14,11 @@ import { BrainView } from './views/BrainView';
 import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
 import * as api from './lib/api';
-import type { AppConfig, Project, Slideshow, Slide, SocialAccount, BrainState, ViewKey } from './types';
+import type { AppConfig, KeysPatch, Project, Slideshow, Slide, SocialAccount, BrainState, ViewKey } from './types';
 
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [authStatus, setAuthStatus] = useState<{ required: boolean; authed: boolean } | null>(null);
   const [activeView, setActiveView] = useState<ViewKey>('queue');
   const [queue, setQueue] = useState<Slideshow[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
@@ -43,19 +45,38 @@ export default function App() {
     }
   }, []);
 
+  const loadApp = useCallback(async () => {
+    const cfg = await api.getConfig();
+    setConfig(cfg);
+    setQueue(await api.getQueue());
+    if (!cfg.keys.openrouter && !cfg.keys.postbridge) setActiveView('settings');
+    if (cfg.keys.postbridge) loadAccounts();
+  }, [loadAccounts]);
+
+  // On a password-protected deployment, check auth before loading anything
+  // else — a missing/expired login shows the LoginGate instead of an error.
   useEffect(() => {
     (async () => {
       try {
-        const cfg = await api.getConfig();
-        setConfig(cfg);
-        setQueue(await api.getQueue());
-        if (!cfg.keys.openrouter && !cfg.keys.postbridge) setActiveView('settings');
-        if (cfg.keys.postbridge) loadAccounts();
+        const auth = await api.getAuthStatus();
+        setAuthStatus(auth);
+        if (auth.required && !auth.authed) return;
+        await loadApp();
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not reach the Slidesmith server.');
       }
     })();
-  }, [loadAccounts]);
+  }, [loadApp]);
+
+  const handleLoggedIn = async () => {
+    setError(null);
+    setAuthStatus({ required: true, authed: true });
+    try {
+      await loadApp();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not reach the Slidesmith server.');
+    }
+  };
 
   const generate = async (opts: { count: number; packs: string[]; audience?: string; styleMemory?: string }) => {
     setError(null);
@@ -125,7 +146,7 @@ export default function App() {
 
   // Global settings (keys/model) + per-project edits (name/defaults), in one call.
   const saveSettings = async (patch: {
-    keys?: AppConfig['keys'];
+    keys?: KeysPatch;
     model?: string;
     pinterestActor?: string;
     name?: string;
@@ -171,6 +192,18 @@ export default function App() {
     setConfig(await api.deleteProject(id));
     setQueue(await api.getQueue());
   };
+
+  if (authStatus === null) {
+    return (
+      <div className="h-full w-full flex items-center justify-center bg-bg text-ink-5 text-[13px]">
+        {error ? <span className="text-red-600 max-w-sm text-center">{error}</span> : 'Loading…'}
+      </div>
+    );
+  }
+
+  if (authStatus.required && !authStatus.authed) {
+    return <LoginGate onSuccess={handleLoggedIn} />;
+  }
 
   if (!config || !activeProject) {
     return (

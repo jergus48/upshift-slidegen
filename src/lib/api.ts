@@ -3,6 +3,7 @@
 // to Claude + post-bridge — the browser never sees the secrets in a request.
 import type {
   AppConfig,
+  KeysPatch,
   Project,
   Slideshow,
   Slide,
@@ -14,6 +15,10 @@ import type {
   LibraryPack,
 } from '../types';
 
+// Thrown for 401s specifically, so App.tsx can tell "wrong/missing password"
+// apart from "server unreachable" and show the login gate instead of an error.
+export class AuthError extends Error {}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     headers: { 'content-type': 'application/json' },
@@ -21,14 +26,23 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   const body = await res.json().catch(() => ({}));
+  if (res.status === 401) throw new AuthError((body as { error?: string }).error || 'Password required.');
   if (!res.ok) throw new Error((body as { error?: string }).error || res.statusText);
   return body as T;
 }
 
+// ── Shared-password gate (no-op deployments never need these) ────────────────
+export const getAuthStatus = () => req<{ required: boolean; authed: boolean }>('/auth');
+export const login = (password: string) =>
+  req<{ ok: true }>('/login', { method: 'POST', body: JSON.stringify({ password }) });
+export const logout = () => req<{ ok: true }>('/logout', { method: 'POST' });
+
 export const getConfig = () => req<AppConfig>('/config');
 
-// Global settings only (keys + model + scraper actor).
-export const saveConfig = (patch: { keys?: AppConfig['keys']; model?: string; pinterestActor?: string }) =>
+// Global settings only (keys + model + scraper actor). `keys` only carries
+// fields the user actually typed a new value for — blank fields are omitted
+// client-side so they never overwrite an already-saved key.
+export const saveConfig = (patch: { keys?: KeysPatch; model?: string; pinterestActor?: string }) =>
   req<AppConfig>('/config', { method: 'PUT', body: JSON.stringify(patch) });
 
 // Projects — each has its own Brain + default post-bridge accounts.

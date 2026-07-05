@@ -1,31 +1,22 @@
 // Image library: the bundled aesthetic packs (shipped in public/library/) plus
-// any images the user scrapes from Pinterest with their own Apify key. Scraped
-// images are downloaded to ~/.slidesmith/library/ so the browser can composite
-// them onto the export canvas same-origin (remote URLs would taint it).
-import { homedir } from 'node:os'
-import { join, dirname, extname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, rmSync } from 'node:fs'
+// any images added at runtime — scraped from Pinterest with your own Apify
+// key, or uploaded by hand. Runtime images are backed by storage.js, so they
+// live on local disk when self-hosted or in Vercel Blob when deployed, with
+// their index in the matching JSON/Redis store — see storage.js for why.
+import { extname } from 'node:path'
+import { existsSync, readdirSync } from 'node:fs'
 import { logger } from './log.js'
+import { CLOUD, readData, writeData, putImage, deleteImage, localMediaPath } from './storage.js'
+import manifest from '../public/library/manifest.json' with { type: 'json' }
 
 const log = logger('scrape')
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const DIR = process.env.SLIDESMITH_DIR || join(homedir(), '.slidesmith')
-const MEDIA_DIR = join(DIR, 'library')
-const INDEX_PATH = join(DIR, 'library.json')
-const BUNDLED_MANIFEST = join(__dirname, '..', 'public', 'library', 'manifest.json')
+const LIBRARY_KEY = 'library'
 
-function ensure() {
-  if (!existsSync(MEDIA_DIR)) mkdirSync(MEDIA_DIR, { recursive: true })
-}
-function readJson(p, fb) {
-  try { return JSON.parse(readFileSync(p, 'utf8')) } catch { return fb }
-}
-
-// Flatten the bundled manifest into image records the UI can render.
+// Flatten the bundled manifest into image records the UI can render. These
+// ship as static files in public/library/ and are unaffected by CLOUD vs
+// local — Vite copies public/ straight into the build output either way.
 function bundled() {
-  const m = readJson(BUNDLED_MANIFEST, { packs: [] })
-  return (m.packs || []).flatMap((pack) =>
+  return (manifest.packs || []).flatMap((pack) =>
     (pack.images || []).map((path) => ({
       id: `bundled:${path}`,
       url: `/library/${path}`,
@@ -37,52 +28,67 @@ function bundled() {
 
 // Names of the bundled aesthetic packs (used as the default selection for new projects).
 export function bundledPackNames() {
-  const m = readJson(BUNDLED_MANIFEST, { packs: [] })
-  return (m.packs || []).map((p) => p.name)
+  return (manifest.packs || []).map((p) => p.name)
 }
 
-function scrapedIndex() {
-  return readJson(INDEX_PATH, [])
+async function runtimeIndex() {
+  const raw = await readData(LIBRARY_KEY, [])
+  // Pre-refactor records stored the local filename under `file` — normalize
+  // to `ref` on read so existing ~/.slidesmith/library.json data keeps working.
+  return raw.map((r) => (r.ref ? r : { ...r, ref: r.file }))
+}
+function writeRuntimeIndex(index) {
+  return writeData(LIBRARY_KEY, index)
 }
 
-// Recover image files on disk that aren't in the index (e.g. if the index was
-// emptied or drifted). Re-indexes them with stable ids matching the original
-// scheme so nothing is silently orphaned.
-function reconcileOrphans() {
-  const index = scrapedIndex()
-  if (!existsSync(MEDIA_DIR)) return index
-  const known = new Set(index.map((s) => s.file))
+// Recover local image files on disk that aren't in the index (e.g. if the
+// index was emptied or drifted). Local-only: Blob has no cheap "list orphans"
+// equivalent, and uploads/deletes always go through the index-writing paths
+// in cloud mode, so this isn't needed there.
+async function reconcileOrphans(index) {
+  if (CLOUD) return index
+  const mediaDir = localMediaPath('') // ~/.slidesmith/library
+  if (!existsSync(mediaDir)) return index
+  const known = new Set(index.map((s) => s.ref))
   let changed = false
-  for (const file of readdirSync(MEDIA_DIR)) {
+  for (const file of readdirSync(mediaDir)) {
     if (!/\.(jpe?g|png|webp)$/i.test(file) || known.has(file)) continue
-    index.push({ id: `scraped:${file.replace(/\.[^.]+$/, '')}`, file, pack: 'Scraped', addedAt: new Date().toISOString(), source: 'scraped' })
+    index.push({ id: `scraped:${file.replace(/\.[^.]+$/, '')}`, ref: file, pack: 'Scraped', addedAt: new Date().toISOString(), source: 'scraped' })
     changed = true
   }
-  if (changed) writeJson(INDEX_PATH, index)
+  if (changed) await writeRuntimeIndex(index)
   return index
 }
 
-export function listLibrary() {
-  // Only list scraped images whose files actually exist on disk — avoids broken
-  // thumbnails / 404s if the index and files ever drift apart. Reconcile first
-  // so any orphaned files on disk are picked back up.
-  const scraped = reconcileOrphans()
-    .filter((s) => existsSync(join(MEDIA_DIR, s.file)))
-    .map((s) => ({
-      id: s.id,
-      url: `/api/library/img/${encodeURIComponent(s.id)}`,
-      pack: s.pack || 'Scraped',
-      source: s.source || 'scraped',
+// A public URL for a runtime image: the Blob URL itself in cloud mode, or our
+// own id-keyed proxy route locally (decouples the served id from the on-disk
+// filename, which carries the real file extension).
+function publicUrl(id, ref) {
+  return CLOUD ? ref : `/api/library/img/${encodeURIComponent(id)}`
+}
+
+export async function listLibrary() {
+  const index = await reconcileOrphans(await runtimeIndex())
+  // Only list local images whose files actually exist on disk — avoids broken
+  // thumbnails / 404s if the index and files ever drift apart. Cloud (Blob)
+  // entries are trusted as-is; checking each one would mean a network round
+  // trip per image on every listing.
+  const runtime = (CLOUD ? index : index.filter((r) => existsSync(localMediaPath(r.ref))))
+    .map((r) => ({
+      id: r.id,
+      url: publicUrl(r.id, r.ref),
+      pack: r.pack || 'Scraped',
+      source: r.source || 'scraped',
     }))
-  // Scraped first (newest), then the bundled packs.
-  return [...scraped, ...bundled()]
+  // Runtime images first (newest), then the bundled packs.
+  return [...runtime, ...bundled()]
 }
 
 // Group the library into packs with a few cover thumbnails each (for the
 // pack-picker UIs in Generate + Settings).
-export function listPacks() {
+export async function listPacks() {
   const map = new Map()
-  for (const img of listLibrary()) {
+  for (const img of await listLibrary()) {
     if (!map.has(img.pack)) map.set(img.pack, { name: img.pack, source: img.source, count: 0, covers: [] })
     const p = map.get(img.pack)
     p.count++
@@ -91,38 +97,32 @@ export function listPacks() {
   return [...map.values()]
 }
 
-export function getScrapedFile(id) {
-  const rec = scrapedIndex().find((s) => s.id === id)
+// Local-only: resolve a runtime image id to its file on disk, for the
+// /api/library/img/:id route to stream. Cloud images are served straight from
+// their Blob URL and never reach this route.
+export async function getScrapedFile(id) {
+  if (CLOUD) return null
+  const rec = (await runtimeIndex()).find((r) => r.id === id)
   if (!rec) return null
-  const p = join(MEDIA_DIR, rec.file)
+  const p = localMediaPath(rec.ref)
   return existsSync(p) ? p : null
 }
 
-export function removeScraped(id) {
-  const index = scrapedIndex()
-  const rec = index.find((s) => s.id === id)
-  // Delete the actual file too — otherwise reconcileOrphans() sees an
-  // un-indexed file on disk and immediately re-adds it ("zombie" delete).
-  if (rec) {
-    const p = join(MEDIA_DIR, rec.file)
-    if (existsSync(p)) rmSync(p)
-  }
-  writeJson(INDEX_PATH, index.filter((s) => s.id !== id))
+export async function removeScraped(id) {
+  const index = await runtimeIndex()
+  const rec = index.find((r) => r.id === id)
+  if (rec) await deleteImage(rec.ref)
+  await writeRuntimeIndex(index.filter((r) => r.id !== id))
   return listLibrary()
-}
-function writeJson(p, v) {
-  ensure()
-  writeFileSync(p, JSON.stringify(v, null, 2))
 }
 
 // Save user-uploaded images (sent as data URLs) into a pack of their choosing.
-export function addUploaded({ pack, images }) {
+export async function addUploaded({ pack, images }) {
   const list = Array.isArray(images) ? images : []
   if (!list.length) throw new Error('No images provided.')
   const packName = (pack || '').trim() || 'My Uploads'
 
-  ensure()
-  const index = scrapedIndex()
+  const index = await runtimeIndex()
   const addedRecords = []
   for (const dataUrl of list) {
     const m = /^data:image\/(\w+);base64,(.+)$/i.exec(String(dataUrl))
@@ -131,23 +131,18 @@ export function addUploaded({ pack, images }) {
     const buf = Buffer.from(m[2], 'base64')
     if (buf.length < 100) continue // skip empty/corrupt uploads
     const id = `scraped:${Date.now()}-${Math.round(Math.random() * 1e6)}`
-    const file = `${id.replace('scraped:', '')}.${ext}`
-    writeFileSync(join(MEDIA_DIR, file), buf)
-    const rec = { id, file, pack: packName, addedAt: new Date().toISOString(), source: 'uploaded' }
+    const filename = `${id.replace('scraped:', '')}.${ext}`
+    const ref = await putImage(filename, buf, `image/${ext === 'jpg' ? 'jpeg' : ext}`)
+    const rec = { id, ref, pack: packName, addedAt: new Date().toISOString(), source: 'uploaded' }
     index.unshift(rec)
     addedRecords.push(rec)
   }
   if (!addedRecords.length) throw new Error('No valid images to upload.')
-  writeJson(INDEX_PATH, index)
+  await writeRuntimeIndex(index)
   return {
     // Newly added images, in the same order as the input files.
-    added: addedRecords.map((r) => ({
-      id: r.id,
-      url: `/api/library/img/${encodeURIComponent(r.id)}`,
-      pack: r.pack,
-      source: r.source,
-    })),
-    library: listLibrary(),
+    added: addedRecords.map((r) => ({ id: r.id, url: publicUrl(r.id, r.ref), pack: r.pack, source: r.source })),
+    library: await listLibrary(),
   }
 }
 
@@ -230,8 +225,7 @@ export async function scrapePinterest({ apiKey, actor, searches, count }) {
   }
   log.ok(`found ${urls.length} image${urls.length === 1 ? '' : 's'} — downloading…`)
 
-  ensure()
-  const index = scrapedIndex()
+  const index = await runtimeIndex()
   let added = 0
   let skipped = 0
   for (const url of urls) {
@@ -242,16 +236,17 @@ export async function scrapePinterest({ apiKey, actor, searches, count }) {
       if (buf.length < 1024) { skipped++; continue } // skip tiny/placeholder
       const ext = (extname(new URL(url).pathname) || '.jpg').slice(0, 5)
       const id = `scraped:${Date.now()}-${Math.round(Math.random() * 1e6)}`
-      const file = `${id.replace('scraped:', '')}${ext}`
-      writeFileSync(join(MEDIA_DIR, file), buf)
-      index.unshift({ id, file, pack, addedAt: new Date().toISOString(), source: 'scraped' })
+      const filename = `${id.replace('scraped:', '')}${ext}`
+      const contentType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg'
+      const ref = await putImage(filename, buf, contentType)
+      index.unshift({ id, ref, pack, addedAt: new Date().toISOString(), source: 'scraped' })
       added++
       if (added % 5 === 0 || added === urls.length) log.progress(added, urls.length, 'downloaded')
     } catch {
       skipped++ // skip individual failures
     }
   }
-  writeJson(INDEX_PATH, index)
+  await writeRuntimeIndex(index)
   log.ok(`Added ${added} image${added === 1 ? '' : 's'} to "${pack}"${skipped ? ` (${skipped} skipped)` : ''}`)
   return { added, found: urls.length }
 }
