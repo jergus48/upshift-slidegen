@@ -60,7 +60,7 @@ export const getModels = () => req<ModelOption[]>('/models');
 // from the client (localWorkspace). Returns bare slideshows (text + gradient
 // only) — background assignment happens client-side, since the server no
 // longer knows about scraped/uploaded images; see lib/backgrounds.ts.
-export const generate = (opts: { count: number; model: string; brain: BrainState }) =>
+export const generate = (opts: { count: number; slidesPerShow: number; model: string; brain: BrainState }) =>
   req<Slideshow[]>('/generate', { method: 'POST', body: JSON.stringify(opts) });
 
 // ── Image library ─────────────────────────────────────────────────────────────

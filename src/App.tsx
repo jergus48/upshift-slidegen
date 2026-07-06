@@ -123,7 +123,7 @@ export default function App() {
     if (activeProjectId && queueProject === activeProjectId) saveQueue(activeProjectId, queue);
   }, [queue, queueProject, activeProjectId]);
 
-  const generate = async (opts: { count: number; packs: string[]; audience?: string; styleMemory?: string }) => {
+  const generate = async (opts: { count: number; slidesPerShow: number; packs: string[]; audience?: string; styleMemory?: string }) => {
     if (!activeProject) return;
     setError(null);
     setGenerating(true);
@@ -135,7 +135,7 @@ export default function App() {
         audience: opts.audience?.trim() || activeProject.brain.audience,
         styleMemory: opts.styleMemory?.trim() || activeProject.brain.styleMemory,
       };
-      const slideshows = await api.generate({ count: opts.count, model: workspace!.model, brain });
+      const slideshows = await api.generate({ count: opts.count, slidesPerShow: opts.slidesPerShow, model: workspace!.model, brain });
       // Backgrounds are assigned client-side now — the server no longer knows
       // about scraped/uploaded images (they live in this browser's IndexedDB).
       const pool = opts.packs.length ? (await getMergedLibrary()).filter((i) => opts.packs.includes(i.pack)) : [];

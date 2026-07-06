@@ -17,7 +17,7 @@ const PALETTE = [
   ['#26120a', '#1a0c06'],
 ]
 
-function buildPrompt(brain, count) {
+function buildPrompt(brain, count, slidesPerShow) {
   return `You write short-form social media carousel slideshows (TikTok/Instagram).
 
 Account context:
@@ -33,7 +33,7 @@ Write ${count} distinct slideshows. Respond with a JSON object of this exact sha
   "slideshows": [
     {
       "hook": "the first slide — a scroll-stopping line, max ~8 words",
-      "slides": ["the hook again as slide 1", "slide 2", "...5-6 lines total, each max ~8 words, last is a CTA like 'Save this'"],
+      "slides": ["the hook again as slide 1", "slide 2", "...exactly ${slidesPerShow} lines total (including the hook as slide 1), each max ~8 words, the last is a CTA like 'Save this'"],
       "caption": "the post caption with 1-2 emoji",
       "hashtags": ["three", "relevant", "hashtags"],
       "rationale": "one sentence on why this should perform, tied to the style memory"
@@ -41,15 +41,15 @@ Write ${count} distinct slideshows. Respond with a JSON object of this exact sha
   ]
 }
 
-Keep them on-brand, varied, and genuinely good. Do not write generic filler. Return ONLY the JSON object.`
+Each slideshow's "slides" array MUST contain exactly ${slidesPerShow} strings. Keep them on-brand, varied, and genuinely good. Do not write generic filler. Return ONLY the JSON object.`
 }
 
 // Generate in small batches so big counts don't overflow the model's output /
 // truncate the JSON. Each call asks for a handful; we loop until we hit `count`.
 const BATCH = 6
 
-export async function generateSlideshows({ apiKey, model, brain, count = 4 }) {
-  log.start(`Generating ${count} slideshow${count === 1 ? '' : 's'} with ${model}`)
+export async function generateSlideshows({ apiKey, model, brain, count = 4, slidesPerShow = 6 }) {
+  log.start(`Generating ${count} slideshow${count === 1 ? '' : 's'} (${slidesPerShow} slides each) with ${model}`)
   if (brain?.niche) log.info(`niche: ${brain.niche}${brain.appName ? ` · ${brain.appName}` : ''}`)
   const raw = []
   let safety = 0
@@ -57,7 +57,7 @@ export async function generateSlideshows({ apiKey, model, brain, count = 4 }) {
     safety++
     const n = Math.min(BATCH, count - raw.length)
     log.step(`asking model for ${n} more (${raw.length}/${count} so far)…`)
-    const parsed = await chatJSON({ apiKey, model, prompt: buildPrompt(brain, n) })
+    const parsed = await chatJSON({ apiKey, model, prompt: buildPrompt(brain, n, slidesPerShow) })
     const batch = parsed.slideshows || []
     if (!batch.length) {
       log.warn('model returned no slideshows — stopping early')

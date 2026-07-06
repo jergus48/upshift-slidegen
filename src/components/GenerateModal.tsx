@@ -9,10 +9,11 @@ interface GenerateModalProps {
   defaultStyleMemory: string;
   generating: boolean;
   onClose: () => void;
-  onGenerate: (opts: { count: number; packs: string[]; audience?: string; styleMemory?: string }) => void;
+  onGenerate: (opts: { count: number; slidesPerShow: number; packs: string[]; audience?: string; styleMemory?: string }) => void;
 }
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
+const SLIDES_OPTIONS = [4, 5, 6, 7, 8];
 
 const textareaClass =
   'w-full bg-card border border-line rounded-lg px-3 py-2.5 text-[13px] text-ink ' +
@@ -28,6 +29,7 @@ export function GenerateModal({
   onGenerate,
 }: GenerateModalProps) {
   const [count, setCount] = useState(3);
+  const [slidesPerShow, setSlidesPerShow] = useState(6);
   const [packs, setPacks] = useState<string[]>(defaultPacks);
   const [audience, setAudience] = useState('');
   const [styleMemory, setStyleMemory] = useState('');
@@ -35,6 +37,7 @@ export function GenerateModal({
   const submit = () =>
     onGenerate({
       count,
+      slidesPerShow,
       packs,
       audience: audience.trim() || undefined,
       styleMemory: styleMemory.trim() || undefined,
@@ -78,6 +81,35 @@ export function GenerateModal({
               />
             </div>
             <p className="text-[11px] text-ink-6 mt-1">1–100. Large batches take a while — they generate in chunks.</p>
+          </div>
+
+          {/* Slides per slideshow */}
+          <div>
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Slides per slideshow</label>
+            <div className="flex items-center gap-2">
+              {SLIDES_OPTIONS.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setSlidesPerShow(n)}
+                  disabled={generating}
+                  className={`w-12 h-9 rounded-lg border text-[13px] font-medium transition-colors disabled:opacity-50 ${
+                    slidesPerShow === n ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+              <input
+                type="number"
+                min={2}
+                max={12}
+                value={slidesPerShow}
+                disabled={generating}
+                onChange={(e) => setSlidesPerShow(Math.max(2, Math.min(12, Math.round(Number(e.target.value) || 6))))}
+                className="flex-1 h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink text-center tabular-nums outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
+              />
+            </div>
+            <p className="text-[11px] text-ink-6 mt-1">Including the hook as slide 1. Default 6.</p>
           </div>
 
           {/* Packs */}

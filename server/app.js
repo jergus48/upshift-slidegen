@@ -100,6 +100,7 @@ app.get('/api/models', h(async (_req, res) => res.json(await listModels())))
 app.post('/api/generate', h(async (req, res) => {
   const keys = await getKeys()
   const count = Math.min(Math.max(Math.round(Number(req.body?.count) || 4), 1), 100)
+  const slidesPerShow = Math.min(Math.max(Math.round(Number(req.body?.slidesPerShow) || 6), 2), 12)
   const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
   const brain = {
     niche: '',
@@ -110,7 +111,7 @@ app.post('/api/generate', h(async (req, res) => {
     ...(req.body?.brain || {}),
   }
 
-  const slideshows = await generateSlideshows({ apiKey: keys.openrouter, model, brain, count })
+  const slideshows = await generateSlideshows({ apiKey: keys.openrouter, model, brain, count, slidesPerShow })
   res.json(slideshows)
 }))
 
