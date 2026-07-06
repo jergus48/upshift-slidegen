@@ -25,6 +25,7 @@ import { listModels, validateKey } from './openrouter.js'
 import { listLibrary, listPacks, scrapePinterest, removeScraped, getScrapedFile, addUploaded } from './library.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
+import { CLOUD } from './storage.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const schedLog = logger('schedule')
@@ -55,7 +56,10 @@ const h = (fn) => (req, res) => fn(req, res).catch((e) => {
 })
 
 // ── Auth ────────────────────────────────────────────────────────────────────
-app.get('/api/auth', h(async (req, res) => res.json({ required: AUTH_REQUIRED, authed: isAuthed(req) })))
+// `cloud` is a non-secret diagnostic flag — lets you confirm from curl/devtools
+// whether this instance actually sees a Blob store, without digging through
+// Vercel's function logs.
+app.get('/api/auth', h(async (req, res) => res.json({ required: AUTH_REQUIRED, authed: isAuthed(req), cloud: CLOUD })))
 app.post('/api/login', h(async (req, res) => {
   if (!checkPassword(req.body?.password)) return res.status(401).json({ error: 'Incorrect password.' })
   res.setHeader('Set-Cookie', authCookie())
