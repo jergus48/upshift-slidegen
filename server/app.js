@@ -1,7 +1,7 @@
 // The Slidesmith Express app. Exported without calling .listen() so it can be
 // used two ways: run directly with a real HTTP server for local dev / self-
 // hosting (see index.js), or wrapped as a Vercel serverless function (see
-// api/[...all].js) when deployed for a small team to share.
+// api/index.js) when deployed for a small team to share.
 import express from 'express'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
