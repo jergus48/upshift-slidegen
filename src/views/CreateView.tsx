@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Plus, Trash2, ImagePlus, Loader2, Check } from 'lucide-react';
-import type { Slide } from '../types';
+import type { Slide, Slideshow } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { SlidePreview } from '../components/SlidePreview';
+import { AddImageToSlideshow } from '../components/AddImageToSlideshow';
 
 // Read a File as a base64 data URL — kept client-side, sent straight to the
 // server as part of the slideshow (same as scheduling already does for
@@ -28,9 +29,14 @@ function emptySlide(): Slide {
 
 interface CreateViewProps {
   onAddToQueue: (payload: { caption: string; hashtags: string[]; slides: Slide[] }) => Promise<void>;
+  queue: Slideshow[];
+  onApplyToSlideshow: (slideshowId: string, slides: Slide[]) => void;
 }
 
-export function CreateView({ onAddToQueue }: CreateViewProps) {
+type Mode = 'new' | 'existing';
+
+export function CreateView({ onAddToQueue, queue, onApplyToSlideshow }: CreateViewProps) {
+  const [mode, setMode] = useState<Mode>('new');
   const [slides, setSlides] = useState<Slide[]>([emptySlide()]);
   const [caption, setCaption] = useState('');
   const [hashtags, setHashtags] = useState('');
@@ -81,9 +87,30 @@ export function CreateView({ onAddToQueue }: CreateViewProps) {
     <>
       <ViewHeader
         title="Create"
-        subtitle="Build a slideshow from your own photos and text — rendered in the same style as generated slides, then sent to the Queue."
+        subtitle="Build a slideshow from your own photos and text, or drop an image into a slideshow that's already in the Queue."
       />
 
+      <div className="px-8 pt-4">
+        <div className="max-w-5xl mx-auto flex gap-1">
+          {([['new', 'New slideshow'], ['existing', 'Add to a slideshow']] as const).map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-3.5 h-9 text-[13px] font-medium rounded-lg transition-colors ${
+                mode === m ? 'bg-raised text-ink' : 'text-ink-5 hover:text-ink-3'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {mode === 'existing' ? (
+        <div className="flex-1 overflow-y-auto p-8">
+          <AddImageToSlideshow queue={queue} onApply={onApplyToSlideshow} />
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto p-8">
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -178,6 +205,7 @@ export function CreateView({ onAddToQueue }: CreateViewProps) {
           </div>
         </div>
       </div>
+      )}
     </>
   );
 }

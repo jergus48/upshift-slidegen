@@ -320,7 +320,15 @@ export default function App() {
             onBulkSchedule={() => setBulkOpen(true)}
           />
         )}
-        {activeView === 'create' && <CreateView onAddToQueue={addManualSlideshow} />}
+        {activeView === 'create' && (
+          <CreateView
+            onAddToQueue={addManualSlideshow}
+            queue={queue}
+            onApplyToSlideshow={(id, slides) =>
+              setQueue((q) => q.map((s) => (s.id === id ? { ...s, slides } : s)))
+            }
+          />
+        )}
         {activeView === 'library' && <LibraryView hasApify={hasApify} pinterestActor={config.pinterestActor} />}
         {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
         {activeView === 'results' && <ResultsView configured={hasPostbridge} />}
