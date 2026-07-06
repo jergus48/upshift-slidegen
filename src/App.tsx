@@ -13,7 +13,7 @@ import { ResultsView } from './views/ResultsView';
 import { BrainView } from './views/BrainView';
 import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
-import { loadQueue, saveQueue } from './lib/localQueue';
+import { loadQueue, saveQueue, recoverOrphanQueues } from './lib/localQueue';
 import { getMergedLibrary } from './lib/mergedLibrary';
 import { assignBackgrounds } from './lib/backgrounds';
 import * as ws from './lib/localWorkspace';
@@ -71,7 +71,12 @@ export default function App() {
     // Bundled pack names seed a fresh project's default background packs.
     const bundled = await api.getPacks().then((p) => p.map((x) => x.name)).catch(() => []);
     setBundledPackNames(bundled);
-    setWorkspace(ws.loadWorkspace(bundled));
+    const w = ws.loadWorkspace(bundled);
+    // Rescue queues orphaned by older builds (when the project id came from the
+    // server and changed on every cold start). Runs before the workspace is set,
+    // so the queue-load effect below picks up the recovered items.
+    recoverOrphanQueues(w.projects.map((p) => p.id), w.activeProjectId);
+    setWorkspace(w);
     if (!keyStatus.openrouter && !keyStatus.postbridge) setActiveView('settings');
     if (keyStatus.postbridge) loadAccounts();
   }, [loadAccounts]);
@@ -101,16 +106,22 @@ export default function App() {
     }
   };
 
-  // The queue lives in the browser (per project) — load it whenever the
-  // active project changes, and persist it back on every change.
+  // The queue lives in the browser (per project) — load it whenever the active
+  // project changes, and persist it back on every change. `queueProject` tracks
+  // which project the current `queue` state was loaded for, so the save effect
+  // can't clobber a project's stored queue with the stale (empty) state from
+  // before its load effect has run.
   const activeProjectId = workspace?.activeProjectId;
+  const [queueProject, setQueueProject] = useState<string | null>(null);
   useEffect(() => {
-    if (activeProjectId) setQueue(loadQueue(activeProjectId));
+    if (!activeProjectId) return;
+    setQueue(loadQueue(activeProjectId));
+    setQueueProject(activeProjectId);
   }, [activeProjectId]);
 
   useEffect(() => {
-    if (activeProjectId) saveQueue(activeProjectId, queue);
-  }, [queue, activeProjectId]);
+    if (activeProjectId && queueProject === activeProjectId) saveQueue(activeProjectId, queue);
+  }, [queue, queueProject, activeProjectId]);
 
   const generate = async (opts: { count: number; packs: string[]; audience?: string; styleMemory?: string }) => {
     if (!activeProject) return;
