@@ -2,9 +2,9 @@
 // /api in dev, same-origin in production). The server holds the keys and talks
 // to Claude + post-bridge — the browser never sees the secrets in a request.
 import type {
-  AppConfig,
+  KeyStatus,
   KeysPatch,
-  Project,
+  BrainState,
   Slideshow,
   SocialAccount,
   ScheduledPost,
@@ -36,28 +36,14 @@ export const login = (password: string) =>
   req<{ ok: true }>('/login', { method: 'POST', body: JSON.stringify({ password }) });
 export const logout = () => req<{ ok: true }>('/logout', { method: 'POST' });
 
-export const getConfig = () => req<AppConfig>('/config');
+// Only API-key status lives server-side now — projects, Brain, model and the
+// Pinterest actor are all in the browser (lib/localWorkspace.ts).
+export const getKeyStatus = () => req<{ keys: KeyStatus }>('/config').then((r) => r.keys);
 
-// Global settings only (keys + model + scraper actor). `keys` only carries
-// fields the user actually typed a new value for — blank fields are omitted
-// client-side so they never overwrite an already-saved key.
-export const saveConfig = (patch: { keys?: KeysPatch; model?: string; pinterestActor?: string }) =>
-  req<AppConfig>('/config', { method: 'PUT', body: JSON.stringify(patch) });
-
-// Projects — each has its own Brain + default post-bridge accounts.
-export const createProject = (name?: string) =>
-  req<AppConfig>('/projects', { method: 'POST', body: JSON.stringify({ name }) });
-
-export const updateProject = (
-  id: string,
-  patch: Partial<Pick<Project, 'name' | 'brain' | 'defaults' | 'imagePacks'>>
-) => req<AppConfig>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
-
-export const deleteProject = (id: string) =>
-  req<AppConfig>(`/projects/${id}`, { method: 'DELETE' });
-
-export const activateProject = (id: string) =>
-  req<AppConfig>(`/projects/${id}/activate`, { method: 'POST' });
+// `keys` only carries fields the user actually typed a new value for — blank
+// fields are omitted client-side so they never overwrite an already-saved key.
+export const saveKeys = (keys: KeysPatch) =>
+  req<{ keys: KeyStatus }>('/config', { method: 'PUT', body: JSON.stringify({ keys }) }).then((r) => r.keys);
 
 export const testKeys = () =>
   req<{ postbridge: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> }>(
@@ -70,11 +56,11 @@ export const getModels = () => req<ModelOption[]>('/models');
 // The queue (generated + manually-created slideshows) lives in the browser
 // now — see lib/localQueue.ts — there's no server endpoint for it anymore.
 
-// `audience`/`styleMemory` are per-batch overrides — leave them out (or blank)
-// to fall back to the project's saved Brain values. Returns bare slideshows
-// (text + gradient only) — background assignment happens client-side, since
-// the server no longer knows about scraped/uploaded images; see lib/backgrounds.ts.
-export const generate = (opts: { count: number; audience?: string; styleMemory?: string }) =>
+// The Brain, model, and per-batch audience/style-memory overrides all come
+// from the client (localWorkspace). Returns bare slideshows (text + gradient
+// only) — background assignment happens client-side, since the server no
+// longer knows about scraped/uploaded images; see lib/backgrounds.ts.
+export const generate = (opts: { count: number; model: string; brain: BrainState }) =>
   req<Slideshow[]>('/generate', { method: 'POST', body: JSON.stringify(opts) });
 
 // ── Image library ─────────────────────────────────────────────────────────────
@@ -85,11 +71,12 @@ export const getLibrary = () => req<LibraryImage[]>('/library');
 export const getPacks = () => req<LibraryPack[]>('/library/packs');
 
 // Scrapes via the server (needs the Apify key + avoids CORS) and returns the
-// downloaded images as data URLs for the caller to save locally.
-export const scrapePinterest = (searches: string[], count: number) =>
+// downloaded images as data URLs for the caller to save locally. `actor` is a
+// client-side setting (localWorkspace).
+export const scrapePinterest = (searches: string[], count: number, actor: string) =>
   req<{ pack: string; found: number; images: string[] }>('/library/scrape', {
     method: 'POST',
-    body: JSON.stringify({ searches, count }),
+    body: JSON.stringify({ searches, count, actor }),
   });
 
 export const getAccounts = () => req<SocialAccount[]>('/accounts');

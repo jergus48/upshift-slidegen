@@ -6,15 +6,7 @@ import express from 'express'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  getConfig,
-  saveGlobal,
-  getActiveProject,
-  createProject,
-  updateProject,
-  deleteProject,
-  setActiveProject,
-} from './store.js'
+import { getKeys, saveKeys } from './store.js'
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
 import { generateSlideshows } from './generate.js'
 import { listModels, validateKey } from './openrouter.js'
@@ -61,28 +53,22 @@ app.post('/api/logout', h(async (_req, res) => {
   res.json({ ok: true })
 }))
 
-// Never send real key values to the browser — only whether each is set.
-function maskConfig(cfg) {
-  return {
-    ...cfg,
-    keys: { postbridge: !!cfg.keys.postbridge, openrouter: !!cfg.keys.openrouter, apify: !!cfg.keys.apify },
-  }
-}
+// Never send real key values to the browser — only whether each is set. The
+// rest of "config" (projects, Brain, model choice) lives in the browser now
+// (src/lib/localWorkspace.ts), so this endpoint is just key status.
+const maskKeys = (keys) => ({
+  postbridge: !!keys.postbridge,
+  openrouter: !!keys.openrouter,
+  apify: !!keys.apify,
+})
 
-// ── Config ──────────────────────────────────────────────────────────────────
-app.get('/api/config', h(async (_req, res) => res.json(maskConfig(await getConfig()))))
-// Global settings only: keys + model. Project data goes through /api/projects.
-app.put('/api/config', h(async (req, res) => res.json(maskConfig(await saveGlobal(req.body || {})))))
-
-// ── Projects (each = a Brain + default post-bridge accounts) ──────────────────
-app.post('/api/projects', h(async (req, res) => res.json(maskConfig(await createProject(req.body?.name)))))
-app.put('/api/projects/:id', h(async (req, res) => res.json(maskConfig(await updateProject(req.params.id, req.body || {})))))
-app.delete('/api/projects/:id', h(async (req, res) => res.json(maskConfig(await deleteProject(req.params.id)))))
-app.post('/api/projects/:id/activate', h(async (req, res) => res.json(maskConfig(await setActiveProject(req.params.id)))))
+// ── Keys ──────────────────────────────────────────────────────────────────
+app.get('/api/config', h(async (_req, res) => res.json({ keys: maskKeys(await getKeys()) })))
+app.put('/api/config', h(async (req, res) => res.json({ keys: maskKeys(await saveKeys(req.body?.keys || {})) })))
 
 // Validate that the saved keys actually work, so Settings can show a green check.
 app.post('/api/config/test', h(async (_req, res) => {
-  const { keys } = await getConfig()
+  const keys = await getKeys()
   const result = { postbridge: false, openrouter: false, apify: false, errors: {} }
   if (keys.postbridge) {
     try { await listAccounts(keys.postbridge); result.postbridge = true }
@@ -105,21 +91,24 @@ app.post('/api/config/test', h(async (_req, res) => {
 // Public model catalog for the Settings dropdown.
 app.get('/api/models', h(async (_req, res) => res.json(await listModels())))
 
-// Generate a batch of slideshows. The queue itself lives client-side now (see
-// App.tsx) — this just returns the AI-written text. Backgrounds are NOT
-// assigned here either: the server no longer knows about scraped/uploaded
-// images (they live in the browser's IndexedDB), so the client assigns
-// backgrounds itself after this returns — see src/lib/backgrounds.ts.
+// Generate a batch of slideshows. The Brain, model choice, and the queue all
+// live client-side now (src/lib/localWorkspace.ts / localQueue.ts), so the
+// client sends the Brain + model to use; this just returns the AI-written
+// text. Backgrounds aren't assigned here either — the server doesn't know
+// about scraped/uploaded images (they're in the browser's IndexedDB), so the
+// client assigns them after this returns; see src/lib/backgrounds.ts.
 app.post('/api/generate', h(async (req, res) => {
-  const { keys, model } = await getConfig()
-  const project = await getActiveProject()
+  const keys = await getKeys()
   const count = Math.min(Math.max(Math.round(Number(req.body?.count) || 4), 1), 100)
-
-  // Per-batch audience/style-memory override (from the Generate modal) wins;
-  // an empty/missing override falls back to the project's saved Brain values.
-  const audience = String(req.body?.audience || '').trim() || project.brain.audience
-  const styleMemory = String(req.body?.styleMemory || '').trim() || project.brain.styleMemory
-  const brain = { ...project.brain, audience, styleMemory }
+  const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
+  const brain = {
+    niche: '',
+    appName: '',
+    appDescription: '',
+    audience: '',
+    styleMemory: '',
+    ...(req.body?.brain || {}),
+  }
 
   const slideshows = await generateSlideshows({ apiKey: keys.openrouter, model, brain, count })
   res.json(slideshows)
@@ -134,26 +123,27 @@ app.get('/api/library/packs', h(async (_req, res) => res.json(listBundledPacks()
 
 // Scrapes Pinterest (needs the Apify key + avoids browser CORS) and returns
 // the downloaded images as data URLs — the client saves them into its own
-// local library. Nothing is persisted server-side.
+// local library. Nothing is persisted server-side. The actor is a client-side
+// setting (localWorkspace), so it's passed in the request.
 app.post('/api/library/scrape', h(async (req, res) => {
-  const { keys, pinterestActor } = await getConfig()
-  const { searches, count } = req.body || {}
-  res.json(await scrapePinterest({ apiKey: keys.apify, actor: pinterestActor, searches, count }))
+  const keys = await getKeys()
+  const { searches, count, actor } = req.body || {}
+  res.json(await scrapePinterest({ apiKey: keys.apify, actor, searches, count }))
 }))
 
 // ── post-bridge ───────────────────────────────────────────────────────────────
 app.get('/api/accounts', h(async (_req, res) => {
-  const { keys } = await getConfig()
+  const keys = await getKeys()
   res.json(await listAccounts(keys.postbridge))
 }))
 
 app.get('/api/posts', h(async (_req, res) => {
-  const { keys } = await getConfig()
+  const keys = await getKeys()
   res.json(await listPosts(keys.postbridge))
 }))
 
 app.get('/api/results', h(async (_req, res) => {
-  const { keys } = await getConfig()
+  const keys = await getKeys()
   res.json(await listAnalytics(keys.postbridge))
 }))
 
@@ -161,7 +151,7 @@ app.get('/api/results', h(async (_req, res) => {
 // post-bridge rate-limits sync (429) — swallow that so the refresh still returns
 // whatever's already there.
 app.post('/api/results/sync', h(async (_req, res) => {
-  const { keys } = await getConfig()
+  const keys = await getKeys()
   try { await syncAnalytics(keys.postbridge) } catch (e) { console.warn('[results] sync skipped:', e.message) }
   res.json(await listAnalytics(keys.postbridge))
 }))
@@ -169,7 +159,7 @@ app.post('/api/results/sync', h(async (_req, res) => {
 // Schedule a slideshow: upload each rendered slide image to post-bridge, then
 // create the post. `slides` are data URLs (PNG) rendered in the browser.
 app.post('/api/schedule', h(async (req, res) => {
-  const { keys } = await getConfig()
+  const keys = await getKeys()
   const { id, caption, slides, socialAccounts, scheduledAt, mode } = req.body || {}
   if (!socialAccounts?.length) throw new Error('Pick at least one social account.')
   if (!slides?.length) throw new Error('No slide images to upload.')

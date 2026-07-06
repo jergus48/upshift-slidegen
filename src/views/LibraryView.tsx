@@ -19,12 +19,13 @@ function fileToDataUrl(file: File): Promise<string> {
 
 interface LibraryViewProps {
   hasApify: boolean;
+  pinterestActor: string;
 }
 
 // Sentinel for "create a new pack" in the upload target picker.
 const NEW_PACK = '__new__';
 
-export function LibraryView({ hasApify }: LibraryViewProps) {
+export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
   const [images, setImages] = useState<LibraryImage[] | null>(null);
   const [searches, setSearches] = useState('');
   const [count, setCount] = useState(40);
@@ -46,7 +47,7 @@ export function LibraryView({ hasApify }: LibraryViewProps) {
     try {
       // Pinterest searches are comma-separated phrases (each can contain spaces).
       const queries = searches.split(',').map((s) => s.trim()).filter(Boolean);
-      const r = await scrapePinterest(queries, count);
+      const r = await scrapePinterest(queries, count, pinterestActor);
       const added = await addLocalImages(r.pack, r.images, 'scraped');
       setNote(`Added ${added.length} image${added.length === 1 ? '' : 's'} from ${r.found} found.`);
       await load();

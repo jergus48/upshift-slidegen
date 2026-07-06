@@ -41,14 +41,29 @@ export interface Project {
   imagePacks: string[]; // background packs generation draws from ([] = gradients only)
 }
 
-// Keys are never sent to the browser as real values — only whether each one
-// is set, so Settings can show "already set" without ever exposing the secret.
-export interface AppConfig {
-  keys: { postbridge: boolean; openrouter: boolean; apify: boolean };
+// Which API keys are set. Never the real values — only whether each one is
+// set, so Settings can show "already set" without ever exposing the secret.
+// This is the only part of "config" that lives server-side.
+export interface KeyStatus {
+  postbridge: boolean;
+  openrouter: boolean;
+  apify: boolean;
+}
+
+// The rest of the app's configuration — projects, Brain, model choice — lives
+// entirely in the browser (localStorage; see lib/localWorkspace.ts), so it
+// survives reloads without depending on any server storage.
+export interface Workspace {
   model: string;
   pinterestActor: string;
   projects: Project[];
   activeProjectId: string;
+}
+
+// What the app works with internally: server key-status merged with the local
+// workspace. Assembled in App.tsx.
+export interface AppConfig extends Workspace {
+  keys: KeyStatus;
 }
 
 // Write-only: real secret values, sent up to replace a key. Settings only

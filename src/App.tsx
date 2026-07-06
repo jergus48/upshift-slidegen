@@ -16,11 +16,27 @@ import { renderSlideshow } from './lib/render';
 import { loadQueue, saveQueue } from './lib/localQueue';
 import { getMergedLibrary } from './lib/mergedLibrary';
 import { assignBackgrounds } from './lib/backgrounds';
+import * as ws from './lib/localWorkspace';
 import * as api from './lib/api';
-import type { AppConfig, KeysPatch, Project, Slideshow, Slide, SocialAccount, BrainState, ViewKey } from './types';
+import type {
+  AppConfig,
+  KeyStatus,
+  KeysPatch,
+  Workspace,
+  Project,
+  Slideshow,
+  Slide,
+  SocialAccount,
+  BrainState,
+  ViewKey,
+} from './types';
 
 export default function App() {
-  const [config, setConfig] = useState<AppConfig | null>(null);
+  // Config is assembled from two sources: API-key status (server) and the
+  // workspace — projects, Brain, model (this browser's localStorage).
+  const [keys, setKeys] = useState<KeyStatus | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [bundledPackNames, setBundledPackNames] = useState<string[]>([]);
   const [authStatus, setAuthStatus] = useState<{ required: boolean; authed: boolean } | null>(null);
   const [activeView, setActiveView] = useState<ViewKey>('queue');
   const [queue, setQueue] = useState<Slideshow[]>([]);
@@ -33,12 +49,13 @@ export default function App() {
   const [generateOpen, setGenerateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hasOpenrouter = !!config?.keys.openrouter;
-  const hasPostbridge = !!config?.keys.postbridge;
-  const hasApify = !!config?.keys.apify;
-  const activeProject: Project | undefined = config?.projects.find(
-    (p) => p.id === config.activeProjectId
-  ) ?? config?.projects[0];
+  const config: AppConfig | null = keys && workspace ? { keys, ...workspace } : null;
+  const hasOpenrouter = !!keys?.openrouter;
+  const hasPostbridge = !!keys?.postbridge;
+  const hasApify = !!keys?.apify;
+  const activeProject: Project | undefined = workspace?.projects.find(
+    (p) => p.id === workspace.activeProjectId
+  ) ?? workspace?.projects[0];
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -49,10 +66,14 @@ export default function App() {
   }, []);
 
   const loadApp = useCallback(async () => {
-    const cfg = await api.getConfig();
-    setConfig(cfg);
-    if (!cfg.keys.openrouter && !cfg.keys.postbridge) setActiveView('settings');
-    if (cfg.keys.postbridge) loadAccounts();
+    const keyStatus = await api.getKeyStatus();
+    setKeys(keyStatus);
+    // Bundled pack names seed a fresh project's default background packs.
+    const bundled = await api.getPacks().then((p) => p.map((x) => x.name)).catch(() => []);
+    setBundledPackNames(bundled);
+    setWorkspace(ws.loadWorkspace(bundled));
+    if (!keyStatus.openrouter && !keyStatus.postbridge) setActiveView('settings');
+    if (keyStatus.postbridge) loadAccounts();
   }, [loadAccounts]);
 
   // On a password-protected deployment, check auth before loading anything
@@ -82,19 +103,28 @@ export default function App() {
 
   // The queue lives in the browser (per project) — load it whenever the
   // active project changes, and persist it back on every change.
+  const activeProjectId = workspace?.activeProjectId;
   useEffect(() => {
-    if (config?.activeProjectId) setQueue(loadQueue(config.activeProjectId));
-  }, [config?.activeProjectId]);
+    if (activeProjectId) setQueue(loadQueue(activeProjectId));
+  }, [activeProjectId]);
 
   useEffect(() => {
-    if (config?.activeProjectId) saveQueue(config.activeProjectId, queue);
-  }, [queue, config?.activeProjectId]);
+    if (activeProjectId) saveQueue(activeProjectId, queue);
+  }, [queue, activeProjectId]);
 
   const generate = async (opts: { count: number; packs: string[]; audience?: string; styleMemory?: string }) => {
+    if (!activeProject) return;
     setError(null);
     setGenerating(true);
     try {
-      const slideshows = await api.generate({ count: opts.count, audience: opts.audience, styleMemory: opts.styleMemory });
+      // The per-batch audience/style-memory overrides win; otherwise fall back
+      // to this project's saved Brain.
+      const brain: BrainState = {
+        ...activeProject.brain,
+        audience: opts.audience?.trim() || activeProject.brain.audience,
+        styleMemory: opts.styleMemory?.trim() || activeProject.brain.styleMemory,
+      };
+      const slideshows = await api.generate({ count: opts.count, model: workspace!.model, brain });
       // Backgrounds are assigned client-side now — the server no longer knows
       // about scraped/uploaded images (they live in this browser's IndexedDB).
       const pool = opts.packs.length ? (await getMergedLibrary()).filter((i) => opts.packs.includes(i.pack)) : [];
@@ -177,7 +207,8 @@ export default function App() {
     setQueue((q) => q.filter((s) => s.id !== scheduledId));
   };
 
-  // Global settings (keys/model) + per-project edits (name/defaults), in one call.
+  // API keys are saved server-side; everything else (model, actor, project
+  // name/defaults/packs) is a local workspace edit.
   const saveSettings = async (patch: {
     keys?: KeysPatch;
     model?: string;
@@ -186,41 +217,41 @@ export default function App() {
     defaults?: Project['defaults'];
     imagePacks?: string[];
   }) => {
-    if (patch.keys || patch.model !== undefined || patch.pinterestActor !== undefined) {
-      await api.saveConfig({ keys: patch.keys, model: patch.model, pinterestActor: patch.pinterestActor });
+    if (patch.keys && Object.keys(patch.keys).length) {
+      setKeys(await api.saveKeys(patch.keys));
+    }
+    if (!workspace) return;
+    let next = workspace;
+    if (patch.model !== undefined || patch.pinterestActor !== undefined) {
+      next = ws.updateGlobal(next, { model: patch.model, pinterestActor: patch.pinterestActor });
     }
     if (activeProject && (patch.name !== undefined || patch.defaults || patch.imagePacks)) {
-      await api.updateProject(activeProject.id, {
+      next = ws.updateProject(next, activeProject.id, {
         name: patch.name,
         defaults: patch.defaults,
         imagePacks: patch.imagePacks,
       });
     }
-    setConfig(await api.getConfig());
+    setWorkspace(next);
   };
 
-  const saveBrain = async (brain: BrainState) => {
-    if (!activeProject) return;
-    // Optimistic local update so typing stays snappy, then persist.
-    setConfig((c) =>
-      c
-        ? { ...c, projects: c.projects.map((p) => (p.id === activeProject.id ? { ...p, brain } : p)) }
-        : c
-    );
-    await api.updateProject(activeProject.id, { brain });
+  const saveBrain = (brain: BrainState) => {
+    if (!activeProject || !workspace) return;
+    setWorkspace(ws.updateProject(workspace, activeProject.id, { brain }));
   };
 
-  const switchProject = async (id: string) => {
-    setConfig(await api.activateProject(id));
+  const switchProject = (id: string) => {
+    if (workspace) setWorkspace(ws.setActiveProject(workspace, id));
   };
 
-  const newProject = async () => {
-    setConfig(await api.createProject());
+  const newProject = () => {
+    if (!workspace) return;
+    setWorkspace(ws.createProject(workspace, bundledPackNames));
     setActiveView('settings');
   };
 
-  const removeProject = async (id: string) => {
-    setConfig(await api.deleteProject(id));
+  const removeProject = (id: string) => {
+    if (workspace) setWorkspace(ws.deleteProject(workspace, id, bundledPackNames));
   };
 
   if (authStatus === null) {
@@ -279,7 +310,7 @@ export default function App() {
           />
         )}
         {activeView === 'create' && <CreateView onAddToQueue={addManualSlideshow} />}
-        {activeView === 'library' && <LibraryView hasApify={hasApify} />}
+        {activeView === 'library' && <LibraryView hasApify={hasApify} pinterestActor={config.pinterestActor} />}
         {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
         {activeView === 'results' && <ResultsView configured={hasPostbridge} />}
         {activeView === 'brain' && <BrainView brain={activeProject.brain} onChange={saveBrain} />}

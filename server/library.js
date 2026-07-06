@@ -22,11 +22,6 @@ export function listBundled() {
   )
 }
 
-// Names of the bundled aesthetic packs (used as the default selection for new projects).
-export function bundledPackNames() {
-  return (manifest.packs || []).map((p) => p.name)
-}
-
 // Grouped for the pack-picker UIs (Generate, Settings) — cover thumbnails only,
 // same shape the client merges with its own local (scraped/uploaded) packs.
 export function listBundledPacks() {
