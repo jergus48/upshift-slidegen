@@ -3,7 +3,9 @@ import { Loader2, Download, Trash2, Upload } from 'lucide-react';
 import type { LibraryImage } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
-import { getLibrary, scrapePinterest, deleteLibraryImage, uploadLibraryImages } from '../lib/api';
+import { scrapePinterest } from '../lib/api';
+import { getMergedLibrary } from '../lib/mergedLibrary';
+import { addLocalImages, removeLocalImage } from '../lib/localLibrary';
 
 // Read a File as a base64 data URL for shipping to the server as JSON.
 function fileToDataUrl(file: File): Promise<string> {
@@ -34,7 +36,7 @@ export function LibraryView({ hasApify }: LibraryViewProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const load = () => getLibrary().then(setImages).catch((e) => setError(e.message));
+  const load = () => getMergedLibrary().then(setImages).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
 
   const scrape = async () => {
@@ -45,7 +47,8 @@ export function LibraryView({ hasApify }: LibraryViewProps) {
       // Pinterest searches are comma-separated phrases (each can contain spaces).
       const queries = searches.split(',').map((s) => s.trim()).filter(Boolean);
       const r = await scrapePinterest(queries, count);
-      setNote(`Added ${r.added} image${r.added === 1 ? '' : 's'} from ${r.found} found.`);
+      const added = await addLocalImages(r.pack, r.images, 'scraped');
+      setNote(`Added ${added.length} image${added.length === 1 ? '' : 's'} from ${r.found} found.`);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -54,7 +57,10 @@ export function LibraryView({ hasApify }: LibraryViewProps) {
     }
   };
 
-  const remove = async (id: string) => setImages(await deleteLibraryImage(id));
+  const remove = async (id: string) => {
+    await removeLocalImage(id);
+    await load();
+  };
 
   const upload = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -64,9 +70,9 @@ export function LibraryView({ hasApify }: LibraryViewProps) {
     const pack = uploadTarget === NEW_PACK ? uploadPack.trim() || 'My Uploads' : uploadTarget;
     try {
       const dataUrls = await Promise.all([...files].map(fileToDataUrl));
-      const { added, library } = await uploadLibraryImages(pack, dataUrls);
-      setImages(library);
+      const added = await addLocalImages(pack, dataUrls, 'uploaded');
       setNote(`Added ${added.length} image${added.length === 1 ? '' : 's'} to "${pack}".`);
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

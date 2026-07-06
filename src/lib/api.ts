@@ -6,7 +6,6 @@ import type {
   KeysPatch,
   Project,
   Slideshow,
-  Slide,
   SocialAccount,
   ScheduledPost,
   PostResult,
@@ -68,52 +67,29 @@ export const testKeys = () =>
 
 export const getModels = () => req<ModelOption[]>('/models');
 
-export const getQueue = () => req<Slideshow[]>('/queue');
+// The queue (generated + manually-created slideshows) lives in the browser
+// now — see lib/localQueue.ts — there's no server endpoint for it anymore.
 
 // `audience`/`styleMemory` are per-batch overrides — leave them out (or blank)
-// to fall back to the project's saved Brain values.
-export const generate = (opts: {
-  count: number;
-  packs?: string[];
-  audience?: string;
-  styleMemory?: string;
-}) => req<Slideshow[]>('/generate', { method: 'POST', body: JSON.stringify(opts) });
-
-export const removeFromQueue = (id: string) =>
-  req<Slideshow[]>(`/queue/${id}`, { method: 'DELETE' });
-
-export const updateSlideshow = (
-  id: string,
-  patch: Partial<Pick<Slideshow, 'slides' | 'caption' | 'hashtags' | 'hook'>>
-) => req<Slideshow[]>(`/queue/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
-
-// Manually created slideshow (Create page) — same shape as a generated one,
-// just supplied by the user instead of the model.
-export const createManualSlideshow = (payload: {
-  caption: string;
-  hashtags: string[];
-  slides: Pick<Slide, 'text' | 'imageUrl' | 'bgFrom' | 'bgTo'>[];
-}) => req<Slideshow[]>('/queue/custom', { method: 'POST', body: JSON.stringify(payload) });
+// to fall back to the project's saved Brain values. Returns bare slideshows
+// (text + gradient only) — background assignment happens client-side, since
+// the server no longer knows about scraped/uploaded images; see lib/backgrounds.ts.
+export const generate = (opts: { count: number; audience?: string; styleMemory?: string }) =>
+  req<Slideshow[]>('/generate', { method: 'POST', body: JSON.stringify(opts) });
 
 // ── Image library ─────────────────────────────────────────────────────────────
+// Bundled aesthetic packs only. Scraped/uploaded images live in the browser's
+// IndexedDB — see lib/localLibrary.ts.
 export const getLibrary = () => req<LibraryImage[]>('/library');
 
 export const getPacks = () => req<LibraryPack[]>('/library/packs');
 
+// Scrapes via the server (needs the Apify key + avoids CORS) and returns the
+// downloaded images as data URLs for the caller to save locally.
 export const scrapePinterest = (searches: string[], count: number) =>
-  req<{ added: number; found: number }>('/library/scrape', {
+  req<{ pack: string; found: number; images: string[] }>('/library/scrape', {
     method: 'POST',
     body: JSON.stringify({ searches, count }),
-  });
-
-export const deleteLibraryImage = (id: string) =>
-  req<LibraryImage[]>(`/library/${encodeURIComponent(id)}`, { method: 'DELETE' });
-
-// `images` are data URLs read client-side from the files the user picked.
-export const uploadLibraryImages = (pack: string, images: string[]) =>
-  req<{ added: LibraryImage[]; library: LibraryImage[] }>('/library/upload', {
-    method: 'POST',
-    body: JSON.stringify({ pack, images }),
   });
 
 export const getAccounts = () => req<SocialAccount[]>('/accounts');

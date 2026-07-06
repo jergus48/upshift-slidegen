@@ -63,39 +63,29 @@ npm run build   # build the UI
 npm start       # serves the UI + API from one Node process (port 8787)
 ```
 
-### Deploying for a team (Vercel)
+### Deploying somewhere public (Vercel)
 
-Slidesmith can also run as a small shared deployment — e.g. two people using
-the same queue and image library from a Vercel URL instead of each running it
-locally. Local files don't survive on Vercel's serverless filesystem, so this
-mode swaps them for **Vercel Blob**, detected automatically via an env var
-Vercel sets for you (no code changes, no separate config):
-
-- **Config, per-project queues, and the image-library index** — stored as
-  private Blob objects (never public, since these hold your API keys).
-- **Scraped/uploaded images** — stored as public Blob objects (same trust
-  level as the bundled packs, so they're served straight from Blob's CDN).
-  Bundled aesthetic packs are unaffected either way — they ship as static
-  files and are served the same way locally or on Vercel.
-
-One Blob store covers both — no separate database needed.
+Slidesmith can also run as a Vercel deployment instead of purely locally.
+There's no shared database in this mode — the **queue and image library live
+in your browser** (localStorage + IndexedDB), not on the server, so each
+browser/device has its own. What *is* shared is the deployment itself: the
+AI generation, Pinterest scraping, and post-bridge scheduling all still run
+server-side, using keys set once in Vercel's environment variables.
 
 Steps:
 1. Push this repo to GitHub and import it into a new Vercel project.
-2. In the project's **Storage** tab, **Create Database → Blob**, and connect
-   it to this project. Vercel injects `BLOB_READ_WRITE_TOKEN` automatically.
+2. Set `OPENROUTER_API_KEY`, `POSTBRIDGE_API_KEY`, and (optionally)
+   `APIFY_API_KEY` as environment variables — see `.env.example`. These
+   always take precedence over whatever's typed into Settings, and unlike
+   Settings-saved values, they survive cold starts.
 3. Set an **`APP_PASSWORD`** env var. Without it, anyone with the deployment
-   URL could read your OpenRouter/post-bridge/Apify keys — see below.
-4. Deploy. Open the URL, enter the shared password once, then Settings to add
-   your keys — from then on everyone hitting that URL shares one queue,
-   library, and set of keys.
+   URL can use the app (and, worse, run up usage on your API keys) — see below.
+4. Deploy. Open the URL, enter the shared password once, and you're using it.
 
 **On security:** self-hosted Slidesmith trusts "whoever can reach 127.0.0.1"
 (only you). A public Vercel URL has no such boundary, so `APP_PASSWORD` gates
 every `/api/*` route behind a simple shared login, and API keys are never
 sent to the browser at all (Settings shows "already set", not the value).
-This is meant for a small trusted group, not a multi-tenant SaaS — everyone
-who logs in shares the same keys, queue, and library.
 
 ## Using it
 
@@ -113,22 +103,17 @@ Slidesmith ships with ~140 curated background images organized into aesthetic pa
 
 ## Where your data lives
 
-Self-hosted (default):
-- **API keys + Brain + settings:** `~/.slidesmith/config.json`
-- **Generated-but-not-yet-scheduled drafts:** `~/.slidesmith/queue.json`
-- **Scraped/uploaded library images:** `~/.slidesmith/library/` (bundled packs live in the repo at `public/library/`)
+- **API keys + Brain + settings:** `~/.slidesmith/config.json` self-hosted (or Vercel env vars for keys, if you deploy that way — see above).
+- **Generated-but-not-yet-scheduled drafts (the queue):** your browser's `localStorage`, per project.
+- **Scraped/uploaded library images:** your browser's IndexedDB. Bundled packs ship as static files in the repo at `public/library/` either way.
 
-Deployed on Vercel (see above) — same shape, different address, shared by everyone using the deployment, all in your attached Blob store:
-- **API keys + Brain + settings + queue:** private Blob objects
-- **Scraped/uploaded library images:** public Blob objects
+**Everything else** (media, scheduled posts, results) lives in your post-bridge account, and your keys never leave the server to reach anywhere but the services they belong to (OpenRouter, post-bridge, Apify) — the browser never sees the actual values, only whether each one is set.
 
-Either way: **everything else** (media, scheduled posts, results) lives in your post-bridge account, and your keys never leave the server to reach anywhere but the services they belong to (OpenRouter, post-bridge, Apify) — the browser never sees the actual values, only whether each one is set.
-
-You can override the storage location with `SLIDESMITH_DIR` and the server port with `PORT` (see `.env.example`).
+You can override the config storage location with `SLIDESMITH_DIR` and the server port with `PORT` (see `.env.example`).
 
 ## Tech
 
-React 19 + Vite + Tailwind (UI), a small Express server (keys + OpenRouter + post-bridge proxy), the OpenRouter API, and the post-bridge API. No database self-hosted; an optional Vercel Blob store only if you deploy the shared-team setup.
+React 19 + Vite + Tailwind (UI), a small Express server (keys + OpenRouter + post-bridge proxy), the OpenRouter API, and the post-bridge API. No database, self-hosted or deployed — the queue and image library are entirely client-side.
 
 ## License
 

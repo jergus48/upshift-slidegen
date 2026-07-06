@@ -1,21 +1,17 @@
-// Image library: the bundled aesthetic packs (shipped in public/library/) plus
-// any images added at runtime — scraped from Pinterest with your own Apify
-// key, or uploaded by hand. Runtime images are backed by storage.js, so they
-// live on local disk when self-hosted or in Vercel Blob when deployed, with
-// their index in the matching JSON/Redis store — see storage.js for why.
-import { extname } from 'node:path'
-import { existsSync, readdirSync } from 'node:fs'
+// Image library. Bundled aesthetic packs ship as static files in
+// public/library/ and are the only images the server knows about — scraped
+// (Pinterest) and uploaded images live entirely in the browser (IndexedDB,
+// see src/lib/localLibrary.ts), since Slidesmith doesn't run its own
+// persistent image storage. The server's only job for runtime images is
+// scraping Pinterest (needs the Apify key + avoids browser CORS) and handing
+// the downloaded bytes straight back to the client to save.
 import { logger } from './log.js'
-import { CLOUD, readData, writeData, putImage, deleteImage, localMediaPath } from './storage.js'
 import manifest from '../public/library/manifest.json' with { type: 'json' }
 
 const log = logger('scrape')
-const LIBRARY_KEY = 'library'
 
-// Flatten the bundled manifest into image records the UI can render. These
-// ship as static files in public/library/ and are unaffected by CLOUD vs
-// local — Vite copies public/ straight into the build output either way.
-function bundled() {
+// Flatten the bundled manifest into image records the UI can render.
+export function listBundled() {
   return (manifest.packs || []).flatMap((pack) =>
     (pack.images || []).map((path) => ({
       id: `bundled:${path}`,
@@ -31,119 +27,15 @@ export function bundledPackNames() {
   return (manifest.packs || []).map((p) => p.name)
 }
 
-async function runtimeIndex() {
-  const raw = await readData(LIBRARY_KEY, [])
-  // Pre-refactor records stored the local filename under `file` — normalize
-  // to `ref` on read so existing ~/.slidesmith/library.json data keeps working.
-  return raw.map((r) => (r.ref ? r : { ...r, ref: r.file }))
-}
-function writeRuntimeIndex(index) {
-  return writeData(LIBRARY_KEY, index)
-}
-
-// Recover local image files on disk that aren't in the index (e.g. if the
-// index was emptied or drifted). Local-only: Blob has no cheap "list orphans"
-// equivalent, and uploads/deletes always go through the index-writing paths
-// in cloud mode, so this isn't needed there.
-async function reconcileOrphans(index) {
-  if (CLOUD) return index
-  const mediaDir = localMediaPath('') // ~/.slidesmith/library
-  if (!existsSync(mediaDir)) return index
-  const known = new Set(index.map((s) => s.ref))
-  let changed = false
-  for (const file of readdirSync(mediaDir)) {
-    if (!/\.(jpe?g|png|webp)$/i.test(file) || known.has(file)) continue
-    index.push({ id: `scraped:${file.replace(/\.[^.]+$/, '')}`, ref: file, pack: 'Scraped', addedAt: new Date().toISOString(), source: 'scraped' })
-    changed = true
-  }
-  if (changed) await writeRuntimeIndex(index)
-  return index
-}
-
-// A public URL for a runtime image: the Blob URL itself in cloud mode, or our
-// own id-keyed proxy route locally (decouples the served id from the on-disk
-// filename, which carries the real file extension).
-function publicUrl(id, ref) {
-  return CLOUD ? ref : `/api/library/img/${encodeURIComponent(id)}`
-}
-
-export async function listLibrary() {
-  const index = await reconcileOrphans(await runtimeIndex())
-  // Only list local images whose files actually exist on disk — avoids broken
-  // thumbnails / 404s if the index and files ever drift apart. Cloud (Blob)
-  // entries are trusted as-is; checking each one would mean a network round
-  // trip per image on every listing.
-  const runtime = (CLOUD ? index : index.filter((r) => existsSync(localMediaPath(r.ref))))
-    .map((r) => ({
-      id: r.id,
-      url: publicUrl(r.id, r.ref),
-      pack: r.pack || 'Scraped',
-      source: r.source || 'scraped',
-    }))
-  // Runtime images first (newest), then the bundled packs.
-  return [...runtime, ...bundled()]
-}
-
-// Group the library into packs with a few cover thumbnails each (for the
-// pack-picker UIs in Generate + Settings).
-export async function listPacks() {
-  const map = new Map()
-  for (const img of await listLibrary()) {
-    if (!map.has(img.pack)) map.set(img.pack, { name: img.pack, source: img.source, count: 0, covers: [] })
-    const p = map.get(img.pack)
-    p.count++
-    if (p.covers.length < 4) p.covers.push(img.url)
-  }
-  return [...map.values()]
-}
-
-// Local-only: resolve a runtime image id to its file on disk, for the
-// /api/library/img/:id route to stream. Cloud images are served straight from
-// their Blob URL and never reach this route.
-export async function getScrapedFile(id) {
-  if (CLOUD) return null
-  const rec = (await runtimeIndex()).find((r) => r.id === id)
-  if (!rec) return null
-  const p = localMediaPath(rec.ref)
-  return existsSync(p) ? p : null
-}
-
-export async function removeScraped(id) {
-  const index = await runtimeIndex()
-  const rec = index.find((r) => r.id === id)
-  if (rec) await deleteImage(rec.ref)
-  await writeRuntimeIndex(index.filter((r) => r.id !== id))
-  return listLibrary()
-}
-
-// Save user-uploaded images (sent as data URLs) into a pack of their choosing.
-export async function addUploaded({ pack, images }) {
-  const list = Array.isArray(images) ? images : []
-  if (!list.length) throw new Error('No images provided.')
-  const packName = (pack || '').trim() || 'My Uploads'
-
-  const index = await runtimeIndex()
-  const addedRecords = []
-  for (const dataUrl of list) {
-    const m = /^data:image\/(\w+);base64,(.+)$/i.exec(String(dataUrl))
-    if (!m) continue
-    const ext = (m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase()).slice(0, 5)
-    const buf = Buffer.from(m[2], 'base64')
-    if (buf.length < 100) continue // skip empty/corrupt uploads
-    const id = `scraped:${Date.now()}-${Math.round(Math.random() * 1e6)}`
-    const filename = `${id.replace('scraped:', '')}.${ext}`
-    const ref = await putImage(filename, buf, `image/${ext === 'jpg' ? 'jpeg' : ext}`)
-    const rec = { id, ref, pack: packName, addedAt: new Date().toISOString(), source: 'uploaded' }
-    index.unshift(rec)
-    addedRecords.push(rec)
-  }
-  if (!addedRecords.length) throw new Error('No valid images to upload.')
-  await writeRuntimeIndex(index)
-  return {
-    // Newly added images, in the same order as the input files.
-    added: addedRecords.map((r) => ({ id: r.id, url: publicUrl(r.id, r.ref), pack: r.pack, source: r.source })),
-    library: await listLibrary(),
-  }
+// Grouped for the pack-picker UIs (Generate, Settings) — cover thumbnails only,
+// same shape the client merges with its own local (scraped/uploaded) packs.
+export function listBundledPacks() {
+  return (manifest.packs || []).map((p) => ({
+    name: p.name,
+    source: 'bundled',
+    count: (p.images || []).length,
+    covers: (p.images || []).slice(0, 4).map((path) => `/library/${path}`),
+  }))
 }
 
 // Pull image URLs out of whatever the Pinterest actor returns. Pinterest actors
@@ -190,6 +82,8 @@ const IMG_FETCH_HEADERS = {
 
 const APIFY = 'https://api.apify.com/v2/acts'
 
+// Returns the downloaded images as data URLs — the caller (browser) saves
+// them into its own local library. Nothing is persisted server-side.
 export async function scrapePinterest({ apiKey, actor, searches, count }) {
   if (!apiKey) throw new Error('Missing Apify API key. Add it in Settings.')
   const queries = (searches || []).map((s) => s.trim()).filter(Boolean)
@@ -225,8 +119,7 @@ export async function scrapePinterest({ apiKey, actor, searches, count }) {
   }
   log.ok(`found ${urls.length} image${urls.length === 1 ? '' : 's'} — downloading…`)
 
-  const index = await runtimeIndex()
-  let added = 0
+  const images = []
   let skipped = 0
   for (const url of urls) {
     try {
@@ -234,19 +127,16 @@ export async function scrapePinterest({ apiKey, actor, searches, count }) {
       if (!r.ok) { skipped++; continue }
       const buf = Buffer.from(await r.arrayBuffer())
       if (buf.length < 1024) { skipped++; continue } // skip tiny/placeholder
-      const ext = (extname(new URL(url).pathname) || '.jpg').slice(0, 5)
-      const id = `scraped:${Date.now()}-${Math.round(Math.random() * 1e6)}`
-      const filename = `${id.replace('scraped:', '')}${ext}`
-      const contentType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg'
-      const ref = await putImage(filename, buf, contentType)
-      index.unshift({ id, ref, pack, addedAt: new Date().toISOString(), source: 'scraped' })
-      added++
-      if (added % 5 === 0 || added === urls.length) log.progress(added, urls.length, 'downloaded')
+      const contentType = r.headers.get('content-type') || 'image/jpeg'
+      images.push(`data:${contentType};base64,${buf.toString('base64')}`)
+      if (images.length % 5 === 0 || images.length + skipped === urls.length) {
+        log.progress(images.length, urls.length, 'downloaded')
+      }
     } catch {
       skipped++ // skip individual failures
     }
   }
-  await writeRuntimeIndex(index)
-  log.ok(`Added ${added} image${added === 1 ? '' : 's'} to "${pack}"${skipped ? ` (${skipped} skipped)` : ''}`)
-  return { added, found: urls.length }
+  if (!images.length) throw new Error('Downloaded 0 usable images — Pinterest may be blocking this server. Try again or a different search.')
+  log.ok(`Downloaded ${images.length} image${images.length === 1 ? '' : 's'} for "${pack}"${skipped ? ` (${skipped} skipped)` : ''}`)
+  return { pack, found: urls.length, images }
 }

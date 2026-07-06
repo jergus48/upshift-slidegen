@@ -3,7 +3,7 @@ import { X, Loader2, ChevronLeft, ChevronRight, Trash2, Shuffle, Image as ImageI
 import type { Slideshow, Slide, LibraryImage } from '../types';
 import { Button } from './Button';
 import { SlidePreview } from './SlidePreview';
-import { getLibrary } from '../lib/api';
+import { getMergedLibrary } from '../lib/mergedLibrary';
 
 interface SlideshowEditorModalProps {
   slideshow: Slideshow;
@@ -24,7 +24,7 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    getLibrary().then(setLibrary).catch(() => setLibrary([]));
+    getMergedLibrary().then(setLibrary).catch(() => setLibrary([]));
   }, []);
 
   const packs = useMemo(

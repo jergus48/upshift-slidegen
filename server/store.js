@@ -1,15 +1,15 @@
-// Config + queue persistence. Backed by local JSON files when self-hosted, or
-// shared Redis when deployed (see storage.js) — same shape either way, so a
-// project/queue looks identical no matter who's hitting the deployment.
+// Config persistence (keys/Brain/projects) — local JSON files. The queue
+// (generated-but-unscheduled drafts) lives entirely client-side now (browser
+// localStorage), since it's per-browser anyway once there's no shared cloud
+// store; see App.tsx.
 //
 // A "project" is one brand/account you generate for. Only the Brain and the
 // default post-bridge accounts differ per project; the API keys and model are
-// global. The queue (generated-but-unscheduled drafts) is per project.
+// global.
 import { readData, writeData, DATA_DIR } from './storage.js'
 import { bundledPackNames } from './library.js'
 
 const CONFIG_KEY = 'config'
-const QUEUE_KEY = 'queue'
 
 const DEFAULT_BRAIN = {
   niche: '',
@@ -148,7 +148,6 @@ export async function deleteProject(id) {
   let projects = c.projects.filter((p) => p.id !== id)
   if (!projects.length) projects = [makeProject('Project 1')]
   const activeProjectId = c.activeProjectId === id ? projects[0].id : c.activeProjectId
-  await removeQueueFor(id)
   return writeConfig({ ...c, projects, activeProjectId })
 }
 
@@ -156,36 +155,6 @@ export async function setActiveProject(id) {
   const c = await getConfig()
   if (!c.projects.some((p) => p.id === id)) throw new Error('Unknown project')
   return writeConfig({ ...c, activeProjectId: id })
-}
-
-// ── Queue (per project) ───────────────────────────────────────────────────────
-async function readQueueMap() {
-  const m = await readData(QUEUE_KEY, {})
-  return m && !Array.isArray(m) ? m : {}
-}
-function writeQueueMap(m) {
-  return writeData(QUEUE_KEY, m).then(() => m)
-}
-export async function getQueue(projectId) {
-  const m = await readQueueMap()
-  return m[projectId] || []
-}
-export async function setQueue(projectId, items) {
-  const m = await readQueueMap()
-  m[projectId] = items
-  await writeQueueMap(m)
-  return items
-}
-export async function addToQueue(projectId, items) {
-  return setQueue(projectId, [...items, ...(await getQueue(projectId))])
-}
-export async function removeFromQueue(projectId, id) {
-  return setQueue(projectId, (await getQueue(projectId)).filter((s) => s.id !== id))
-}
-async function removeQueueFor(projectId) {
-  const m = await readQueueMap()
-  delete m[projectId]
-  await writeQueueMap(m)
 }
 
 export const CONFIG_DIR = DATA_DIR

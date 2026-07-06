@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
 import type { LibraryPack } from '../types';
-import { getPacks } from '../lib/api';
+import { getMergedPacks } from '../lib/mergedLibrary';
 
 interface PackPickerProps {
   selected: string[];
@@ -10,12 +10,12 @@ interface PackPickerProps {
 }
 
 // Aesthetic-pack picker with cover thumbnails. Used in the Generate modal and
-// Settings. Packs come from /api/library/packs.
+// Settings. Packs are bundled (server) + scraped/uploaded (this browser's IndexedDB).
 export function PackPicker({ selected, onChange, disabled }: PackPickerProps) {
   const [packs, setPacks] = useState<LibraryPack[] | null>(null);
 
   useEffect(() => {
-    getPacks().then(setPacks).catch(() => setPacks([]));
+    getMergedPacks().then(setPacks).catch(() => setPacks([]));
   }, []);
 
   const toggle = (name: string) =>

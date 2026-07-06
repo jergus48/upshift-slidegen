@@ -14,22 +14,16 @@ import {
   updateProject,
   deleteProject,
   setActiveProject,
-  getQueue,
-  setQueue,
-  addToQueue,
-  removeFromQueue,
 } from './store.js'
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
 import { generateSlideshows } from './generate.js'
 import { listModels, validateKey } from './openrouter.js'
-import { listLibrary, listPacks, scrapePinterest, removeScraped, getScrapedFile, addUploaded } from './library.js'
+import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
-import { CLOUD } from './storage.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const schedLog = logger('schedule')
-const genLog = logger('generate')
 
 export const app = express()
 app.use(express.json({ limit: '50mb' })) // base64 slide images can be large
@@ -56,10 +50,7 @@ const h = (fn) => (req, res) => fn(req, res).catch((e) => {
 })
 
 // ── Auth ────────────────────────────────────────────────────────────────────
-// `cloud` is a non-secret diagnostic flag — lets you confirm from curl/devtools
-// whether this instance actually sees a Blob store, without digging through
-// Vercel's function logs.
-app.get('/api/auth', h(async (req, res) => res.json({ required: AUTH_REQUIRED, authed: isAuthed(req), cloud: CLOUD })))
+app.get('/api/auth', h(async (req, res) => res.json({ required: AUTH_REQUIRED, authed: isAuthed(req) })))
 app.post('/api/login', h(async (req, res) => {
   if (!checkPassword(req.body?.password)) return res.status(401).json({ error: 'Incorrect password.' })
   res.setHeader('Set-Cookie', authCookie())
@@ -114,12 +105,11 @@ app.post('/api/config/test', h(async (_req, res) => {
 // Public model catalog for the Settings dropdown.
 app.get('/api/models', h(async (_req, res) => res.json(await listModels())))
 
-// ── Queue (generated drafts for the active project, before post-bridge) ───────
-app.get('/api/queue', h(async (_req, res) => {
-  const project = await getActiveProject()
-  res.json(await getQueue(project.id))
-}))
-
+// Generate a batch of slideshows. The queue itself lives client-side now (see
+// App.tsx) — this just returns the AI-written text. Backgrounds are NOT
+// assigned here either: the server no longer knows about scraped/uploaded
+// images (they live in the browser's IndexedDB), so the client assigns
+// backgrounds itself after this returns — see src/lib/backgrounds.ts.
 app.post('/api/generate', h(async (req, res) => {
   const { keys, model } = await getConfig()
   const project = await getActiveProject()
@@ -132,103 +122,23 @@ app.post('/api/generate', h(async (req, res) => {
   const brain = { ...project.brain, audience, styleMemory }
 
   const slideshows = await generateSlideshows({ apiKey: keys.openrouter, model, brain, count })
-
-  // Auto-assign background images. A per-batch `packs` override (from the
-  // Generate modal) wins; otherwise fall back to the project's saved packs.
-  // Empty selection → slides keep their gradients.
-  const packs = Array.isArray(req.body?.packs) ? req.body.packs : project.imagePacks || []
-  const library = await listLibrary()
-  const pool = packs.length ? library.filter((i) => packs.includes(i.pack)) : []
-  if (pool.length) {
-    genLog.step(`assigning backgrounds from ${packs.length} pack${packs.length === 1 ? '' : 's'} (${pool.length} images)`)
-    for (const show of slideshows) {
-      const used = new Set()
-      for (const slide of show.slides) {
-        // Prefer an unused image within this slideshow for visual variety.
-        const fresh = pool.filter((i) => !used.has(i.url))
-        const pick = (fresh.length ? fresh : pool)[Math.floor(Math.random() * (fresh.length || pool.length))]
-        slide.imageUrl = pick.url
-        used.add(pick.url)
-      }
-    }
-  }
-
-  await addToQueue(project.id, slideshows)
   res.json(slideshows)
 }))
 
-app.delete('/api/queue/:id', h(async (req, res) => {
-  const project = await getActiveProject()
-  res.json(await removeFromQueue(project.id, req.params.id))
-}))
+// ── Image library ──────────────────────────────────────────────────────────────
+// Bundled aesthetic packs only — scraped/uploaded images live in the browser's
+// IndexedDB (src/lib/localLibrary.ts) and never touch the server except to be
+// scraped in the first place (below).
+app.get('/api/library', h(async (_req, res) => res.json(listBundled())))
+app.get('/api/library/packs', h(async (_req, res) => res.json(listBundledPacks())))
 
-// Manually created slideshow (Create page): the user supplies their own text
-// and images instead of asking the model. Same Slideshow shape as /api/generate,
-// so it flows through the existing queue/approve/schedule pipeline untouched.
-app.post('/api/queue/custom', h(async (req, res) => {
-  const project = await getActiveProject()
-  const { caption, hashtags, slides } = req.body || {}
-  if (!Array.isArray(slides) || !slides.length) throw new Error('Add at least one slide.')
-
-  const stamp = Date.now()
-  const show = {
-    id: `q-${stamp}-custom`,
-    hook: slides[0]?.text || caption || 'Custom slideshow',
-    caption: caption || '',
-    hashtags: Array.isArray(hashtags) ? hashtags : [],
-    rationale: 'Manually created',
-    createdAt: new Date(stamp).toISOString(),
-    slides: slides.map((s, i) => ({
-      id: `slide-${stamp}-${i}`,
-      text: s.text || '',
-      imageUrl: s.imageUrl || undefined,
-      bgFrom: s.bgFrom || '#0f172a',
-      bgTo: s.bgTo || '#1e293b',
-    })),
-  }
-  await addToQueue(project.id, [show])
-  res.json(await getQueue(project.id))
-}))
-
-// Edit a queued slideshow: caption, hashtags, hook, and/or per-slide text+image.
-app.put('/api/queue/:id', h(async (req, res) => {
-  const project = await getActiveProject()
-  const pid = project.id
-  const patch = req.body || {}
-  const allowed = ['slides', 'caption', 'hashtags', 'hook']
-  const current = await getQueue(pid)
-  const next = current.map((s) => {
-    if (s.id !== req.params.id) return s
-    const merged = { ...s }
-    for (const k of allowed) if (patch[k] !== undefined) merged[k] = patch[k]
-    return merged
-  })
-  res.json(await setQueue(pid, next))
-}))
-
-// ── Image library (bundled aesthetic packs + Pinterest scrapes via Apify) ────────
-app.get('/api/library', h(async (_req, res) => res.json(await listLibrary())))
-app.get('/api/library/packs', h(async (_req, res) => res.json(await listPacks())))
-
+// Scrapes Pinterest (needs the Apify key + avoids browser CORS) and returns
+// the downloaded images as data URLs — the client saves them into its own
+// local library. Nothing is persisted server-side.
 app.post('/api/library/scrape', h(async (req, res) => {
   const { keys, pinterestActor } = await getConfig()
   const { searches, count } = req.body || {}
   res.json(await scrapePinterest({ apiKey: keys.apify, actor: pinterestActor, searches, count }))
-}))
-
-app.post('/api/library/upload', h(async (req, res) => {
-  const { pack, images } = req.body || {}
-  res.json(await addUploaded({ pack, images }))
-}))
-
-app.delete('/api/library/:id', h(async (req, res) => res.json(await removeScraped(req.params.id))))
-
-app.get('/api/library/img/:id', h(async (req, res) => {
-  const file = await getScrapedFile(req.params.id)
-  if (!file) return res.status(404).end()
-  // dotfiles:'allow' is required — the path lives under ~/.slidesmith, and
-  // sendFile blocks dot-segment paths by default (would 404 every scrape).
-  res.sendFile(file, { dotfiles: 'allow' })
 }))
 
 // ── post-bridge ───────────────────────────────────────────────────────────────
@@ -293,10 +203,8 @@ app.post('/api/schedule', h(async (req, res) => {
     isDraft: mode !== 'schedule', // "save as draft" leaves it unprocessed in post-bridge
   })
 
-  if (id) {
-    const project = await getActiveProject()
-    await removeFromQueue(project.id, id)
-  }
+  // The queue lives client-side now — the caller removes `id` from its own
+  // local state on success.
   schedLog.ok(`Done — ${mode === 'schedule' ? 'scheduled' : 'saved as draft'}`)
   res.json(post)
 }))

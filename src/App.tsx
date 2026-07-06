@@ -13,6 +13,9 @@ import { ResultsView } from './views/ResultsView';
 import { BrainView } from './views/BrainView';
 import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
+import { loadQueue, saveQueue } from './lib/localQueue';
+import { getMergedLibrary } from './lib/mergedLibrary';
+import { assignBackgrounds } from './lib/backgrounds';
 import * as api from './lib/api';
 import type { AppConfig, KeysPatch, Project, Slideshow, Slide, SocialAccount, BrainState, ViewKey } from './types';
 
@@ -48,7 +51,6 @@ export default function App() {
   const loadApp = useCallback(async () => {
     const cfg = await api.getConfig();
     setConfig(cfg);
-    setQueue(await api.getQueue());
     if (!cfg.keys.openrouter && !cfg.keys.postbridge) setActiveView('settings');
     if (cfg.keys.postbridge) loadAccounts();
   }, [loadAccounts]);
@@ -78,12 +80,26 @@ export default function App() {
     }
   };
 
+  // The queue lives in the browser (per project) — load it whenever the
+  // active project changes, and persist it back on every change.
+  useEffect(() => {
+    if (config?.activeProjectId) setQueue(loadQueue(config.activeProjectId));
+  }, [config?.activeProjectId]);
+
+  useEffect(() => {
+    if (config?.activeProjectId) saveQueue(config.activeProjectId, queue);
+  }, [queue, config?.activeProjectId]);
+
   const generate = async (opts: { count: number; packs: string[]; audience?: string; styleMemory?: string }) => {
     setError(null);
     setGenerating(true);
     try {
-      await api.generate(opts);
-      setQueue(await api.getQueue());
+      const slideshows = await api.generate({ count: opts.count, audience: opts.audience, styleMemory: opts.styleMemory });
+      // Backgrounds are assigned client-side now — the server no longer knows
+      // about scraped/uploaded images (they live in this browser's IndexedDB).
+      const pool = opts.packs.length ? (await getMergedLibrary()).filter((i) => opts.packs.includes(i.pack)) : [];
+      const withBackgrounds = assignBackgrounds(slideshows, pool);
+      setQueue((q) => [...withBackgrounds, ...q]);
       setGenerateOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -92,12 +108,30 @@ export default function App() {
     }
   };
 
-  const reject = async (id: string) => {
-    setQueue(await api.removeFromQueue(id));
+  const reject = (id: string) => {
+    setQueue((q) => q.filter((s) => s.id !== id));
   };
 
+  // Builds the same Slideshow shape /api/generate produces, entirely
+  // client-side — the Create page supplies its own text + images, no AI call needed.
   const addManualSlideshow = async (payload: { caption: string; hashtags: string[]; slides: Slide[] }) => {
-    setQueue(await api.createManualSlideshow(payload));
+    const stamp = Date.now();
+    const show: Slideshow = {
+      id: `q-${stamp}-custom`,
+      hook: payload.slides[0]?.text || payload.caption || 'Custom slideshow',
+      caption: payload.caption,
+      hashtags: payload.hashtags,
+      rationale: 'Manually created',
+      createdAt: new Date(stamp).toISOString(),
+      slides: payload.slides.map((s, i) => ({
+        id: `slide-${stamp}-${i}`,
+        text: s.text,
+        imageUrl: s.imageUrl,
+        bgFrom: s.bgFrom || '#0f172a',
+        bgTo: s.bgTo || '#1e293b',
+      })),
+    };
+    setQueue((q) => [show, ...q]);
   };
 
   // Keep the multi-select in sync as queue items come and go.
@@ -108,16 +142,17 @@ export default function App() {
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const bulkDone = async () => {
+  const bulkDone = (succeededIds: string[]) => {
     setBulkOpen(false);
     setSelectedIds([]);
-    setQueue(await api.getQueue());
+    setQueue((q) => q.filter((s) => !succeededIds.includes(s.id)));
     setActiveView('schedule');
   };
 
   const saveEdits = async (patch: { slides: Slide[]; caption: string; hashtags: string[] }) => {
     if (!editing) return;
-    setQueue(await api.updateSlideshow(editing.id, patch));
+    const editingId = editing.id;
+    setQueue((q) => q.map((s) => (s.id === editingId ? { ...s, ...patch } : s)));
     setEditing(null);
   };
 
@@ -137,11 +172,9 @@ export default function App() {
       scheduledAt: opts.scheduledAt,
       mode: opts.mode,
     });
-    // Drop the now-scheduled slideshow from the queue immediately (optimistic),
-    // then reconcile with the server. The modal stays open showing its success
-    // state with a link to post-bridge instead of us jumping to the Schedule tab.
+    // The modal stays open showing its success state with a link to
+    // post-bridge instead of us jumping to the Schedule tab.
     setQueue((q) => q.filter((s) => s.id !== scheduledId));
-    setQueue(await api.getQueue());
   };
 
   // Global settings (keys/model) + per-project edits (name/defaults), in one call.
@@ -179,18 +212,15 @@ export default function App() {
 
   const switchProject = async (id: string) => {
     setConfig(await api.activateProject(id));
-    setQueue(await api.getQueue());
   };
 
   const newProject = async () => {
     setConfig(await api.createProject());
-    setQueue(await api.getQueue());
     setActiveView('settings');
   };
 
   const removeProject = async (id: string) => {
     setConfig(await api.deleteProject(id));
-    setQueue(await api.getQueue());
   };
 
   if (authStatus === null) {
@@ -289,12 +319,9 @@ export default function App() {
           slideshows={queue.filter((s) => selectedIds.includes(s.id))}
           accounts={accounts}
           defaults={activeProject.defaults}
-          // Closing via the X/backdrop must still drop any now-scheduled items
-          // from the queue — otherwise it looks stale until a browser reload.
-          onClose={async () => {
+          onClose={() => {
             setBulkOpen(false);
             setSelectedIds([]);
-            setQueue(await api.getQueue());
           }}
           onDone={bulkDone}
         />
@@ -313,4 +340,3 @@ export default function App() {
     </div>
   );
 }
-

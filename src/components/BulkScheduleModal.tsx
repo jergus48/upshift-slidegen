@@ -14,7 +14,10 @@ interface BulkScheduleModalProps {
   accounts: SocialAccount[];
   defaults: ProjectDefaults;
   onClose: () => void;
-  onDone: () => void;
+  // Ids of the slideshows that were actually scheduled/drafted successfully —
+  // the caller removes exactly these from its own local queue (the queue has
+  // no server-side truth to refetch from anymore).
+  onDone: (succeededIds: string[]) => void;
 }
 
 const INTERVAL_PRESETS = [1, 3, 6, 12, 24];
@@ -32,6 +35,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
   const [lastScheduledMs, setLastScheduledMs] = useState<number | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
+  const [succeededIds, setSucceededIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Default the start time to AFTER the last thing already scheduled in post-bridge.
@@ -83,7 +87,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
     // slideshow-level pool modest — too many at once overwhelms post-bridge's
     // upload endpoint and starts dropping slides.
     const CONCURRENCY = 3;
-    let ok = 0;
+    const succeeded: string[] = [];
     let done = 0;
     let next = 0;
 
@@ -102,7 +106,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
             scheduledAt: mode === 'schedule' ? new Date(startMs + i * stepMs).toISOString() : null,
             mode,
           });
-          ok++;
+          succeeded.push(show.id);
         } catch (e) {
           console.error('[bulk] failed for', show.id, e);
         }
@@ -111,17 +115,22 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
     };
 
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, slideshows.length) }, worker));
-    setDoneCount(ok);
+    setSucceededIds(succeeded);
+    setDoneCount(succeeded.length);
   };
 
   const busy = progress !== null && doneCount === null;
+  // Whether closing (X, backdrop, or Cancel) should also report any successes
+  // so far — matters if the user closes right after scheduling finished
+  // instead of clicking "Done".
+  const close = () => (doneCount !== null ? onDone(succeededIds) : onClose());
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={busy ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={busy ? undefined : close}>
       <div className="bg-card border border-line rounded-2xl w-full max-w-md max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-line">
           <h2 className="text-[15px] font-semibold text-ink">Schedule {slideshows.length} slideshow{slideshows.length === 1 ? '' : 's'}</h2>
-          {!busy && <button onClick={onClose} className="text-ink-5 hover:text-ink"><X size={18} /></button>}
+          {!busy && <button onClick={close} className="text-ink-5 hover:text-ink"><X size={18} /></button>}
         </div>
 
         {doneCount !== null ? (
@@ -218,7 +227,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
 
         <div className="px-5 py-4 border-t border-line flex justify-end gap-2">
           {doneCount !== null ? (
-            <Button variant="primary" onClick={onDone}>Done</Button>
+            <Button variant="primary" onClick={() => onDone(succeededIds)}>Done</Button>
           ) : (
             <>
               <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
