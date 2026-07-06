@@ -20,6 +20,17 @@ const DEFAULT_BRAIN = {
 }
 const DEFAULT_DEFAULTS = { socialAccountIds: [], mode: 'draft' }
 
+// Optional env-var override for keys, set once in Vercel's Environment
+// Variables (persists across cold starts/redeploys unlike stored config).
+// When set, an env key always wins over whatever's saved — useful while
+// self-hosted/cloud config storage is still being sorted out, or if you'd
+// rather manage keys as infra secrets than through the Settings UI.
+const ENV_KEYS = {
+  postbridge: process.env.POSTBRIDGE_API_KEY || '',
+  openrouter: process.env.OPENROUTER_API_KEY || '',
+  apify: process.env.APIFY_API_KEY || '',
+}
+
 function newId(prefix) {
   return `${prefix}-${Date.now()}-${Math.round(Math.random() * 1e6)}`
 }
@@ -60,7 +71,11 @@ export async function getConfig() {
     : projects[0].id
 
   const cfg = {
-    keys: { postbridge: '', openrouter: '', apify: '', ...s.keys },
+    keys: {
+      postbridge: ENV_KEYS.postbridge || s.keys?.postbridge || '',
+      openrouter: ENV_KEYS.openrouter || s.keys?.openrouter || '',
+      apify: ENV_KEYS.apify || s.keys?.apify || '',
+    },
     model: s.model || 'openai/gpt-4o-mini',
     pinterestActor: s.pinterestActor || 'fatihtahta/pinterest-scraper-search',
     projects,
