@@ -68,19 +68,22 @@ npm start       # serves the UI + API from one Node process (port 8787)
 Slidesmith can also run as a small shared deployment — e.g. two people using
 the same queue and image library from a Vercel URL instead of each running it
 locally. Local files don't survive on Vercel's serverless filesystem, so this
-mode swaps them for two Vercel integrations, detected automatically via env
-vars (no code changes, no separate config):
+mode swaps them for **Vercel Blob**, detected automatically via an env var
+Vercel sets for you (no code changes, no separate config):
 
-- **Redis** (Storage tab → connect a Redis integration, e.g. Upstash) — replaces
-  `~/.slidesmith/config.json` and `queue.json`.
-- **Blob** (Storage tab → Blob) — replaces `~/.slidesmith/library/` for
-  scraped/uploaded images. Bundled aesthetic packs are unaffected either way —
-  they ship as static files and are served the same way locally or on Vercel.
+- **Config, per-project queues, and the image-library index** — stored as
+  private Blob objects (never public, since these hold your API keys).
+- **Scraped/uploaded images** — stored as public Blob objects (same trust
+  level as the bundled packs, so they're served straight from Blob's CDN).
+  Bundled aesthetic packs are unaffected either way — they ship as static
+  files and are served the same way locally or on Vercel.
+
+One Blob store covers both — no separate database needed.
 
 Steps:
 1. Push this repo to GitHub and import it into a new Vercel project.
-2. In the project's **Storage** tab, attach a Redis store and a Blob store.
-   Vercel injects the right env vars automatically.
+2. In the project's **Storage** tab, **Create Database → Blob**, and connect
+   it to this project. Vercel injects `BLOB_READ_WRITE_TOKEN` automatically.
 3. Set an **`APP_PASSWORD`** env var. Without it, anyone with the deployment
    URL could read your OpenRouter/post-bridge/Apify keys — see below.
 4. Deploy. Open the URL, enter the shared password once, then Settings to add
@@ -115,9 +118,9 @@ Self-hosted (default):
 - **Generated-but-not-yet-scheduled drafts:** `~/.slidesmith/queue.json`
 - **Scraped/uploaded library images:** `~/.slidesmith/library/` (bundled packs live in the repo at `public/library/`)
 
-Deployed on Vercel (see above) — same shape, different address, shared by everyone using the deployment:
-- **API keys + Brain + settings + queue:** your attached Redis store
-- **Scraped/uploaded library images:** your attached Blob store
+Deployed on Vercel (see above) — same shape, different address, shared by everyone using the deployment, all in your attached Blob store:
+- **API keys + Brain + settings + queue:** private Blob objects
+- **Scraped/uploaded library images:** public Blob objects
 
 Either way: **everything else** (media, scheduled posts, results) lives in your post-bridge account, and your keys never leave the server to reach anywhere but the services they belong to (OpenRouter, post-bridge, Apify) — the browser never sees the actual values, only whether each one is set.
 
@@ -125,7 +128,7 @@ You can override the storage location with `SLIDESMITH_DIR` and the server port 
 
 ## Tech
 
-React 19 + Vite + Tailwind (UI), a small Express server (keys + OpenRouter + post-bridge proxy), the OpenRouter API, and the post-bridge API. No database self-hosted; an optional Redis + Blob pair only if you deploy the shared-team setup on Vercel.
+React 19 + Vite + Tailwind (UI), a small Express server (keys + OpenRouter + post-bridge proxy), the OpenRouter API, and the post-bridge API. No database self-hosted; an optional Vercel Blob store only if you deploy the shared-team setup.
 
 ## License
 

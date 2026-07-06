@@ -14,5 +14,5 @@ const HOST = process.env.HOST || '127.0.0.1'
 
 app.listen(PORT, HOST, () => {
   console.log(`\n  Slidesmith server → http://localhost:${PORT} (bound to ${HOST})`)
-  console.log(`  Storage: ${CLOUD ? 'Redis + Blob (cloud)' : `local files in ${CONFIG_DIR}`}\n`)
+  console.log(`  Storage: ${CLOUD ? 'Vercel Blob (cloud)' : `local files in ${CONFIG_DIR}`}\n`)
 })
