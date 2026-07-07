@@ -4,6 +4,7 @@ import type { Slideshow, Slide, LibraryImage } from '../types';
 import { Button } from './Button';
 import { SlidePreview } from './SlidePreview';
 import { getMergedLibrary } from '../lib/mergedLibrary';
+import { libraryRef } from '../lib/imageSrc';
 
 interface SlideshowEditorModalProps {
   slideshow: Slideshow;
@@ -45,7 +46,7 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
   const shuffleBackgrounds = () => {
     const pool = filtered;
     if (!pool.length) return;
-    setSlides((prev) => prev.map((s) => ({ ...s, imageUrl: pool[Math.floor(Math.random() * pool.length)].url })));
+    setSlides((prev) => prev.map((s) => ({ ...s, imageUrl: libraryRef(pool[Math.floor(Math.random() * pool.length)]) })));
   };
 
   const deleteSlide = () => {
@@ -203,9 +204,9 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
                       {filtered.map((img) => (
                         <button
                           key={img.id}
-                          onClick={() => patchSlide({ imageUrl: img.url })}
+                          onClick={() => patchSlide({ imageUrl: libraryRef(img) })}
                           className={`aspect-[9/16] rounded-md overflow-hidden bg-raised transition-all ${
-                            current.imageUrl === img.url ? 'ring-2 ring-ink' : 'hover:ring-2 hover:ring-line-2'
+                            current.imageUrl === libraryRef(img) ? 'ring-2 ring-ink' : 'hover:ring-2 hover:ring-line-2'
                           }`}
                         >
                           <img src={img.url} alt="" loading="lazy" className="w-full h-full object-cover" />

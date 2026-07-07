@@ -8,7 +8,18 @@ const KEY_PREFIX = 'slidesmith:queue:';
 export function loadQueue(projectId: string): Slideshow[] {
   try {
     const raw = localStorage.getItem(KEY_PREFIX + projectId);
-    return raw ? (JSON.parse(raw) as Slideshow[]) : [];
+    if (!raw) return [];
+    const queue = JSON.parse(raw) as Slideshow[];
+    // Migration: older builds baked a session-scoped `blob:` object URL into a
+    // slide's imageUrl, which is a dead link after reload (broken-image icon).
+    // Drop those so the slide falls back to its gradient instead. New builds
+    // persist a stable `local:…`/`/library/…`/`data:` reference (see imageSrc.ts).
+    return queue.map((show) => ({
+      ...show,
+      slides: show.slides.map((s) =>
+        s.imageUrl?.startsWith('blob:') ? { ...s, imageUrl: undefined } : s
+      ),
+    }));
   } catch {
     return [];
   }

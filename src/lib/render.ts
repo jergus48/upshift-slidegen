@@ -8,6 +8,7 @@
 // scheduled PNG matches what the user saw when editing.
 import type { Slide, Slideshow } from '../types';
 import { FONT_SIZE_PCT, STROKE_RATIO, LINE_HEIGHT, SIDE_PAD_PCT, pct } from './captionStyle';
+import { resolveImageSrc } from './imageSrc';
 
 const W = 1080;
 const H = 1920;
@@ -59,10 +60,13 @@ export async function renderSlide(slide: Slide): Promise<string> {
   canvas.height = H;
   const ctx = canvas.getContext('2d')!;
 
-  if (slide.imageUrl) {
-    // Image background (same-origin: bundled at /library/… or scraped via /api/…).
+  // Resolve the slide's stable image reference (`local:…` id, `/library/…`
+  // path, or `data:` URL) to something loadable. Local ids become same-origin
+  // blob: object URLs, which don't taint the canvas, so toDataURL still works.
+  const imageSrc = await resolveImageSrc(slide.imageUrl);
+  if (imageSrc) {
     try {
-      const img = await loadImage(slide.imageUrl);
+      const img = await loadImage(imageSrc);
       drawCover(ctx, img);
       // Darken so white text stays readable.
       ctx.fillStyle = 'rgba(0,0,0,0.45)';

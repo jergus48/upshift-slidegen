@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import type { Slide } from '../types';
 import { captionTextStyle, SLIDE_CONTAINER_STYLE, SIDE_PAD_PCT } from '../lib/captionStyle';
+import { resolveImageSrc } from '../lib/imageSrc';
 
 interface SlidePreviewProps {
   slide: Slide;
@@ -8,9 +10,22 @@ interface SlidePreviewProps {
 }
 
 export function SlidePreview({ slide, className = '', showText = true }: SlidePreviewProps) {
-  // Generated slides have no source image — render the same gradient the canvas
-  // renderer uses, so the preview matches the exported PNG.
-  const background = slide.imageUrl
+  // `slide.imageUrl` is a stable reference (a `local:…` id, a `/library/…`
+  // path, or a `data:` URL) — resolve it to something the browser can load.
+  // Local ids need an async IndexedDB lookup, so this can start as undefined.
+  const [src, setSrc] = useState<string | undefined>(() =>
+    slide.imageUrl && !slide.imageUrl.startsWith('local:') ? slide.imageUrl : undefined
+  );
+  useEffect(() => {
+    let alive = true;
+    resolveImageSrc(slide.imageUrl).then((s) => { if (alive) setSrc(s); });
+    return () => { alive = false; };
+  }, [slide.imageUrl]);
+
+  // Generated slides (or ones whose image failed to resolve) have no source
+  // image — render the same gradient the canvas renderer uses, so the preview
+  // matches the exported PNG.
+  const background = src
     ? undefined
     : `linear-gradient(135deg, ${slide.bgFrom || '#0f172a'}, ${slide.bgTo || '#1e293b'})`;
 
@@ -21,10 +36,10 @@ export function SlidePreview({ slide, className = '', showText = true }: SlidePr
       className={`relative aspect-[9/16] rounded-md overflow-hidden bg-raised ${className}`}
       style={background ? { background, ...SLIDE_CONTAINER_STYLE } : SLIDE_CONTAINER_STYLE}
     >
-      {slide.imageUrl && (
+      {src && (
         <>
           <img
-            src={slide.imageUrl}
+            src={src}
             alt=""
             className="absolute inset-0 w-full h-full object-cover"
           />

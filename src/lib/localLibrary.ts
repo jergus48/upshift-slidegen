@@ -75,6 +75,29 @@ function urlFor(id: string, blob: Blob): string {
   return url;
 }
 
+// Cache the id→blob map so resolving many slide backgrounds at render time
+// doesn't re-scan IndexedDB per image. Invalidated on any add/remove.
+let blobCache: Map<string, Blob> | null = null;
+async function ensureBlobCache(): Promise<Map<string, Blob>> {
+  if (!blobCache) {
+    const records = await getAllRecords();
+    blobCache = new Map(records.map((r) => [r.id, r.blob]));
+  }
+  return blobCache;
+}
+
+// Resolve a stable `local:…` id to a (session-scoped) object URL for display.
+// Slides persist the id, not the object URL, since object URLs die on reload —
+// this mints/reuses a fresh one from the stored blob. Returns null if the
+// image is no longer in the library.
+export async function objectUrlForLocal(id: string): Promise<string | null> {
+  const cached = urlCache.get(id);
+  if (cached) return cached;
+  const cache = await ensureBlobCache();
+  const blob = cache.get(id);
+  return blob ? urlFor(id, blob) : null;
+}
+
 export async function listLocalImages(): Promise<LibraryImage[]> {
   const records = await getAllRecords();
   return records
@@ -97,6 +120,7 @@ export async function addLocalImages(
     const id = `local:${Date.now()}-${Math.round(Math.random() * 1e6)}`;
     const addedAt = new Date().toISOString();
     await putRecord({ id, pack: packName, source, addedAt, blob });
+    blobCache = null; // library changed — rebuild lazily on next resolve
     added.push({ id, url: urlFor(id, blob), pack: packName, source });
   }
   return added;
@@ -104,6 +128,7 @@ export async function addLocalImages(
 
 export async function removeLocalImage(id: string): Promise<void> {
   await deleteRecord(id);
+  blobCache = null;
   const url = urlCache.get(id);
   if (url) {
     URL.revokeObjectURL(url);

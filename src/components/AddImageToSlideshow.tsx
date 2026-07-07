@@ -4,6 +4,7 @@ import type { Slideshow, Slide, LibraryImage } from '../types';
 import { Button } from './Button';
 import { SlidePreview } from './SlidePreview';
 import { getMergedLibrary } from '../lib/mergedLibrary';
+import { libraryRef } from '../lib/imageSrc';
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -138,7 +139,7 @@ export function AddImageToSlideshow({ queue, onApply }: AddImageToSlideshowProps
                 {library.map((img) => (
                   <button
                     key={img.id}
-                    onClick={() => { setImageUrl(img.url); setShowLibrary(false); setDone(null); }}
+                    onClick={() => { setImageUrl(libraryRef(img)); setShowLibrary(false); setDone(null); }}
                     className="aspect-[9/16] rounded-lg overflow-hidden bg-raised hover:ring-2 hover:ring-ink transition-all"
                   >
                     <img src={img.url} alt="" loading="lazy" className="w-full h-full object-cover" />
