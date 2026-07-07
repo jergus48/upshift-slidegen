@@ -3,6 +3,7 @@ import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Download } from 'lucide
 import type { Slideshow } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { SlidePreview } from '../components/SlidePreview';
+import { BulkBackgroundTool } from '../components/BulkBackgroundTool';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
 import { downloadSlideshow } from '../lib/render';
@@ -20,6 +21,7 @@ interface QueueViewProps {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onBulkSchedule: () => void;
+  onBulkSetBackground: (updates: { slideshowId: string; slideIndex: number; ref: string }[]) => void;
 }
 
 export function QueueView({
@@ -35,6 +37,7 @@ export function QueueView({
   onSelectAll,
   onClearSelection,
   onBulkSchedule,
+  onBulkSetBackground,
 }: QueueViewProps) {
   const selectedCount = selectedIds.length;
   return (
@@ -47,6 +50,10 @@ export function QueueView({
             {selectedCount > 0 ? (
               <>
                 <span className="text-[12px] text-ink-5">{selectedCount} selected</span>
+                <BulkBackgroundTool
+                  slideshows={slideshows.filter((s) => selectedIds.includes(s.id))}
+                  onApply={onBulkSetBackground}
+                />
                 <Button variant="primary" icon={<Check size={13} />} onClick={onBulkSchedule}>
                   Schedule {selectedCount}
                 </Button>

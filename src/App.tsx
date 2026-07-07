@@ -265,6 +265,28 @@ export default function App() {
     if (workspace) setWorkspace(ws.deleteProject(workspace, id, bundledPackNames));
   };
 
+  // Bulk background tool (Queue selection): set slide N's background across the
+  // selected slideshows. Each update targets one slideshow's slide by index.
+  const applyBulkBackground = (updates: { slideshowId: string; slideIndex: number; ref: string }[]) => {
+    const byShow = new Map<string, Map<number, string>>();
+    for (const u of updates) {
+      if (!byShow.has(u.slideshowId)) byShow.set(u.slideshowId, new Map());
+      byShow.get(u.slideshowId)!.set(u.slideIndex, u.ref);
+    }
+    setQueue((q) =>
+      q.map((s) => {
+        const slideRefs = byShow.get(s.id);
+        if (!slideRefs) return s;
+        return {
+          ...s,
+          slides: s.slides.map((sl, i) =>
+            slideRefs.has(i) ? { ...sl, imageUrl: slideRefs.get(i) } : sl
+          ),
+        };
+      })
+    );
+  };
+
   if (authStatus === null) {
     return (
       <div className="h-full w-full flex items-center justify-center bg-bg text-ink-5 text-[13px]">
@@ -318,6 +340,7 @@ export default function App() {
             onSelectAll={() => setSelectedIds(queue.map((s) => s.id))}
             onClearSelection={() => setSelectedIds([])}
             onBulkSchedule={() => setBulkOpen(true)}
+            onBulkSetBackground={applyBulkBackground}
           />
         )}
         {activeView === 'create' && (
