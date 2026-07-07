@@ -62,7 +62,7 @@ export function BulkBackgroundTool({ slideshows, onApply }: BulkBackgroundToolPr
     const updates: { slideshowId: string; slideIndex: number; ref: string }[] = [];
     if (allSlides) {
       // Fill every slide of each selected slideshow with a fresh shuffle, so
-      // images are distinct within a slideshow (and re-used across slideshows).
+      // images are distinct within a slideshow (as far as the pack allows).
       for (const s of slideshows) {
         const bag = shuffle(pool);
         s.slides.forEach((_, i) => {
@@ -70,13 +70,16 @@ export function BulkBackgroundTool({ slideshows, onApply }: BulkBackgroundToolPr
         });
       }
     } else {
-      // One slide position across the selection — distinct picks while the pack lasts.
-      const bag = shuffle(pool);
-      let n = 0;
+      // One slide position across the selection. The new image must not already
+      // appear anywhere in that slideshow — pick from the pack minus its used
+      // images (falling back to the full pack only if it's entirely used up).
       for (const s of slideshows) {
         if (s.slides.length < slideNumber) continue;
-        updates.push({ slideshowId: s.id, slideIndex: slideNumber - 1, ref: libraryRef(bag[n % bag.length]) });
-        n++;
+        const used = new Set(s.slides.map((sl) => sl.imageUrl).filter(Boolean));
+        const candidates = pool.filter((img) => !used.has(libraryRef(img)));
+        const choices = candidates.length ? candidates : pool;
+        const pick = choices[Math.floor(Math.random() * choices.length)];
+        updates.push({ slideshowId: s.id, slideIndex: slideNumber - 1, ref: libraryRef(pick) });
       }
     }
     onApply(updates);
