@@ -50,22 +50,35 @@ export function BulkBackgroundTool({ slideshows, onApply }: BulkBackgroundToolPr
   // The chosen pack, defaulting to the first available until the user picks one.
   const selectedPack = pack || packs[0]?.[0] || '';
 
-  // How many of the selected slideshows actually have a slide at this position.
-  const affected = slideshows.filter((s) => s.slides.length >= slideNumber).length;
+  // slideNumber 0 == "All slides". How many of the selected slideshows are affected.
+  const allSlides = slideNumber === 0;
+  const affected = allSlides
+    ? slideshows.filter((s) => s.slides.length > 0).length
+    : slideshows.filter((s) => s.slides.length >= slideNumber).length;
 
   const apply = () => {
     const pool = (lib || []).filter((i) => i.pack === selectedPack);
     if (!pool.length) return;
-    const bag = shuffle(pool);
-    let n = 0;
-    const updates = slideshows
-      .filter((s) => s.slides.length >= slideNumber)
-      .map((s) => {
-        // Draw distinct images while the pack lasts, then reshuffle and reuse.
-        const img = bag[n % bag.length];
+    const updates: { slideshowId: string; slideIndex: number; ref: string }[] = [];
+    if (allSlides) {
+      // Fill every slide of each selected slideshow with a fresh shuffle, so
+      // images are distinct within a slideshow (and re-used across slideshows).
+      for (const s of slideshows) {
+        const bag = shuffle(pool);
+        s.slides.forEach((_, i) => {
+          updates.push({ slideshowId: s.id, slideIndex: i, ref: libraryRef(bag[i % bag.length]) });
+        });
+      }
+    } else {
+      // One slide position across the selection — distinct picks while the pack lasts.
+      const bag = shuffle(pool);
+      let n = 0;
+      for (const s of slideshows) {
+        if (s.slides.length < slideNumber) continue;
+        updates.push({ slideshowId: s.id, slideIndex: slideNumber - 1, ref: libraryRef(bag[n % bag.length]) });
         n++;
-        return { slideshowId: s.id, slideIndex: slideNumber - 1, ref: libraryRef(img) };
-      });
+      }
+    }
     onApply(updates);
     setFlash(true);
     setTimeout(() => setFlash(false), 1500);
@@ -88,17 +101,18 @@ export function BulkBackgroundTool({ slideshows, onApply }: BulkBackgroundToolPr
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-9 z-40 w-64 bg-card border border-line rounded-xl shadow-lg p-3 space-y-3">
             <p className="text-[11px] text-ink-5 leading-snug">
-              Drops a different random image from a pack onto the chosen slide of all {slideshows.length} selected
-              slideshows.
+              Drops a different random image from a pack onto {allSlides ? 'every slide' : 'the chosen slide'} of all{' '}
+              {slideshows.length} selected slideshows.
             </p>
 
             <div>
-              <label className="text-[11px] text-ink-6 mb-1 block">Slide number</label>
+              <label className="text-[11px] text-ink-6 mb-1 block">Slide</label>
               <select
                 value={slideNumber}
                 onChange={(e) => setSlideNumber(Number(e.target.value))}
                 className="w-full h-9 bg-surface border border-line rounded-lg px-2 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
               >
+                <option value={0}>All slides</option>
                 {Array.from({ length: Math.max(maxSlides, 1) }).map((_, i) => (
                   <option key={i} value={i + 1}>Slide {i + 1}</option>
                 ))}
@@ -131,7 +145,7 @@ export function BulkBackgroundTool({ slideshows, onApply }: BulkBackgroundToolPr
               onClick={apply}
               disabled={!selectedPack || !lib?.length || affected === 0}
             >
-              Apply to {affected} slide{affected === 1 ? '' : 's'}
+              Apply to {affected} {allSlides ? 'slideshow' : 'slide'}{affected === 1 ? '' : 's'}
             </Button>
           </div>
         </>
