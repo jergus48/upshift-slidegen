@@ -38,8 +38,10 @@ function extractJson(text) {
   return JSON.parse(candidate.slice(start, end + 1))
 }
 
-// One chat completion that must return a JSON object.
-export async function chatJSON({ apiKey, model, prompt }) {
+// One chat completion that must return a JSON object. `sampling` can carry
+// temperature / frequency_penalty / presence_penalty — the human-voice tools
+// crank these up to escape the model's safe, generic, AI-sounding default.
+export async function chatJSON({ apiKey, model, prompt, sampling = {} }) {
   if (!apiKey) throw new Error('Missing OpenRouter API key. Add it in Settings.')
   if (!model) throw new Error('No model selected. Pick one in Settings.')
 
@@ -54,6 +56,7 @@ export async function chatJSON({ apiKey, model, prompt }) {
       model,
       max_tokens: 6000,
       response_format: { type: 'json_object' },
+      ...sampling,
       messages: [{ role: 'user', content: prompt }],
     }),
   })
@@ -70,7 +73,7 @@ export async function chatJSON({ apiKey, model, prompt }) {
 // Like chatJSON but supports images (vision). `images` are data URLs or http
 // URLs; they're attached as image_url content parts alongside the text prompt.
 // Used by the comment tool when the input is a screenshot.
-export async function chatJSONVision({ apiKey, model, prompt, images = [] }) {
+export async function chatJSONVision({ apiKey, model, prompt, images = [], sampling = {} }) {
   if (!apiKey) throw new Error('Missing OpenRouter API key. Add it in Settings.')
   if (!model) throw new Error('No model selected. Pick one in Settings.')
 
@@ -90,6 +93,7 @@ export async function chatJSONVision({ apiKey, model, prompt, images = [] }) {
       model,
       max_tokens: 2000,
       response_format: { type: 'json_object' },
+      ...sampling,
       messages: [{ role: 'user', content }],
     }),
   })

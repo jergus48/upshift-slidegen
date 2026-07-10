@@ -157,9 +157,12 @@ app.post('/api/comment', h(async (req, res) => {
   const { text, image } = req.body || {}
   if (!text && !image) throw new Error('Paste some text or upload a screenshot.')
   const prompt = buildCommentPrompt({ text })
+  // Crank temperature + penalties so replies don't collapse into the model's
+  // safe, clichéd "AI comment" voice.
+  const sampling = { temperature: 1.05, frequency_penalty: 0.5, presence_penalty: 0.4 }
   const out = image
-    ? await chatJSONVision({ apiKey: keys.openrouter, model, prompt, images: [image] })
-    : await chatJSON({ apiKey: keys.openrouter, model, prompt })
+    ? await chatJSONVision({ apiKey: keys.openrouter, model, prompt, images: [image], sampling })
+    : await chatJSON({ apiKey: keys.openrouter, model, prompt, sampling })
   const comments = Array.isArray(out.comments) ? out.comments.map(String).filter(Boolean).slice(0, 3) : []
   res.json({ comments })
 }))
