@@ -10,6 +10,7 @@ import { CreateView } from './views/CreateView';
 import { LibraryView } from './views/LibraryView';
 import { RedditView } from './views/RedditView';
 import { ReplyView } from './views/ReplyView';
+import { ScrubView } from './views/ScrubView';
 import { ScheduleView } from './views/ScheduleView';
 import { ResultsView } from './views/ResultsView';
 import { BrainView } from './views/BrainView';
@@ -357,6 +358,7 @@ export default function App() {
         {activeView === 'library' && <LibraryView hasApify={hasApify} pinterestActor={config.pinterestActor} />}
         {activeView === 'reddit' && <RedditView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'reply' && <ReplyView canGenerate={hasOpenrouter} model={config.model} />}
+        {activeView === 'clean' && <ScrubView />}
         {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
         {activeView === 'results' && <ResultsView configured={hasPostbridge} />}
         {activeView === 'brain' && <BrainView brain={activeProject.brain} onChange={saveBrain} />}

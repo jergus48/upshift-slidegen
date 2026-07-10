@@ -4,7 +4,8 @@ import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { redditFetch, redditRewrite } from '../lib/api';
 import { loadRedditPosts, saveRedditPosts, newRedditPost, type RedditPost } from '../lib/localReddit';
-import { stripImageMetadata, downloadDataUrl } from '../lib/stripMetadata';
+import { downloadDataUrl } from '../lib/stripMetadata';
+import { scrubImage } from '../lib/scrubImage';
 
 interface RedditViewProps {
   canGenerate: boolean;
@@ -144,9 +145,10 @@ function PostCard({
   };
 
   const downloadImage = async (url: string, i: number) => {
-    // Re-encode to strip any metadata (incl. AI/C2PA) before saving.
+    // Scrub: strip metadata AND make near-invisible pixel changes so Reddit
+    // sees it as a new image (not a repost). See the Clean tool.
     try {
-      const clean = await stripImageMetadata(url, 'image/jpeg');
+      const clean = await scrubImage(url);
       downloadDataUrl(clean, `reddit-image-${i + 1}.jpg`);
     } catch {
       setError('Could not clean/download that image (it may block cross-origin access).');
