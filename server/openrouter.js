@@ -66,3 +66,39 @@ export async function chatJSON({ apiKey, model, prompt }) {
   if (!content) throw new Error('OpenRouter returned no content.')
   return extractJson(content)
 }
+
+// Like chatJSON but supports images (vision). `images` are data URLs or http
+// URLs; they're attached as image_url content parts alongside the text prompt.
+// Used by the comment tool when the input is a screenshot.
+export async function chatJSONVision({ apiKey, model, prompt, images = [] }) {
+  if (!apiKey) throw new Error('Missing OpenRouter API key. Add it in Settings.')
+  if (!model) throw new Error('No model selected. Pick one in Settings.')
+
+  const content = [
+    { type: 'text', text: prompt },
+    ...images.filter(Boolean).map((url) => ({ type: 'image_url', image_url: { url } })),
+  ]
+
+  const res = await fetch(`${BASE}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+      ...ATTRIBUTION,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 2000,
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content }],
+    }),
+  })
+
+  const body = await res.json().catch(() => null)
+  if (!res.ok) {
+    throw new Error(`OpenRouter ${res.status}: ${body?.error?.message || res.statusText}`)
+  }
+  const out = body?.choices?.[0]?.message?.content
+  if (!out) throw new Error('OpenRouter returned no content.')
+  return extractJson(out)
+}

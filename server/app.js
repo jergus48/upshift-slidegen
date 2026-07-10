@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url'
 import { getKeys, saveKeys } from './store.js'
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
 import { generateSlideshows } from './generate.js'
-import { listModels, validateKey } from './openrouter.js'
+import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.js'
+import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
@@ -130,6 +131,37 @@ app.post('/api/library/scrape', h(async (req, res) => {
   const keys = await getKeys()
   const { searches, count, actor } = req.body || {}
   res.json(await scrapePinterest({ apiKey: keys.apify, actor, searches, count }))
+}))
+
+// ── Reddit tools (standalone — nothing to do with slideshows) ────────────────
+// Best-effort extract of title/body/images from a public Reddit post link.
+app.post('/api/reddit/fetch', h(async (req, res) => {
+  const { url } = req.body || {}
+  if (!url) throw new Error('Paste a Reddit post link.')
+  res.json(await fetchRedditPost(url))
+}))
+
+// Rewrite a post so it reads like a different real person wrote it.
+app.post('/api/reddit/rewrite', h(async (req, res) => {
+  const keys = await getKeys()
+  const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
+  const { title, body } = req.body || {}
+  const out = await chatJSON({ apiKey: keys.openrouter, model, prompt: buildRewritePrompt({ title, body }) })
+  res.json({ title: String(out.title || ''), body: String(out.body || '') })
+}))
+
+// Viral reply comments for a post (text and/or a screenshot).
+app.post('/api/comment', h(async (req, res) => {
+  const keys = await getKeys()
+  const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
+  const { text, image } = req.body || {}
+  if (!text && !image) throw new Error('Paste some text or upload a screenshot.')
+  const prompt = buildCommentPrompt({ text })
+  const out = image
+    ? await chatJSONVision({ apiKey: keys.openrouter, model, prompt, images: [image] })
+    : await chatJSON({ apiKey: keys.openrouter, model, prompt })
+  const comments = Array.isArray(out.comments) ? out.comments.map(String).filter(Boolean).slice(0, 3) : []
+  res.json({ comments })
 }))
 
 // ── post-bridge ───────────────────────────────────────────────────────────────

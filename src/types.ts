@@ -1,4 +1,4 @@
-export type ViewKey = 'queue' | 'create' | 'library' | 'schedule' | 'results' | 'brain' | 'settings';
+export type ViewKey = 'queue' | 'create' | 'library' | 'reddit' | 'reply' | 'schedule' | 'results' | 'brain' | 'settings';
 
 export interface Slide {
   id: string;

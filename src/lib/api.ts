@@ -79,6 +79,23 @@ export const scrapePinterest = (searches: string[], count: number, actor: string
     body: JSON.stringify({ searches, count, actor }),
   });
 
+// ── Reddit tools (standalone — unrelated to slideshows) ─────────────────────
+export const redditFetch = (url: string) =>
+  req<{ title: string; body: string; images: string[] }>('/reddit/fetch', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
+
+export const redditRewrite = (title: string, body: string, model: string) =>
+  req<{ title: string; body: string }>('/reddit/rewrite', {
+    method: 'POST',
+    body: JSON.stringify({ title, body, model }),
+  });
+
+// `image` is a data URL of a screenshot (optional). Returns 3 short comments.
+export const generateComments = (opts: { text?: string; image?: string; model: string }) =>
+  req<{ comments: string[] }>('/comment', { method: 'POST', body: JSON.stringify(opts) });
+
 export const getAccounts = () => req<SocialAccount[]>('/accounts');
 
 export interface SchedulePayload {
