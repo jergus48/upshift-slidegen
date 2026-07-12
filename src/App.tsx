@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Menu } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { ScheduleModal } from './components/ScheduleModal';
 import { BulkScheduleModal } from './components/BulkScheduleModal';
@@ -10,6 +11,7 @@ import { CreateView } from './views/CreateView';
 import { LibraryView } from './views/LibraryView';
 import { RedditView } from './views/RedditView';
 import { ReplyView } from './views/ReplyView';
+import { WriteView } from './views/WriteView';
 import { ScrubView } from './views/ScrubView';
 import { ScheduleView } from './views/ScheduleView';
 import { ResultsView } from './views/ResultsView';
@@ -50,6 +52,7 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const [error, setError] = useState<string | null>(null);
 
   const config: AppConfig | null = keys && workspace ? { keys, ...workspace } : null;
@@ -314,15 +317,25 @@ export default function App() {
     <div className="flex h-full w-full bg-bg text-ink">
       <Sidebar
         activeView={activeView}
-        onSelectView={setActiveView}
+        onSelectView={(v) => { setActiveView(v); setSidebarOpen(false); }}
         queueCount={queue.length}
         scheduledCount={0}
         projects={config.projects}
         activeProjectId={config.activeProjectId}
         onSwitchProject={switchProject}
         onNewProject={newProject}
+        mobileOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
-      <main className="flex-1 h-full overflow-hidden flex flex-col">
+      <main className="flex-1 h-full overflow-hidden flex flex-col min-w-0">
+        {/* Mobile top bar with menu toggle (sidebar is a drawer on phones) */}
+        <div className="md:hidden flex items-center gap-2.5 px-4 h-12 border-b border-line bg-bg shrink-0">
+          <button onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="text-ink-4 hover:text-ink -ml-1 p-1">
+            <Menu size={20} />
+          </button>
+          <span className="text-[14px] font-semibold text-ink">Upshift SlideGen</span>
+        </div>
+
         {error && activeView !== 'settings' && (
           <div className="px-8 py-2 bg-red-50 border-b border-red-200 text-[12px] text-red-700">
             {error}
@@ -358,6 +371,7 @@ export default function App() {
         {activeView === 'library' && <LibraryView hasApify={hasApify} pinterestActor={config.pinterestActor} />}
         {activeView === 'reddit' && <RedditView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'reply' && <ReplyView canGenerate={hasOpenrouter} model={config.model} />}
+        {activeView === 'write' && <WriteView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'clean' && <ScrubView />}
         {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
         {activeView === 'results' && <ResultsView configured={hasPostbridge} />}

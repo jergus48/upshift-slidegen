@@ -90,7 +90,7 @@ export function CreateView({ onAddToQueue, queue, onApplyToSlideshow }: CreateVi
         subtitle="Build a slideshow from your own photos and text, or drop an image into a slideshow that's already in the Queue."
       />
 
-      <div className="px-8 pt-4">
+      <div className="px-4 sm:px-8 pt-4">
         <div className="max-w-5xl mx-auto flex gap-1">
           {([['new', 'New slideshow'], ['existing', 'Add to a slideshow']] as const).map(([m, label]) => (
             <button
@@ -107,11 +107,11 @@ export function CreateView({ onAddToQueue, queue, onApplyToSlideshow }: CreateVi
       </div>
 
       {mode === 'existing' ? (
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8">
           <AddImageToSlideshow queue={queue} onApply={onApplyToSlideshow} />
         </div>
       ) : (
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-8">
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
             {slides.map((slide, i) => (

@@ -10,7 +10,7 @@ import { getKeys, saveKeys } from './store.js'
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
 import { generateSlideshows } from './generate.js'
 import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.js'
-import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt } from './reddit.js'
+import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
@@ -165,6 +165,21 @@ app.post('/api/comment', h(async (req, res) => {
     : await chatJSON({ apiKey: keys.openrouter, model, prompt, sampling })
   const comments = Array.isArray(out.comments) ? out.comments.map(String).filter(Boolean).slice(0, 3) : []
   res.json({ comments })
+}))
+
+// Strip every kind of quote/apostrophe (straight + smart) — a hard guarantee
+// on top of the prompt, since the post generator must never use " or '.
+const stripQuotes = (s) => String(s).replace(/["'‘’“”′″`]/g, '')
+
+// Generate human-sounding self-improvement / productivity posts.
+app.post('/api/post/generate', h(async (req, res) => {
+  const keys = await getKeys()
+  const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
+  const { topic } = req.body || {}
+  const sampling = { temperature: 1.05, frequency_penalty: 0.5, presence_penalty: 0.4 }
+  const out = await chatJSON({ apiKey: keys.openrouter, model, prompt: buildPostPrompt({ topic }), sampling })
+  const posts = Array.isArray(out.posts) ? out.posts.map(stripQuotes).map((s) => s.trim()).filter(Boolean).slice(0, 3) : []
+  res.json({ posts })
 }))
 
 // ── post-bridge ───────────────────────────────────────────────────────────────

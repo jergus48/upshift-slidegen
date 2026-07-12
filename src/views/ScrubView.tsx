@@ -68,7 +68,7 @@ export function ScrubView() {
         subtitle="Strip metadata and make tiny, near-invisible pixel changes so a photo reads as a brand-new image — handy before reposting to Reddit/TikTok."
       />
 
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-8">
         <div className="max-w-4xl mx-auto space-y-5">
           {/* Controls */}
           <div className="bg-card border border-line rounded-xl p-4 flex items-end gap-3 flex-wrap">

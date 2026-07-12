@@ -61,7 +61,7 @@ export function ReplyView({ canGenerate, model }: ReplyViewProps) {
         subtitle="Paste a post (or a screenshot) and get 3 short viral-style comments that sound like a real person — it answers the question if the post asks one."
       />
 
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-8">
         <div className="max-w-2xl mx-auto space-y-5">
           <div className="bg-card border border-line rounded-xl p-4 space-y-3">
             <div>

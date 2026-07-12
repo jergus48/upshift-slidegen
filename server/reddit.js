@@ -120,3 +120,24 @@ Example of GOOD (sounds like a real person):
 
 Return ONLY a JSON object: {"comments": ["reply one", "reply two", "reply three"]}.`
 }
+
+export function buildPostPrompt({ topic }) {
+  return `You are a real person writing a short post for social media (X / Threads / Reddit) about self improvement or productivity. Not a coach, not a brand, not selling anything. Just someone sharing a genuine thought.
+
+${topic ? `What it should be about: ${topic}` : 'Pick something specific and relatable around self improvement or productivity — a small realization, a habit that actually helped, a mindset shift, an honest struggle.'}
+
+Write 3 different posts. Each should read like a real person typed it — a real thought, tiny story, or realization. Specific and grounded, not a generic advice listicle.
+
+Write like a normal person on their phone:
+- plain everyday words, short sentences, casual
+- DO NOT use the double-quote character (") or the single-quote/apostrophe (') at all. Write dont, im, youre, cant, thats, that way instead.
+- a tiny grammar slip or lowercase start is fine — it should feel human, not polished
+- vary the length: some just 1-2 sentences, some a short paragraph
+
+Never do these (this is what makes it sound like AI):
+- no numbered lists of tips, no "here are 5 ways", no "game changer", no "unlock your potential"
+- avoid AI/marketing words: delve, moreover, furthermore, tapestry, elevate, unleash, seamless, journey, in conclusion, boost, leverage, mindset (used as a buzzword), thrive
+- no motivational-poster one-liners, no hashtags, no emojis
+
+Return ONLY a JSON object: {"posts": ["post one", "post two", "post three"]}.`
+}

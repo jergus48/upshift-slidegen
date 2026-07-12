@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images, ImagePlus, MessageSquare, MessagesSquare, Eraser } from 'lucide-react';
+import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images, ImagePlus, MessageSquare, MessagesSquare, Eraser, PenLine } from 'lucide-react';
 import type { ViewKey, Project } from '../types';
 
 interface SidebarProps {
@@ -11,6 +11,9 @@ interface SidebarProps {
   activeProjectId: string;
   onSwitchProject: (id: string) => void;
   onNewProject: () => void;
+  // On phones the sidebar is an off-canvas drawer toggled from the top bar.
+  mobileOpen?: boolean;
+  onClose?: () => void;
 }
 
 const nav: { key: ViewKey; label: string; icon: typeof LayoutGrid; badge?: 'queue' | 'scheduled' }[] = [
@@ -19,6 +22,7 @@ const nav: { key: ViewKey; label: string; icon: typeof LayoutGrid; badge?: 'queu
   { key: 'library', label: 'Library', icon: Images },
   { key: 'reddit', label: 'Reddit', icon: MessagesSquare },
   { key: 'reply', label: 'Reply', icon: MessageSquare },
+  { key: 'write', label: 'Write', icon: PenLine },
   { key: 'clean', label: 'Clean', icon: Eraser },
   { key: 'schedule', label: 'Schedule', icon: CalendarClock, badge: 'scheduled' },
   { key: 'results', label: 'Results', icon: LineChart },
@@ -38,12 +42,22 @@ export function Sidebar({
   activeProjectId,
   onSwitchProject,
   onNewProject,
+  mobileOpen = false,
+  onClose,
 }: SidebarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const active = projects.find((p) => p.id === activeProjectId) ?? projects[0];
 
   return (
-    <aside className="w-[220px] shrink-0 flex flex-col bg-bg border-r border-line h-full">
+    <>
+      {/* Backdrop (mobile only, when the drawer is open) */}
+      {mobileOpen && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={onClose} />}
+
+      <aside
+        className={`w-[220px] shrink-0 flex-col bg-bg border-r border-line h-full
+          fixed inset-y-0 left-0 z-40 md:static md:z-auto
+          ${mobileOpen ? 'flex' : 'hidden'} md:flex`}
+      >
       {/* Brand */}
       <div className="px-4 py-4 border-b border-line">
         <div className="flex items-center gap-2.5">
@@ -142,6 +156,7 @@ export function Sidebar({
           <span className="text-[13px]">Settings</span>
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

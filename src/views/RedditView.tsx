@@ -48,7 +48,7 @@ export function RedditView({ canGenerate, model }: RedditViewProps) {
         subtitle="Drop in existing Reddit posts and get a fresh human-sounding rewrite of each — same idea, different words. Regenerate for a new take."
       />
 
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-8">
         <div className="max-w-3xl mx-auto space-y-5">
           {/* Import bar */}
           <div className="bg-card border border-line rounded-xl p-3">
