@@ -1,5 +1,6 @@
 import type { BrainState } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
+import { QUIT_PRESETS } from '../lib/quitPresets';
 
 interface BrainViewProps {
   brain: BrainState;
@@ -25,7 +26,27 @@ export function BrainView({ brain, onChange }: BrainViewProps) {
       />
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto p-8 space-y-8">
+        <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-8">
+          {/* Quit-habit presets */}
+          <Section
+            title="Quick presets"
+            description="One click fills the Audience and Style memory below for a quit-habit niche. You can still tweak everything after."
+          >
+            <div className="flex flex-wrap gap-1.5">
+              {QUIT_PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() =>
+                    onChange({ ...brain, niche: p.niche, audience: p.audience, styleMemory: p.styleMemory })
+                  }
+                  className="text-[12px] px-3 h-8 rounded-lg border border-line text-ink-3 hover:text-ink hover:border-line-2 hover:bg-raised transition-colors"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </Section>
+
           {/* Niche & app */}
           <Section title="Account context" description="Rarely changes. Defines who the AI is writing for.">
             <div className="grid grid-cols-2 gap-3">
