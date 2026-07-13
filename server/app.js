@@ -10,7 +10,7 @@ import { getKeys, saveKeys } from './store.js'
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
 import { generateSlideshows } from './generate.js'
 import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.js'
-import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt } from './reddit.js'
+import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
@@ -184,6 +184,22 @@ app.post('/api/post/generate', h(async (req, res) => {
     .filter((p) => p.title || p.body)
     .slice(0, 3)
   res.json({ posts })
+}))
+
+// Structured JSON image-prompts (Google Flow) with an anchored character.
+app.post('/api/flow/generate', h(async (req, res) => {
+  const keys = await getKeys()
+  const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
+  const { gender, environment, activity, aspectRatio, count } = req.body || {}
+  const sampling = { temperature: 0.9 }
+  const out = await chatJSON({
+    apiKey: keys.openrouter,
+    model,
+    prompt: buildFlowPrompt({ gender, environment, activity, aspectRatio, count }),
+    sampling,
+  })
+  const prompts = (Array.isArray(out.prompts) ? out.prompts : []).filter((p) => p && typeof p === 'object')
+  res.json({ prompts })
 }))
 
 // ── post-bridge ───────────────────────────────────────────────────────────────

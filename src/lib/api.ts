@@ -104,6 +104,20 @@ export const generatePosts = (opts: { topic?: string; length?: 'short' | 'medium
     body: JSON.stringify(opts),
   });
 
+// Structured JSON image-prompts (Google Flow) with an anchored character.
+export const generateFlowPrompts = (opts: {
+  gender: 'man' | 'woman';
+  environment: string;
+  activity: string;
+  aspectRatio: string;
+  count: number;
+  model: string;
+}) =>
+  req<{ prompts: Record<string, unknown>[] }>('/flow/generate', {
+    method: 'POST',
+    body: JSON.stringify(opts),
+  });
+
 export const getAccounts = () => req<SocialAccount[]>('/accounts');
 
 export interface SchedulePayload {

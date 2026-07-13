@@ -121,6 +121,90 @@ Example of GOOD (sounds like a real person):
 Return ONLY a JSON object: {"comments": ["reply one", "reply two", "reply three"]}.`
 }
 
+// Structured JSON image-prompts (for Google Flow / image gen) with an
+// externally-anchored character. The model adapts a fixed schema to the chosen
+// subject / environment / activity while keeping the identity-lock structure.
+export function buildFlowPrompt({ gender, environment, activity, aspectRatio, count }) {
+  const subject = gender === 'man' ? 'man' : 'woman'
+  const n = Math.min(Math.max(Number(count) || 1, 1), 5)
+
+  return `You generate ultra-detailed JSON prompts for an AI image generator (Google Flow style). The character's identity is externally anchored to a reference image (Anchor A) and must never be invented or changed — only styling, environment, wardrobe, pose, framing and camera change.
+
+Produce ${n} distinct prompt object(s) for a ${subject}.
+
+INPUTS:
+- Subject: ${subject}
+- Environment / location: ${environment || 'a fitting everyday interior'}
+- Activity / shot: ${activity || 'casual POV selfie'}
+- Aspect ratio: ${aspectRatio || '4:5'}
+
+Each prompt object MUST follow EXACTLY this schema and key structure (same keys, same nesting). Only change the string VALUES to fit the subject, environment and activity. Keep all the identity-lock, skin, realism and selfie-realism rules intact and phrased for a ${subject}:
+
+{
+  "GLOBAL_IDENTITY_LOCK": "IDENTITY IS EXTERNALLY ANCHORED VIA MASTER ANCHOR IMAGE (ANCHOR A).\\nDO NOT GENERATE, INFER, MODIFY, OR REPLACE CORE IDENTITY.\\nFACIAL STRUCTURE, BONE GEOMETRY, AND BODY PROPORTIONS MUST MATCH ANCHOR A EXACTLY.",
+  "identity_constraints": {
+    "integrity": "Keep the same ${subject} exactly as the reference image. Do not change face, body, or identity.",
+    "facial_structure": "Preserve exact facial bone structure and proportions.",
+    "prohibitions": ["no identity drift", "no reshaping"]
+  },
+  "skin_and_micro_details": {
+    "texture": "visible pores and natural skin grain on face and body",
+    "glow": "natural skin glow under the scene lighting, not airbrushed",
+    "eyes": "sharp eyes with realistic wetline, iris detail, and crisp catchlights",
+    "processing": "no smoothing, no beauty filters, no plastic skin"
+  },
+  "environment": {
+    "location": "<the chosen environment, described concretely>",
+    "time": "<time / ambience that suits it>",
+    "details": ["<3-5 concrete props/features of this environment>"],
+    "background_rule": "environment remains readable and realistic, no artificial blur"
+  },
+  "wardrobe": {
+    "override_rule": "replace all reference clothing completely",
+    "top": "<outfit top that fits the ${subject}, environment and activity>",
+    "bottoms": "<outfit bottoms that fit>",
+    "fit_logic": "clothing conforms naturally to the body with no compression, reshaping, or proportion changes"
+  },
+  "accessories_and_grooming": {
+    "jewelry": "none unless already present in anchor image",
+    "hair": "<a concrete hair description>"
+  },
+  "pose_and_expression": {
+    "pose": "<pose that matches the activity>",
+    "body_position": "<body position detail>",
+    "head_angle": "<head angle>",
+    "expression": "candid, natural, lightly confident expression",
+    "framing": "<crop / framing detail>"
+  },
+  "camera_and_lighting": {
+    "camera_style": "candid phone-camera realism",
+    "camera": {
+      "type": "front-facing smartphone camera",
+      "angle": "<angle that matches the shot>",
+      "distance": "arm's length, device fully out of frame unless a mirror shot",
+      "lens_feel": "natural iPhone perspective, no wide-angle distortion"
+    },
+    "lighting": {
+      "primary": "<primary light source for this environment>",
+      "contrast": "moderate, preserving facial structure and skin texture",
+      "bokeh": "none"
+    }
+  },
+  "realism": {
+    "detail_level": "high-fidelity photographic realism",
+    "constraints": ["no AI artifacts", "no over-stylization", "no loss of texture", "no artificial bokeh", "no cinematic grading"]
+  },
+  "aspect_ratio": "${aspectRatio || '4:5'}"
+}
+
+Rules:
+- If the activity is a mirror selfie, add a "mirror_rule" style note and make the phone visible in-hand in the mirror; otherwise keep the hand/forearm out of frame and add a "selfie_realism_rule" string.
+- Make the ${n} objects genuinely different from each other (pose, wardrobe, framing, lighting) while keeping identity locked.
+- Output STRICT valid JSON only.
+
+Return ONLY a JSON object of this exact shape: {"prompts": [ {<prompt object 1>}${n > 1 ? ', {<prompt object 2>}, ...' : ''} ]}.`
+}
+
 export function buildPostPrompt({ topic, length = 'long' }) {
   const lengthGuide =
     length === 'short'

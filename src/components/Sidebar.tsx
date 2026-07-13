@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images, ImagePlus, MessageSquare, MessagesSquare, Eraser, PenLine } from 'lucide-react';
+import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images, ImagePlus, MessageSquare, MessagesSquare, Eraser, PenLine, Wand2 } from 'lucide-react';
 import type { ViewKey, Project } from '../types';
 
 interface SidebarProps {
@@ -23,6 +23,7 @@ const nav: { key: ViewKey; label: string; icon: typeof LayoutGrid; badge?: 'queu
   { key: 'reddit', label: 'Reddit', icon: MessagesSquare },
   { key: 'reply', label: 'Reply', icon: MessageSquare },
   { key: 'write', label: 'Write', icon: PenLine },
+  { key: 'prompt', label: 'Prompt', icon: Wand2 },
   { key: 'clean', label: 'Clean', icon: Eraser },
   { key: 'schedule', label: 'Schedule', icon: CalendarClock, badge: 'scheduled' },
   { key: 'results', label: 'Results', icon: LineChart },
