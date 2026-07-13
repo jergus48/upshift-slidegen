@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Wand2, Loader2, Copy, Check } from 'lucide-react';
+import { Wand2, Loader2, Copy, Check, AlertTriangle } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { generateFlowPrompts } from '../lib/api';
@@ -33,6 +33,11 @@ const ACTIVITIES = [
 
 const ASPECT_RATIOS = ['4:5', '3:4', '9:16', '1:1'];
 
+// Shots where a phone screen is visible need a second reference image (the
+// app / streak / blocker screenshot) attached in Google Flow, or the on-screen
+// content gets invented.
+const NEEDS_SCREEN = /phone|streak|blocker|scroll|screen|\bapp\b/i;
+
 export function PromptView({ canGenerate, model }: PromptViewProps) {
   const [gender, setGender] = useState<'man' | 'woman'>('woman');
   const [environment, setEnvironment] = useState('Modern kitchen');
@@ -60,6 +65,8 @@ export function PromptView({ canGenerate, model }: PromptViewProps) {
       setBusy(false);
     }
   };
+
+  const showScreenWarning = NEEDS_SCREEN.test(activity) || NEEDS_SCREEN.test(environment);
 
   const copy = async (i: number, value: Record<string, unknown>) => {
     await navigator.clipboard.writeText(JSON.stringify(value, null, 2)).catch(() => {});
@@ -178,6 +185,17 @@ export function PromptView({ canGenerate, model }: PromptViewProps) {
                 </div>
               </div>
             </div>
+
+            {showScreenWarning && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-300">
+                <AlertTriangle size={14} className="text-amber-600 mt-0.5 shrink-0" />
+                <p className="text-[12px] text-amber-800 leading-snug">
+                  This shot shows a phone screen. In Google Flow, attach a <strong>second reference image</strong> (Anchor
+                  B — the app / streak / blocker screenshot) along with the character reference. The prompt locks the
+                  screen to Anchor B — without it, the on-screen content will be made up.
+                </p>
+              </div>
+            )}
 
             {error && <p className="text-[12px] text-red-600">{error}</p>}
 

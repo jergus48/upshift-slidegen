@@ -199,6 +199,7 @@ Each prompt object MUST follow EXACTLY this schema and key structure (same keys,
 
 Rules:
 - If the activity is a mirror selfie, add a "mirror_rule" style note and make the phone visible in-hand in the mirror; otherwise keep the hand/forearm out of frame and add a "selfie_realism_rule" string.
+- If the shot shows a phone screen (checking a streak, showing an app blocker, holding the phone toward the camera or mirror, scrolling, etc.), you MUST add a "screen_anchor" block: the on-screen content is EXTERNALLY ANCHORED to a SECOND reference image (Anchor B — a provided screenshot) and must match it exactly, never invented. Hold the phone so the screen faces the camera/mirror and is clearly readable. Example: "screen_anchor": {"source": "ANCHOR B (provided screenshot)", "rule": "phone screen content must match Anchor B exactly; do not generate or invent any UI, text, or numbers", "visibility": "phone angled so the screen is fully visible and readable toward the camera"}.
 - Make the ${n} objects genuinely different from each other (pose, wardrobe, framing, lighting) while keeping identity locked.
 - Output STRICT valid JSON only.
 
