@@ -11,13 +11,24 @@ interface PromptViewProps {
 
 const ENVIRONMENTS = [
   'Modern kitchen', 'Home gym', 'Commercial gym', 'Bedroom', 'Bathroom mirror', 'Living room',
-  'Car interior', 'Cafe', 'Office', 'City street', 'Rooftop', 'Beach', 'Hotel room', 'Closet / mirror',
+  'Home office / desk', 'Library', 'Cafe', 'Office', 'Car interior', 'City street', 'Park / outdoors',
+  'Rooftop', 'Beach', 'Hotel room', 'Closet / mirror', 'Locker room',
 ];
 
 const ACTIVITIES = [
+  // Selfies / posing
   'POV front-facing selfie', 'Mirror selfie in gym', 'Bathroom mirror selfie', 'Gym workout selfie',
-  'Getting ready', 'Sitting on kitchen counter', 'Cooking', 'Lounging on bed', 'Post-workout selfie',
-  'Coffee in hand', 'Full-body mirror outfit check',
+  'Post-workout selfie', 'Full-body mirror outfit check', 'Getting ready', 'Coffee in hand',
+  'Sitting on kitchen counter', 'Lounging on bed',
+  // Productivity / self-improvement
+  'Studying at a desk', 'Deep focus on laptop', 'Journaling in a notebook', 'Meditating calmly',
+  'Reading a book', 'Morning routine', 'Planning the day / to-do list', 'After a cold shower',
+  'Stretching / yoga', 'Making the bed', 'Drinking water', 'Walking outdoors', 'Cooking a healthy meal',
+  // Quitting-habit situations
+  'Throwing cigarettes in the trash', 'Snapping a cigarette in half', 'Pouring out alcohol',
+  'Throwing away a vape', 'Holding phone showing an app blocker', 'Checking a streak on phone',
+  'Resisting a craving, hand raised', 'Motivated after a workout', 'Fresh and focused, no phone',
+  'Calm and in control, empty hands',
 ];
 
 const ASPECT_RATIOS = ['4:5', '3:4', '9:16', '1:1'];
