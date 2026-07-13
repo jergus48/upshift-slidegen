@@ -96,10 +96,13 @@ export const redditRewrite = (title: string, body: string, model: string) =>
 export const generateComments = (opts: { text?: string; image?: string; model: string }) =>
   req<{ comments: string[] }>('/comment', { method: 'POST', body: JSON.stringify(opts) });
 
-// Human-sounding self-improvement / productivity posts (3 variants). `topic`
-// is optional — leave it out to let the model pick something.
-export const generatePosts = (opts: { topic?: string; model: string }) =>
-  req<{ posts: string[] }>('/post/generate', { method: 'POST', body: JSON.stringify(opts) });
+// Human-sounding self-improvement / productivity posts (3 variants, each with
+// a title + body). `topic` optional; `length` controls how long the body is.
+export const generatePosts = (opts: { topic?: string; length?: 'short' | 'medium' | 'long'; model: string }) =>
+  req<{ posts: { title: string; body: string }[] }>('/post/generate', {
+    method: 'POST',
+    body: JSON.stringify(opts),
+  });
 
 export const getAccounts = () => req<SocialAccount[]>('/accounts');
 

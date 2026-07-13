@@ -171,14 +171,18 @@ app.post('/api/comment', h(async (req, res) => {
 // on top of the prompt, since the post generator must never use " or '.
 const stripQuotes = (s) => String(s).replace(/["'‘’“”′″`]/g, '')
 
-// Generate human-sounding self-improvement / productivity posts.
+// Generate human-sounding self-improvement / productivity posts (title + body).
 app.post('/api/post/generate', h(async (req, res) => {
   const keys = await getKeys()
   const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
   const { topic } = req.body || {}
+  const length = ['short', 'medium', 'long'].includes(req.body?.length) ? req.body.length : 'long'
   const sampling = { temperature: 1.05, frequency_penalty: 0.5, presence_penalty: 0.4 }
-  const out = await chatJSON({ apiKey: keys.openrouter, model, prompt: buildPostPrompt({ topic }), sampling })
-  const posts = Array.isArray(out.posts) ? out.posts.map(stripQuotes).map((s) => s.trim()).filter(Boolean).slice(0, 3) : []
+  const out = await chatJSON({ apiKey: keys.openrouter, model, prompt: buildPostPrompt({ topic, length }), sampling })
+  const posts = (Array.isArray(out.posts) ? out.posts : [])
+    .map((p) => ({ title: stripQuotes(p?.title || '').trim(), body: stripQuotes(p?.body || '').trim() }))
+    .filter((p) => p.title || p.body)
+    .slice(0, 3)
   res.json({ posts })
 }))
 

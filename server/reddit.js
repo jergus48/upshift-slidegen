@@ -121,23 +121,31 @@ Example of GOOD (sounds like a real person):
 Return ONLY a JSON object: {"comments": ["reply one", "reply two", "reply three"]}.`
 }
 
-export function buildPostPrompt({ topic }) {
-  return `You are a real person writing a short post for social media (X / Threads / Reddit) about self improvement or productivity. Not a coach, not a brand, not selling anything. Just someone sharing a genuine thought.
+export function buildPostPrompt({ topic, length = 'long' }) {
+  const lengthGuide =
+    length === 'short'
+      ? 'Each body is about 3 to 4 sentences.'
+      : length === 'medium'
+      ? 'Each body is a solid paragraph, about 5 to 7 sentences.'
+      : 'Each body is 2 to 3 short paragraphs — a real little story or reflection with a beginning, a turn, and where it left you. Roughly 8 to 12 sentences.'
 
-${topic ? `What it should be about: ${topic}` : 'Pick something specific and relatable around self improvement or productivity — a small realization, a habit that actually helped, a mindset shift, an honest struggle.'}
+  return `You are a real person writing a post for social media (Reddit / X / Threads) about self improvement or productivity. Not a coach, not a brand, not selling anything. Just someone sharing a genuine story or thought.
 
-Write 3 different posts. Each should read like a real person typed it — a real thought, tiny story, or realization. Specific and grounded, not a generic advice listicle.
+${topic ? `What it should be about: ${topic}` : 'Pick something specific and relatable around self improvement or productivity — a small realization, a habit that actually helped, a mindset shift, an honest struggle you went through.'}
 
-Write like a normal person on their phone:
-- plain everyday words, short sentences, casual
-- DO NOT use the double-quote character (") or the single-quote/apostrophe (') at all. Write dont, im, youre, cant, thats, that way instead.
+Write 3 different posts. Each has a title and a body.
+- The title is a short, natural line that makes someone want to read — like a real Reddit post title, not a clickbait headline. Lowercase is fine.
+- ${lengthGuide} Tell it like a real experience with specific details, not generic advice.
+
+Write like a normal person typing it out:
+- plain everyday words, casual, real
+- DO NOT use the double-quote character (") or the single-quote/apostrophe (') anywhere. Write dont, im, youre, cant, thats, that way instead.
 - a tiny grammar slip or lowercase start is fine — it should feel human, not polished
-- vary the length: some just 1-2 sentences, some a short paragraph
 
 Never do these (this is what makes it sound like AI):
 - no numbered lists of tips, no "here are 5 ways", no "game changer", no "unlock your potential"
-- avoid AI/marketing words: delve, moreover, furthermore, tapestry, elevate, unleash, seamless, journey, in conclusion, boost, leverage, mindset (used as a buzzword), thrive
+- avoid AI/marketing words: delve, moreover, furthermore, tapestry, elevate, unleash, seamless, journey, in conclusion, boost, leverage, thrive, mindset (as a buzzword)
 - no motivational-poster one-liners, no hashtags, no emojis
 
-Return ONLY a JSON object: {"posts": ["post one", "post two", "post three"]}.`
+Return ONLY a JSON object: {"posts": [{"title": "...", "body": "..."}, {"title": "...", "body": "..."}, {"title": "...", "body": "..."}]}.`
 }
