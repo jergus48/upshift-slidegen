@@ -111,6 +111,39 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 6 (CTA): End with a final motivating step or CTA.',
   },
   {
+    key: 'hobbies',
+    label: 'Hobbies',
+    niche: 'self-improvement through hobbies',
+    audience: 'People who feel stuck and want to be happy again!',
+    styleMemory:
+      `${MINIMAL_VOICE}\n\n` +
+      'Structure & Flow:\n' +
+      'Slide 1 (Hook): A strong hook (e.g. "5 hobbies to finally become happy again" or "5 hobbies that make you a 10/10"). Never mention an app here.\n' +
+      'Slide 2 (The Problem): State that endless scrolling left you numb and unfulfilled.\n' +
+      'Slide 3 (Hobby): Give one real-world hobby that rebuilds confidence (e.g. lifting, running).\n' +
+      'Slide 4 (Hobby): Give a second hobby that sharpens the mind (e.g. reading, journaling).\n' +
+      'Slide 5 (Hobby): Give a third hobby that builds real connection (e.g. a sport, a club).\n' +
+      'Slide 6 (The Blocker): State that willpower fails and you must block the apps stealing your time.\n' +
+      'Slide 7 (The App): Explicitly mention using Upshift to block distractions and free up time for hobbies.\n' +
+      'Slide 8 (CTA): End with a final motivating step or CTA (e.g. Save this, start today).',
+  },
+  {
+    key: 'steps',
+    label: 'Walk more',
+    niche: 'walking more using step-gated apps',
+    audience: 'People addicted to TikTok who want to walk more!',
+    styleMemory:
+      `${MINIMAL_VOICE}\n\n` +
+      'Structure & Flow:\n' +
+      'Slide 1 (Hook): A strong personal hook (e.g. "My TikTok only unlocks after 5,000 steps" or "How I walk 10k+ steps a day thanks to my TikTok addiction"). Never mention an app here.\n' +
+      'Slide 2 (The Problem): State that you were glued to TikTok and barely moved all day.\n' +
+      'Slide 3 (The Flip): Explain the trick of turning the addiction into fuel for movement.\n' +
+      'Slide 4 (The Rule): State the rule: the app stays locked until you hit your step goal.\n' +
+      'Slide 5 (The Result): Describe walking 10k+ steps a day almost without noticing.\n' +
+      'Slide 6 (The App): Explicitly mention using Upshift to gate TikTok behind a daily step goal.\n' +
+      'Slide 7 (CTA): End with a final motivating step or CTA (e.g. Save this, move to unlock).',
+  },
+  {
     key: 'doomscrolling',
     label: 'Doomscrolling',
     niche: 'quitting doomscrolling',

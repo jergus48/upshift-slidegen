@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Loader2, Sparkles } from 'lucide-react';
 import { Button } from './Button';
 import { PackPicker } from './PackPicker';
+import { QUIT_PRESETS } from '../lib/quitPresets';
 
 interface GenerateModalProps {
   defaultPacks: string[];
@@ -116,6 +117,30 @@ export function GenerateModal({
           <div>
             <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Background packs</label>
             <PackPicker selected={packs} onChange={setPacks} disabled={generating} />
+          </div>
+
+          {/* Quick presets */}
+          <div>
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
+              Quick presets <span className="normal-case font-normal text-ink-6">(optional)</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {QUIT_PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  disabled={generating}
+                  onClick={() => {
+                    setAudience(p.audience);
+                    setStyleMemory(p.styleMemory);
+                  }}
+                  className="text-[12px] px-3 h-8 rounded-lg border border-line text-ink-3 hover:text-ink hover:border-line-2 hover:bg-raised transition-colors disabled:opacity-50"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-ink-6 mt-1">One click fills Audience and Style memory below.</p>
           </div>
 
           {/* Audience override */}
