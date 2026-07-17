@@ -15,12 +15,16 @@ export interface QuitPreset {
 // person, a little rough. Keep this in sync across every preset.
 const VIRAL_VOICE =
   'Voice, Tone & Formatting:\n' +
-  'Write like a real person posting to TikTok/Instagram — NOT a brand, NOT an AI. First person, casual, confident, a little raw. ' +
-  'ULTRA-MINIMALIST: one short line per slide, usually under 10 words. Punchy fragments are good. Contractions always.\n' +
+  'Write like a real person telling a friend how they actually did it — NOT a brand, NOT an AI. First person, warm, honest, specific.\n' +
+  'Each slide is ONE complete, natural sentence (roughly 8-16 words) with real grammar — articles, verbs, contractions. ' +
+  'NEVER write clipped telegram fragments like "Lost hours, no motivation, feeling empty." Write it like a human would say it out loud: ' +
+  '"I lost years of my life to this and called it a habit."\n' +
+  'The slides must read as ONE connected guide top to bottom — each slide is the next sentence of the same story, not a random new thought. ' +
+  'If the hook promises steps/ways, every middle slide is a real, specific, useful step (number them if the hook implies a count).\n' +
   'BANNED words/phrases (they scream AI): rediscover, embrace, unlock, journey, elevate, empower, "dive in", "in today\'s world", ' +
-  'boost, foster, cultivate, nurture, "take back control", "rewire your brain", "say goodbye to", "level up your life". ' +
+  'boost, foster, cultivate, nurture, "take back control", "rewire your brain", "say goodbye to", "level up your life", "game changer". ' +
   'No em-dashes. No hashtags. No markdown or bold. No emojis unless a slide explicitly calls for one. ' +
-  'Say the real, specific thing, not the polished thing. It should sound like a person talking, not a caption generator.';
+  'Mention the app on ONE slide near the end, softly and first-person ("what finally worked for me was…"), never salesy.';
 
 // Hard content rule for the 🌽 niche — the literal words are never allowed.
 const CORN_RULE =
@@ -197,19 +201,16 @@ export const QUIT_PRESETS: QuitPreset[] = [
     niche: 'quitting doomscrolling',
     audience: 'People who can\'t put their phone down!',
     styleMemory:
-      'Voice, Tone & Formatting:\n' +
-      'Write like a real person posting to TikTok/Instagram, not a brand or an AI. First person, casual, a little blunt. ' +
-      '1-2 short lines per slide, punchy. No banned AI words (rediscover, embrace, unlock, journey, elevate, "take back control"). ' +
-      'No em-dashes, no hashtags, no markdown/bold.\n\n' +
-      'Hook idea for slide 1 (no app): something like "How I stopped doomscrolling without deleting everything".\n\n' +
+      `${VIRAL_VOICE}\n\n` +
+      'Hook idea for slide 1 (no app): "How I stopped doomscrolling without deleting everything".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Strong hook about quitting the scroll without going off-grid.\n' +
       'Slide 2 (Reality): How short-form feeds fried your attention span.\n' +
       'Slide 3 (Nuance): The algorithm is the problem, not talking to your friends.\n' +
       'Slide 4 (Keep chat): Keep WhatsApp and Messenger fully open.\n' +
       'Slide 5 (Block feed): Hard daily limits on TikTok and Instagram.\n' +
-      'Slide 6 (The App): Name Upshift strict mode to actually enforce the limits.\n' +
-      'Slide 7 (Quest blocks): Upshift quest block forces a real task before you can scroll.\n' +
+      'Slide 6 (The App): What finally worked was Upshift strict mode to enforce the limits.\n' +
+      'Slide 7 (Quest blocks): The Upshift quest block forces a real task before you can scroll.\n' +
       'Slide 8 (CTA): Blunt closer.',
   },
 ];
