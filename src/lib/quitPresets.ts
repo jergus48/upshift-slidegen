@@ -49,8 +49,8 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 1 (Hook): Your own original hook in this spirit. Personal, no app.\n' +
       'Slide 2 (Rock bottom): Say the real cost in one blunt line (fried dopamine, no drive, dead eyes).\n' +
       'Slide 3 (The lie): Willpower alone never worked for you.\n' +
-      'Slide 4 (The fix): You need a blocker on strict mode you literally can\'t delete.\n' +
-      'Slide 5 (The App): Name Upshift for the strict block + streak tracking.\n' +
+      'Slide 4 (The fix): You need a blocker you literally can\'t delete once it\'s on.\n' +
+      'Slide 5 (The App): Upshift\'s 🌽 Block — a 30-day strict block on 🌽 sites that you physically can\'t remove.\n' +
       'Slide 6 (CTA): Blunt closer (e.g. "Day 1 starts now. Save this.").',
   },
   {
@@ -71,7 +71,7 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 4 (Hobby): One that builds a brain (reading, an instrument, chess).\n' +
       'Slide 5 (Hobby): One that gets you outside/around people (a sport, climbing, a club).\n' +
       'Slide 6 (The catch): None of it happens while you\'re doomscrolling 5 hours a day.\n' +
-      'Slide 7 (The App): Name Upshift to block the apps eating your time.\n' +
+      'Slide 7 (The App): Upshift\'s Quest Block — your apps only unlock after you\'ve done your real quests, so you actually have time for hobbies.\n' +
       'Slide 8 (CTA): Blunt closer (e.g. "Pick one. Start today.").',
   },
   {
@@ -92,27 +92,27 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 4 (Step): Move your body every day, even 20 minutes.\n' +
       'Slide 5 (Step): Cut the thing that keeps you stuck (endless scrolling).\n' +
       'Slide 6 (Step): Do one hard thing a day and keep the promise to yourself.\n' +
-      'Slide 7 (The App): Name Upshift to block the distractions killing your momentum.\n' +
+      'Slide 7 (The App): Upshift\'s Quest Block — your apps stay locked until your daily quests are done, so momentum wins over the scroll.\n' +
       'Slide 8 (CTA): Blunt closer (e.g. "Start with step one. Today.").',
   },
   {
     key: 'steps',
     label: 'Walk more',
-    niche: 'walking more via a step-gated phone',
-    audience: 'People addicted to TikTok who never walk!',
+    niche: 'detaching from your phone with a step-gated blocker',
+    audience: 'People glued to TikTok who want to move more!',
     styleMemory:
       `${VIRAL_VOICE}\n\n` +
       'Hook inspiration (examples of the angle ONLY — write your own original, first person, no app mention):\n' +
       '- "My TikTok only unlocks after 5,000 steps"\n' +
       '- "How I walk 10k+ steps a day thanks to my TikTok addiction"\n\n' +
+      'What Upshift actually does (be accurate on the app slide): Walk Block makes your social apps only open after you hit a step goal — or a version where every step you take converts into minutes of allowed app time. That is the whole mechanic; do not invent other features.\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Your own original hook in this spirit.\n' +
-      'Slide 2 (Before): You used to scroll all day and barely leave the bed.\n' +
-      'Slide 3 (The flip): So you turned the addiction into the fuel.\n' +
-      'Slide 4 (The rule): TikTok stays locked until you hit your step goal.\n' +
-      'Slide 5 (The result): Now you walk 10k+ a day without even trying.\n' +
-      'Slide 6 (The App): Name Upshift for gating apps behind a daily step goal.\n' +
-      'Slide 7 (CTA): Blunt closer (e.g. "Move to unlock. Save this.").',
+      'Slide 2 (Before): You were locked into your phone all day, scrolling and barely moving.\n' +
+      'Slide 3 (The idea): You made your phone something you have to earn with steps.\n' +
+      'Slide 4 (The App): Upshift\'s Walk Block — your socials only open after you hit your step goal, or every step converts into minutes of app time.\n' +
+      'Slide 5 (The result): Now you rack up 10k+ steps a day just to unlock your feed, without even thinking about it.\n' +
+      'Slide 6 (CTA): Blunt closer (e.g. "Walk to unlock. Save this.").',
   },
   {
     key: 'smoking',
@@ -211,8 +211,8 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 3 (Nuance): The algorithm is the problem, not talking to your friends.\n' +
       'Slide 4 (Keep chat): Keep WhatsApp and Messenger fully open.\n' +
       'Slide 5 (Block feed): Hard daily limits on TikTok and Instagram.\n' +
-      'Slide 6 (The App): What finally worked was Upshift strict mode to enforce the limits.\n' +
-      'Slide 7 (Quest blocks): The Upshift quest block forces a real task before you can scroll.\n' +
+      'Slide 6 (The App): Upshift\'s Quest Block — your apps only unlock once your chosen daily quests (gym, work, reading) are done.\n' +
+      'Slide 7 (The result): You get the scroll back only after you\'ve earned it, so the day isn\'t gone.\n' +
       'Slide 8 (CTA): Blunt closer.',
   },
 ];
