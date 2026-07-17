@@ -74,6 +74,7 @@ Voice & rules for every slide:
 - ${appRule}
 - NEVER use these AI/marketing words: rediscover, embrace, unlock, journey, elevate, empower, "dive in", "in today's world", boost, foster, cultivate, nurture, "take back control", "rewire your brain", "say goodbye to", "level up your life", "game changer", "hustle". No em-dashes. No hashtags inside slides.
 - Content rule: NEVER write the words "porn", "pornography", "adult content", "explicit", or "NSFW". Use the 🌽 emoji instead (e.g. "quit 🌽", "🌽 sites").
+- NEVER prefix a slide with a positional label like "Slide 1:", "Slide 2 -", "1)". The slide text is only the words the viewer reads — no numbering, no labels.
 - No two slides should make the same point. ${bodyN > 0 ? `You have ${bodyN} middle slides — each needs its own distinct idea.` : ''}
 
 Respond with a JSON object of this exact shape:
@@ -145,13 +146,16 @@ function clampSlides(slides, want) {
 }
 
 // Hard guarantee for the content rule: the literal words are never allowed to
-// reach the user, even if the model slips. Replace them with the 🌽 emoji. This
-// runs on every hook/slide/caption after generation.
+// reach the user, even if the model slips. Replace them with the 🌽 emoji. Also
+// strip any positional "Slide N:" / "Slide N =" label the model leaked from the
+// prompt's slot map into the actual text. Runs on every hook/slide/caption.
 function scrubCorn(text) {
   if (typeof text !== 'string') return text
   return text
+    .replace(/^\s*slide\s*\d+\s*[:=.\-–—)]+\s*/i, '')
     .replace(/\bpornography\b/gi, '🌽')
     .replace(/\bporn\b/gi, '🌽')
     .replace(/\badult content\b/gi, '🌽')
     .replace(/\bNSFW\b/gi, '🌽')
+    .trim()
 }
