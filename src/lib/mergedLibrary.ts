@@ -7,14 +7,21 @@
 import type { LibraryImage, LibraryPack } from '../types';
 import { getLibrary } from './api';
 import { listLocalImages } from './localLibrary';
+import { getHiddenPacks } from './hiddenPacks';
 
-export async function getMergedLibrary(): Promise<LibraryImage[]> {
+// `includeHidden` keeps user-hidden packs in the result — only the Library view
+// (which offers a "Show" toggle) passes true. Everything that generates slides
+// uses the default so hidden packs never contribute backgrounds.
+export async function getMergedLibrary(includeHidden = false): Promise<LibraryImage[]> {
   const [bundled, local] = await Promise.all([getLibrary(), listLocalImages()]);
-  return [...local, ...bundled]; // local (newest) first, bundled packs after
+  const merged = [...local, ...bundled]; // local (newest) first, bundled packs after
+  if (includeHidden) return merged;
+  const hidden = getHiddenPacks();
+  return merged.filter((img) => !hidden.has(img.pack));
 }
 
-export async function getMergedPacks(): Promise<LibraryPack[]> {
-  const images = await getMergedLibrary();
+export async function getMergedPacks(includeHidden = false): Promise<LibraryPack[]> {
+  const images = await getMergedLibrary(includeHidden);
   const map = new Map<string, LibraryPack>();
   for (const img of images) {
     if (!map.has(img.pack)) map.set(img.pack, { name: img.pack, source: img.source, count: 0, covers: [] });

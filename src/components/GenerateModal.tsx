@@ -5,12 +5,11 @@ import { PackPicker } from './PackPicker';
 import { QUIT_PRESETS } from '../lib/quitPresets';
 
 interface GenerateModalProps {
-  defaultPacks: string[];
   defaultAudience: string;
   defaultStyleMemory: string;
   generating: boolean;
   onClose: () => void;
-  onGenerate: (opts: { count: number; slidesPerShow: number; packs: string[]; audience?: string; styleMemory?: string }) => void;
+  onGenerate: (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string }) => void;
 }
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
@@ -22,7 +21,6 @@ const textareaClass =
   'focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50';
 
 export function GenerateModal({
-  defaultPacks,
   defaultAudience,
   defaultStyleMemory,
   generating,
@@ -31,7 +29,8 @@ export function GenerateModal({
 }: GenerateModalProps) {
   const [count, setCount] = useState(3);
   const [slidesPerShow, setSlidesPerShow] = useState(6);
-  const [packs, setPacks] = useState<string[]>(defaultPacks);
+  const [length, setLength] = useState<'short' | 'long'>('short');
+  const [packs, setPacks] = useState<string[]>([]);
   const [audience, setAudience] = useState('');
   const [styleMemory, setStyleMemory] = useState('');
 
@@ -39,6 +38,7 @@ export function GenerateModal({
     onGenerate({
       count,
       slidesPerShow,
+      length,
       packs,
       audience: audience.trim() || undefined,
       styleMemory: styleMemory.trim() || undefined,
@@ -111,6 +111,30 @@ export function GenerateModal({
               />
             </div>
             <p className="text-[11px] text-ink-6 mt-1">Including the hook as slide 1. Default 6.</p>
+          </div>
+
+          {/* Slide length */}
+          <div>
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Slide length</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { key: 'short', label: 'Short', hint: 'One-liners' },
+                { key: 'long', label: 'Long', hint: 'Title + body' },
+              ] as const).map((o) => (
+                <button
+                  key={o.key}
+                  onClick={() => setLength(o.key)}
+                  disabled={generating}
+                  className={`h-auto py-2 px-3 rounded-lg border text-left transition-colors disabled:opacity-50 ${
+                    length === o.key ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
+                  }`}
+                >
+                  <div className="text-[13px] font-medium">{o.label}</div>
+                  <div className={`text-[11px] ${length === o.key ? 'text-bg/70' : 'text-ink-6'}`}>{o.hint}</div>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-ink-6 mt-1">The first slide is always a one-line hook, either way.</p>
           </div>
 
           {/* Packs */}

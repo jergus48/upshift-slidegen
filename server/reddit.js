@@ -231,6 +231,7 @@ Never do these (this is what makes it sound like AI):
 - no numbered lists of tips, no "here are 5 ways", no "game changer", no "unlock your potential"
 - avoid AI/marketing words: delve, moreover, furthermore, tapestry, elevate, unleash, seamless, journey, in conclusion, boost, leverage, thrive, mindset (as a buzzword)
 - no motivational-poster one-liners, no hashtags, no emojis
+- never write the words porn, pornography, adult content, explicit or NSFW — if the topic needs it, use the 🌽 emoji instead (e.g. quit 🌽, 🌽 sites)
 
 Return ONLY a JSON object: {"posts": [{"title": "...", "body": "..."}, {"title": "...", "body": "..."}, {"title": "...", "body": "..."}]}.`
 }

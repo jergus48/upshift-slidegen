@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Download, Trash2, Upload } from 'lucide-react';
+import { Loader2, Download, Trash2, Upload, Eye, EyeOff } from 'lucide-react';
 import type { LibraryImage } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { scrapePinterest } from '../lib/api';
 import { getMergedLibrary } from '../lib/mergedLibrary';
 import { addLocalImages, removeLocalImage } from '../lib/localLibrary';
+import { getHiddenPacks, setPackHidden } from '../lib/hiddenPacks';
 
 // Read a File as a base64 data URL for shipping to the server as JSON.
 function fileToDataUrl(file: File): Promise<string> {
@@ -35,10 +36,18 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
   const [uploadTarget, setUploadTarget] = useState(NEW_PACK);
   const [uploadPack, setUploadPack] = useState('My Uploads');
   const [uploading, setUploading] = useState(false);
+  const [hidden, setHidden] = useState<Set<string>>(() => getHiddenPacks());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const load = () => getMergedLibrary().then(setImages).catch((e) => setError(e.message));
+  // Show every pack here (including hidden ones) so they can be un-hidden.
+  const load = () => getMergedLibrary(true).then(setImages).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
+
+  const toggleHidden = (pack: string) => {
+    const next = !hidden.has(pack);
+    setPackHidden(pack, next);
+    setHidden(getHiddenPacks());
+  };
 
   const scrape = async () => {
     setError(null);
@@ -210,13 +219,24 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
                 <Loader2 size={14} className="animate-spin" /> Loading library…
               </div>
             ) : (
-              groups.map(([pack, imgs]) => (
+              groups.map(([pack, imgs]) => {
+                const isHidden = hidden.has(pack);
+                return (
                 <div key={pack}>
                   <div className="flex items-baseline gap-3 mb-3">
                     <h2 className="text-[13px] font-semibold text-ink uppercase tracking-widest">{pack}</h2>
                     <span className="text-[11px] text-ink-6">{imgs.length}</span>
+                    {isHidden && <span className="text-[10px] text-ink-6 uppercase tracking-wider">Hidden</span>}
+                    <button
+                      onClick={() => toggleHidden(pack)}
+                      className="ml-auto flex items-center gap-1 text-[11px] text-ink-5 hover:text-ink transition-colors"
+                      title={isHidden ? 'Show this pack in generation' : 'Hide this pack from generation'}
+                    >
+                      {isHidden ? <Eye size={13} /> : <EyeOff size={13} />}
+                      {isHidden ? 'Show' : 'Hide'}
+                    </button>
                   </div>
-                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+                  <div className={`grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 ${isHidden ? 'opacity-40' : ''}`}>
                     {imgs.map((img) => (
                       <div key={img.id} className="group relative aspect-[9/16] rounded-lg overflow-hidden bg-raised">
                         <img src={img.url} alt="" loading="lazy" className="w-full h-full object-cover" />
@@ -233,7 +253,8 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
                     ))}
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

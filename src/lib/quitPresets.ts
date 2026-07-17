@@ -1,6 +1,6 @@
-// One-click Brain presets for the quit-habit slideshow niches. Each fills the
-// audience + style memory (niche/app fields are left untouched). The style
-// memory encodes the exact voice and per-slide structure for that niche.
+// One-click Brain presets for the slideshow niches. Each fills the audience +
+// style memory (niche/app fields are left untouched). The style memory encodes
+// the exact voice, the real hooks, and the per-slide structure for that niche.
 
 export interface QuitPreset {
   key: string;
@@ -10,58 +10,136 @@ export interface QuitPreset {
   styleMemory: string;
 }
 
-const MINIMAL_VOICE =
+// Shared voice block. The single most important job here is to stop the output
+// sounding like AI/marketing copy — real TikTok/IG creators write blunt, first
+// person, a little rough. Keep this in sync across every preset.
+const VIRAL_VOICE =
   'Voice, Tone & Formatting:\n' +
-  'Write text for a highly visual social media carousel. The text must be ULTRA-MINIMALIST. ' +
-  'Write exactly ONE short sentence (under 10-12 words) per slide. No paragraphs, no explanations, ' +
-  'no slang. It must be punchy and direct. Do not use bold text or markdown formatting in the output.';
+  'Write like a real person posting to TikTok/Instagram — NOT a brand, NOT an AI. First person, casual, confident, a little raw. ' +
+  'ULTRA-MINIMALIST: one short line per slide, usually under 10 words. Punchy fragments are good. Contractions always.\n' +
+  'BANNED words/phrases (they scream AI): rediscover, embrace, unlock, journey, elevate, empower, "dive in", "in today\'s world", ' +
+  'boost, foster, cultivate, nurture, "take back control", "rewire your brain", "say goodbye to", "level up your life". ' +
+  'No em-dashes. No hashtags. No markdown or bold. No emojis unless a slide explicitly calls for one. ' +
+  'Say the real, specific thing, not the polished thing. It should sound like a person talking, not a caption generator.';
+
+// Hard content rule for the 🌽 niche — the literal words are never allowed.
+const CORN_RULE =
+  '\n\nCONTENT RULE (non-negotiable): NEVER write the words "porn", "pornography", "adult content", "explicit", or "NSFW". ' +
+  'Always use the 🌽 emoji instead (e.g. "quit 🌽", "🌽 sites", "watching 🌽", "🌽 addiction"). This applies to every single slide, no exceptions.';
 
 export const QUIT_PRESETS: QuitPreset[] = [
   {
-    key: 'porn',
-    label: 'Porn',
-    niche: 'quitting porn',
-    audience: 'People trying to quit porn!',
+    key: 'corn',
+    label: '🌽',
+    niche: 'quitting 🌽',
+    audience: 'Guys trying to quit 🌽 for good!',
     styleMemory:
-      `${MINIMAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}${CORN_RULE}\n\n` +
+      'Hooks (use one of these or a close variant on slide 1, first person, no app mention):\n' +
+      '- "How I quit gooning after a decade"\n' +
+      '- "How to quit watching 🌽 in 2026"\n' +
+      '- "How I became 100 days 🌽 free in 2026"\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): A simple hook (e.g. "5 steps to break free from porn"). Never mention an app here.\n' +
-      'Slide 2 (The Effects): Mention the mental/brain damage (dopamine, drive, social skills) in one sentence.\n' +
-      'Slide 3 (Willpower): State that willpower alone is not enough.\n' +
-      'Slide 4 (Strict Mode): State the need for a strict mode blocker with no possibility to delete.\n' +
-      'Slide 5 (The App): Explicitly mention using Upshift for strict blocking and tracking.\n' +
-      'Slide 6 (CTA): End with a final motivating step or CTA (e.g. Save this, take your life back).',
+      'Slide 1 (Hook): One of the hooks above. Personal, no app.\n' +
+      'Slide 2 (Rock bottom): Say the real cost in one blunt line (fried dopamine, no drive, dead eyes).\n' +
+      'Slide 3 (The lie): Willpower alone never worked for you.\n' +
+      'Slide 4 (The fix): You need a blocker on strict mode you literally can\'t delete.\n' +
+      'Slide 5 (The App): Name Upshift for the strict block + streak tracking.\n' +
+      'Slide 6 (CTA): Blunt closer (e.g. "Day 1 starts now. Save this.").',
+  },
+  {
+    key: 'hobbies',
+    label: 'Hobbies',
+    niche: 'attractive hobbies / self-improvement',
+    audience: 'Guys who feel stuck and want to become a 10/10!',
+    styleMemory:
+      `${VIRAL_VOICE}\n\n` +
+      'Hooks (use one of these or a close variant on slide 1, no app mention):\n' +
+      '- "5 hobbies to finally become happy again"\n' +
+      '- "5 hobbies that make you a 10/10 man"\n' +
+      '- "How to unf*ck your life in 7 steps"\n\n' +
+      'Structure & Flow:\n' +
+      'Slide 1 (Hook): One of the hooks above.\n' +
+      'Slide 2 (Callout): Blunt line about being glued to your phone doing nothing.\n' +
+      'Slide 3 (Hobby): One real hobby that builds a body (lifting, running, boxing).\n' +
+      'Slide 4 (Hobby): One that builds a brain (reading, an instrument, chess).\n' +
+      'Slide 5 (Hobby): One that gets you outside/around people (a sport, climbing, a club).\n' +
+      'Slide 6 (The catch): None of it happens while you\'re doomscrolling 5 hours a day.\n' +
+      'Slide 7 (The App): Name Upshift to block the apps eating your time.\n' +
+      'Slide 8 (CTA): Blunt closer (e.g. "Pick one. Start today.").',
+  },
+  {
+    key: 'rebuild',
+    label: 'Rebuild yourself',
+    niche: 'self-improvement / self-worth',
+    audience: 'People at rock bottom who want to rebuild!',
+    styleMemory:
+      `${VIRAL_VOICE}\n\n` +
+      'Hooks (use one of these or a close variant on slide 1, no app mention):\n' +
+      '- "7 steps to rebuild yourself"\n' +
+      '- "5 ways to better yourself"\n' +
+      '- "How to start loving yourself again"\n\n' +
+      'Structure & Flow:\n' +
+      'Slide 1 (Hook): One of the hooks above.\n' +
+      'Slide 2 (Truth): Blunt line about how you let yourself go / hit rock bottom.\n' +
+      'Slide 3 (Step): Fix the basics first (sleep, water, a walk, a shower).\n' +
+      'Slide 4 (Step): Move your body every day, even 20 minutes.\n' +
+      'Slide 5 (Step): Cut the thing that keeps you stuck (endless scrolling).\n' +
+      'Slide 6 (Step): Do one hard thing a day and keep the promise to yourself.\n' +
+      'Slide 7 (The App): Name Upshift to block the distractions killing your momentum.\n' +
+      'Slide 8 (CTA): Blunt closer (e.g. "Start with step one. Today.").',
+  },
+  {
+    key: 'steps',
+    label: 'Walk more',
+    niche: 'walking more via a step-gated phone',
+    audience: 'People addicted to TikTok who never walk!',
+    styleMemory:
+      `${VIRAL_VOICE}\n\n` +
+      'Hooks (use one of these or a close variant on slide 1, first person, no app mention):\n' +
+      '- "My TikTok only unlocks after 5,000 steps"\n' +
+      '- "How I walk 10k+ steps a day thanks to my TikTok addiction"\n\n' +
+      'Structure & Flow:\n' +
+      'Slide 1 (Hook): One of the hooks above.\n' +
+      'Slide 2 (Before): You used to scroll all day and barely leave the bed.\n' +
+      'Slide 3 (The flip): So you turned the addiction into the fuel.\n' +
+      'Slide 4 (The rule): TikTok stays locked until you hit your step goal.\n' +
+      'Slide 5 (The result): Now you walk 10k+ a day without even trying.\n' +
+      'Slide 6 (The App): Name Upshift for gating apps behind a daily step goal.\n' +
+      'Slide 7 (CTA): Blunt closer (e.g. "Move to unlock. Save this.").',
   },
   {
     key: 'smoking',
     label: 'Smoking',
     niche: 'quitting smoking',
-    audience: 'People trying to quit smoking!',
+    audience: 'People trying to quit smoking for good!',
     styleMemory:
-      `${MINIMAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}\n\n` +
+      'Hook idea for slide 1 (first person, no app): "How I quit smoking after X years".\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): A simple hook (e.g. "5 steps to quit smoking for good"). Never mention an app here.\n' +
-      'Slide 2 (The Reality): Mention the physical/health damage (lungs, energy) in one sentence.\n' +
-      'Slide 3 (Willpower): State that willpower is not enough and you need to remove triggers.\n' +
-      'Slide 4 (The Strategy): State the need to relentlessly track progress and celebrate small wins.\n' +
-      'Slide 5 (The App): Explicitly mention using Upshift for tracking your streak and wins.\n' +
-      'Slide 6 (CTA): End with a final motivating step or CTA (e.g. Save this, take your health back).',
+      'Slide 1 (Hook): Personal hook about quitting for good.\n' +
+      'Slide 2 (Reality): One blunt line on what it did to your lungs/energy.\n' +
+      'Slide 3 (The lie): Willpower alone never held — you have to kill the triggers.\n' +
+      'Slide 4 (The move): Track every clean day so quitting feels like winning.\n' +
+      'Slide 5 (The App): Name Upshift for tracking your streak and wins.\n' +
+      'Slide 6 (CTA): Blunt closer (e.g. "Day 1. Save this.").',
   },
   {
     key: 'vaping',
     label: 'Vaping',
     niche: 'quitting vaping',
-    audience: 'People trying to quit vaping!',
+    audience: 'People trying to quit vaping for good!',
     styleMemory:
-      `${MINIMAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}\n\n` +
+      'Hook idea for slide 1 (first person, no app): "How I finally put the vape down".\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): A simple hook (e.g. "6 steps to quit vaping for good"). Never mention an app here.\n' +
-      'Slide 2 (The Reality): Mention the anxiety spikes and lung damage in one sentence.\n' +
-      'Slide 3 (Environment): State that willpower is not enough and you must throw away all devices.\n' +
-      'Slide 4 (Substitution): Advise replacing the constant hand-to-mouth habit with a healthier alternative.\n' +
-      'Slide 5 (The Strategy): State the need to track progress and celebrate beaten cravings.\n' +
-      'Slide 6 (The App): Explicitly mention using Upshift for tracking your streak and wins.\n' +
-      'Slide 7 (CTA): End with a final motivating step or CTA.',
+      'Slide 1 (Hook): Personal hook about quitting the vape.\n' +
+      'Slide 2 (Reality): One blunt line on the anxiety spikes and wrecked lungs.\n' +
+      'Slide 3 (Environment): Throw every device out — willpower won\'t save you.\n' +
+      'Slide 4 (Swap): Replace the hand-to-mouth habit with something that isn\'t killing you.\n' +
+      'Slide 5 (The move): Track every beaten craving.\n' +
+      'Slide 6 (The App): Name Upshift for tracking your streak and wins.\n' +
+      'Slide 7 (CTA): Blunt closer.',
   },
   {
     key: 'weed',
@@ -69,31 +147,33 @@ export const QUIT_PRESETS: QuitPreset[] = [
     niche: 'quitting weed',
     audience: 'People trying to quit smoking weed!',
     styleMemory:
-      `${MINIMAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}\n\n` +
+      'Hook idea for slide 1 (first person, no app): "How I quit weed and got my brain back".\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): A simple hook (e.g. "5 steps to quit smoking weed"). Never mention an app here.\n' +
-      'Slide 2 (The Reality): Mention the mental fog and loss of motivation in one sentence.\n' +
-      'Slide 3 (Willpower): State that willpower is not enough and you need to remove triggers.\n' +
-      'Slide 4 (The Strategy): State the need to relentlessly track progress and celebrate small wins.\n' +
-      'Slide 5 (The App): Explicitly mention using Upshift for tracking your streak and wins.\n' +
-      'Slide 6 (CTA): End with a final motivating step or CTA (e.g. Save this, get your mind back).',
+      'Slide 1 (Hook): Personal hook about quitting weed.\n' +
+      'Slide 2 (Reality): One blunt line on the fog and zero motivation.\n' +
+      'Slide 3 (The lie): Willpower alone never held — cut the triggers.\n' +
+      'Slide 4 (The move): Track every clean day so it feels like winning.\n' +
+      'Slide 5 (The App): Name Upshift for tracking your streak and wins.\n' +
+      'Slide 6 (CTA): Blunt closer (e.g. "Get your mind back. Save this.").',
   },
   {
     key: 'alcohol',
     label: 'Alcohol',
     niche: 'quitting alcohol',
-    audience: 'People trying to quit drinking alcohol!',
+    audience: 'People trying to quit drinking!',
     styleMemory:
-      `${MINIMAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}\n\n` +
+      'Hook idea for slide 1 (first person, no app): "How I quit drinking without telling anyone".\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): A simple hook (e.g. "7 steps to quit drinking alcohol"). Never mention an app here.\n' +
-      'Slide 2 (The Reality): Mention the damage to your sleep, energy and body.\n' +
-      'Slide 3 (Environment): State that willpower is not enough and you must empty your home of alcohol.\n' +
-      'Slide 4 (Substitution): Advise replacing the evening drink with a healthy new habit.\n' +
-      'Slide 5 (Social): Advise temporarily avoiding events centered entirely around drinking.\n' +
-      'Slide 6 (The Strategy): State the need to track progress and celebrate small wins.\n' +
-      'Slide 7 (The App): Explicitly mention using Upshift for tracking your streak and wins.\n' +
-      'Slide 8 (CTA): End with a final motivating step or CTA.',
+      'Slide 1 (Hook): Personal hook about quitting drinking.\n' +
+      'Slide 2 (Reality): One blunt line on the trashed sleep, energy and body.\n' +
+      'Slide 3 (Environment): Empty the house — willpower won\'t save you.\n' +
+      'Slide 4 (Swap): Replace the evening drink with something that isn\'t a hangover.\n' +
+      'Slide 5 (Social): Skip the events that are just an excuse to drink, for now.\n' +
+      'Slide 6 (The move): Track every dry day.\n' +
+      'Slide 7 (The App): Name Upshift for tracking your streak and wins.\n' +
+      'Slide 8 (CTA): Blunt closer.',
   },
   {
     key: 'gambling',
@@ -101,65 +181,35 @@ export const QUIT_PRESETS: QuitPreset[] = [
     niche: 'quitting gambling',
     audience: 'People trying to quit gambling!',
     styleMemory:
-      `${MINIMAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}\n\n` +
+      'Hook idea for slide 1 (first person, no app): "How I quit gambling after losing everything".\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): A simple hook (e.g. "6 steps to quit gambling for good"). Never mention an app here.\n' +
-      'Slide 2 (The Reality): Mention the financial and mental destruction in one sentence.\n' +
-      'Slide 3 (Environment): State that willpower is not enough and you must block access.\n' +
-      'Slide 4 (The Strategy): State the need to track progress and celebrate avoided bets.\n' +
-      'Slide 5 (The App): Explicitly mention using Upshift for tracking your streak and wins.\n' +
-      'Slide 6 (CTA): End with a final motivating step or CTA.',
-  },
-  {
-    key: 'hobbies',
-    label: 'Hobbies',
-    niche: 'self-improvement through hobbies',
-    audience: 'People who feel stuck and want to be happy again!',
-    styleMemory:
-      `${MINIMAL_VOICE}\n\n` +
-      'Structure & Flow:\n' +
-      'Slide 1 (Hook): A strong hook (e.g. "5 hobbies to finally become happy again" or "5 hobbies that make you a 10/10"). Never mention an app here.\n' +
-      'Slide 2 (The Problem): State that endless scrolling left you numb and unfulfilled.\n' +
-      'Slide 3 (Hobby): Give one real-world hobby that rebuilds confidence (e.g. lifting, running).\n' +
-      'Slide 4 (Hobby): Give a second hobby that sharpens the mind (e.g. reading, journaling).\n' +
-      'Slide 5 (Hobby): Give a third hobby that builds real connection (e.g. a sport, a club).\n' +
-      'Slide 6 (The Blocker): State that willpower fails and you must block the apps stealing your time.\n' +
-      'Slide 7 (The App): Explicitly mention using Upshift to block distractions and free up time for hobbies.\n' +
-      'Slide 8 (CTA): End with a final motivating step or CTA (e.g. Save this, start today).',
-  },
-  {
-    key: 'steps',
-    label: 'Walk more',
-    niche: 'walking more using step-gated apps',
-    audience: 'People addicted to TikTok who want to walk more!',
-    styleMemory:
-      `${MINIMAL_VOICE}\n\n` +
-      'Structure & Flow:\n' +
-      'Slide 1 (Hook): A strong personal hook (e.g. "My TikTok only unlocks after 5,000 steps" or "How I walk 10k+ steps a day thanks to my TikTok addiction"). Never mention an app here.\n' +
-      'Slide 2 (The Problem): State that you were glued to TikTok and barely moved all day.\n' +
-      'Slide 3 (The Flip): Explain the trick of turning the addiction into fuel for movement.\n' +
-      'Slide 4 (The Rule): State the rule: the app stays locked until you hit your step goal.\n' +
-      'Slide 5 (The Result): Describe walking 10k+ steps a day almost without noticing.\n' +
-      'Slide 6 (The App): Explicitly mention using Upshift to gate TikTok behind a daily step goal.\n' +
-      'Slide 7 (CTA): End with a final motivating step or CTA (e.g. Save this, move to unlock).',
+      'Slide 1 (Hook): Personal hook about quitting gambling.\n' +
+      'Slide 2 (Reality): One blunt line on the money and the mind it destroyed.\n' +
+      'Slide 3 (Environment): Block every app and site — willpower won\'t save you.\n' +
+      'Slide 4 (The move): Track every bet you didn\'t place.\n' +
+      'Slide 5 (The App): Name Upshift for the strict block + streak tracking.\n' +
+      'Slide 6 (CTA): Blunt closer.',
   },
   {
     key: 'doomscrolling',
     label: 'Doomscrolling',
     niche: 'quitting doomscrolling',
-    audience: 'People trying to quit doomscrolling!',
+    audience: 'People who can\'t put their phone down!',
     styleMemory:
       'Voice, Tone & Formatting:\n' +
-      'Write text for a visual social media carousel. The text should be clear and descriptive but punchy. ' +
-      'Write 1-2 short sentences per slide. No slang. Do not use bold text or markdown formatting in the output.\n\n' +
+      'Write like a real person posting to TikTok/Instagram, not a brand or an AI. First person, casual, a little blunt. ' +
+      '1-2 short lines per slide, punchy. No banned AI words (rediscover, embrace, unlock, journey, elevate, "take back control"). ' +
+      'No em-dashes, no hashtags, no markdown/bold.\n\n' +
+      'Hook idea for slide 1 (no app): something like "How I stopped doomscrolling without deleting everything".\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): A strong hook about stopping doomscrolling without isolating yourself. Never mention an app here.\n' +
-      'Slide 2 (The Reality): Explain how short-form feeds destroy your attention span.\n' +
-      'Slide 3 (The Nuance): Differentiate addictive algorithms from real communication.\n' +
-      'Slide 4 (Keep Chat): Keep WhatsApp and Messenger fully accessible for friends.\n' +
-      'Slide 5 (Block Feed): Set strict daily time limits on apps like TikTok and Instagram.\n' +
-      'Slide 6 (The App): Explicitly mention using Upshift strict mode to enforce these limits.\n' +
-      'Slide 7 (Quest Blocks): Explain using the Upshift quest block to force a healthy task before scrolling.\n' +
-      'Slide 8 (CTA): End with a final motivating step and a Call to Action.',
+      'Slide 1 (Hook): Strong hook about quitting the scroll without going off-grid.\n' +
+      'Slide 2 (Reality): How short-form feeds fried your attention span.\n' +
+      'Slide 3 (Nuance): The algorithm is the problem, not talking to your friends.\n' +
+      'Slide 4 (Keep chat): Keep WhatsApp and Messenger fully open.\n' +
+      'Slide 5 (Block feed): Hard daily limits on TikTok and Instagram.\n' +
+      'Slide 6 (The App): Name Upshift strict mode to actually enforce the limits.\n' +
+      'Slide 7 (Quest blocks): Upshift quest block forces a real task before you can scroll.\n' +
+      'Slide 8 (CTA): Blunt closer.',
   },
 ];
