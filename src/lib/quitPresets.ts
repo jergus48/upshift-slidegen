@@ -24,7 +24,9 @@ const VIRAL_VOICE =
   'BANNED words/phrases (they scream AI): rediscover, embrace, unlock, journey, elevate, empower, "dive in", "in today\'s world", ' +
   'boost, foster, cultivate, nurture, "take back control", "rewire your brain", "say goodbye to", "level up your life", "game changer". ' +
   'No em-dashes. No hashtags. No markdown or bold. No emojis unless a slide explicitly calls for one. ' +
-  'Mention the app on ONE slide near the end, softly and first-person ("what finally worked for me was…"), never salesy.';
+  'The app has NO community, forum, or support group — never reference an in-app community, other members, or their stories/motivation. ' +
+  'Mention the app on ONE slide near the end, softly and first-person ("what finally worked for me was…"), never salesy.\n' +
+  'HOOKS: any example hooks below are ONLY inspiration for the angle and tone — always write your OWN fresh, original hook. Never copy an example word for word, and vary it every time.';
 
 // Hard content rule for the 🌽 niche — the literal words are never allowed.
 const CORN_RULE =
@@ -39,12 +41,12 @@ export const QUIT_PRESETS: QuitPreset[] = [
     audience: 'Guys trying to quit 🌽 for good!',
     styleMemory:
       `${VIRAL_VOICE}${CORN_RULE}\n\n` +
-      'Hooks (use one of these or a close variant on slide 1, first person, no app mention):\n' +
+      'Hook inspiration (examples of the angle ONLY — write your own original, first person, no app mention):\n' +
       '- "How I quit gooning after a decade"\n' +
       '- "How to quit watching 🌽 in 2026"\n' +
       '- "How I became 100 days 🌽 free in 2026"\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): One of the hooks above. Personal, no app.\n' +
+      'Slide 1 (Hook): Your own original hook in this spirit. Personal, no app.\n' +
       'Slide 2 (Rock bottom): Say the real cost in one blunt line (fried dopamine, no drive, dead eyes).\n' +
       'Slide 3 (The lie): Willpower alone never worked for you.\n' +
       'Slide 4 (The fix): You need a blocker on strict mode you literally can\'t delete.\n' +
@@ -58,12 +60,12 @@ export const QUIT_PRESETS: QuitPreset[] = [
     audience: 'Guys who feel stuck and want to become a 10/10!',
     styleMemory:
       `${VIRAL_VOICE}\n\n` +
-      'Hooks (use one of these or a close variant on slide 1, no app mention):\n' +
+      'Hook inspiration (examples of the angle ONLY — write your own original, no app mention):\n' +
       '- "5 hobbies to finally become happy again"\n' +
       '- "5 hobbies that make you a 10/10 man"\n' +
       '- "How to unf*ck your life in 7 steps"\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): One of the hooks above.\n' +
+      'Slide 1 (Hook): Your own original hook in this spirit.\n' +
       'Slide 2 (Callout): Blunt line about being glued to your phone doing nothing.\n' +
       'Slide 3 (Hobby): One real hobby that builds a body (lifting, running, boxing).\n' +
       'Slide 4 (Hobby): One that builds a brain (reading, an instrument, chess).\n' +
@@ -79,12 +81,12 @@ export const QUIT_PRESETS: QuitPreset[] = [
     audience: 'People at rock bottom who want to rebuild!',
     styleMemory:
       `${VIRAL_VOICE}\n\n` +
-      'Hooks (use one of these or a close variant on slide 1, no app mention):\n' +
+      'Hook inspiration (examples of the angle ONLY — write your own original, no app mention):\n' +
       '- "7 steps to rebuild yourself"\n' +
       '- "5 ways to better yourself"\n' +
       '- "How to start loving yourself again"\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): One of the hooks above.\n' +
+      'Slide 1 (Hook): Your own original hook in this spirit.\n' +
       'Slide 2 (Truth): Blunt line about how you let yourself go / hit rock bottom.\n' +
       'Slide 3 (Step): Fix the basics first (sleep, water, a walk, a shower).\n' +
       'Slide 4 (Step): Move your body every day, even 20 minutes.\n' +
@@ -100,11 +102,11 @@ export const QUIT_PRESETS: QuitPreset[] = [
     audience: 'People addicted to TikTok who never walk!',
     styleMemory:
       `${VIRAL_VOICE}\n\n` +
-      'Hooks (use one of these or a close variant on slide 1, first person, no app mention):\n' +
+      'Hook inspiration (examples of the angle ONLY — write your own original, first person, no app mention):\n' +
       '- "My TikTok only unlocks after 5,000 steps"\n' +
       '- "How I walk 10k+ steps a day thanks to my TikTok addiction"\n\n' +
       'Structure & Flow:\n' +
-      'Slide 1 (Hook): One of the hooks above.\n' +
+      'Slide 1 (Hook): Your own original hook in this spirit.\n' +
       'Slide 2 (Before): You used to scroll all day and barely leave the bed.\n' +
       'Slide 3 (The flip): So you turned the addiction into the fuel.\n' +
       'Slide 4 (The rule): TikTok stays locked until you hit your step goal.\n' +
@@ -119,7 +121,7 @@ export const QUIT_PRESETS: QuitPreset[] = [
     audience: 'People trying to quit smoking for good!',
     styleMemory:
       `${VIRAL_VOICE}\n\n` +
-      'Hook idea for slide 1 (first person, no app): "How I quit smoking after X years".\n\n' +
+      'Hook inspiration (example angle ONLY — write your own original, first person, no app): "How I quit smoking after X years".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Personal hook about quitting for good.\n' +
       'Slide 2 (Reality): One blunt line on what it did to your lungs/energy.\n' +
@@ -135,7 +137,7 @@ export const QUIT_PRESETS: QuitPreset[] = [
     audience: 'People trying to quit vaping for good!',
     styleMemory:
       `${VIRAL_VOICE}\n\n` +
-      'Hook idea for slide 1 (first person, no app): "How I finally put the vape down".\n\n' +
+      'Hook inspiration (example angle ONLY — write your own original, first person, no app): "How I finally put the vape down".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Personal hook about quitting the vape.\n' +
       'Slide 2 (Reality): One blunt line on the anxiety spikes and wrecked lungs.\n' +
@@ -152,7 +154,7 @@ export const QUIT_PRESETS: QuitPreset[] = [
     audience: 'People trying to quit smoking weed!',
     styleMemory:
       `${VIRAL_VOICE}\n\n` +
-      'Hook idea for slide 1 (first person, no app): "How I quit weed and got my brain back".\n\n' +
+      'Hook inspiration (example angle ONLY — write your own original, first person, no app): "How I quit weed and got my brain back".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Personal hook about quitting weed.\n' +
       'Slide 2 (Reality): One blunt line on the fog and zero motivation.\n' +
@@ -168,7 +170,7 @@ export const QUIT_PRESETS: QuitPreset[] = [
     audience: 'People trying to quit drinking!',
     styleMemory:
       `${VIRAL_VOICE}\n\n` +
-      'Hook idea for slide 1 (first person, no app): "How I quit drinking without telling anyone".\n\n' +
+      'Hook inspiration (example angle ONLY — write your own original, first person, no app): "How I quit drinking without telling anyone".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Personal hook about quitting drinking.\n' +
       'Slide 2 (Reality): One blunt line on the trashed sleep, energy and body.\n' +
@@ -186,7 +188,7 @@ export const QUIT_PRESETS: QuitPreset[] = [
     audience: 'People trying to quit gambling!',
     styleMemory:
       `${VIRAL_VOICE}\n\n` +
-      'Hook idea for slide 1 (first person, no app): "How I quit gambling after losing everything".\n\n' +
+      'Hook inspiration (example angle ONLY — write your own original, first person, no app): "How I quit gambling after losing everything".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Personal hook about quitting gambling.\n' +
       'Slide 2 (Reality): One blunt line on the money and the mind it destroyed.\n' +
@@ -202,7 +204,7 @@ export const QUIT_PRESETS: QuitPreset[] = [
     audience: 'People who can\'t put their phone down!',
     styleMemory:
       `${VIRAL_VOICE}\n\n` +
-      'Hook idea for slide 1 (no app): "How I stopped doomscrolling without deleting everything".\n\n' +
+      'Hook inspiration (example angle ONLY — write your own original, no app): "How I stopped doomscrolling without deleting everything".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Strong hook about quitting the scroll without going off-grid.\n' +
       'Slide 2 (Reality): How short-form feeds fried your attention span.\n' +

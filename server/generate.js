@@ -40,7 +40,7 @@ function buildPrompt(brain, count, slidesPerShow, length = 'short') {
   // and a random-sentence generator. Middle slides must actually pay off the hook.
   const arc = `THE CAROUSEL IS ONE GUIDE, NOT A LIST OF DISCONNECTED LINES.
 Return EXACTLY ${slidesPerShow} slides in this fixed layout:
-- Slide 1 = the HOOK: stop the scroll. Repeat the given hook / topic almost verbatim.
+- Slide 1 = the HOOK: stop the scroll. Write your OWN original hook for this topic. Any example hooks in the style memory are inspiration for the angle only — never copy them word for word, and make each slideshow's hook different from the others.
 - Slides 2 to ${slidesPerShow - 1} = the CONTENT (${bodyN} slide${bodyN === 1 ? '' : 's'}): DELIVER on what the hook promised. If the hook says "7 steps" / "5 ways" / "how to", each is ONE concrete, specific, actually-useful step (number them if the hook implies a count). ONE of these content slides — the last one — is where you softly name the app; that is NOT an extra slide, it replaces a content slide.
 - Slide ${slidesPerShow} = the CTA: tell them what to do now (save it, start today, follow for more).
 They must flow: each slide reads like the next sentence of the same story, not a fresh unrelated thought. A reader should be able to read all slides top to bottom and have it make sense as a whole.
@@ -75,6 +75,7 @@ Voice & rules for every slide:
 - NEVER use these AI/marketing words: rediscover, embrace, unlock, journey, elevate, empower, "dive in", "in today's world", boost, foster, cultivate, nurture, "take back control", "rewire your brain", "say goodbye to", "level up your life", "game changer", "hustle". No em-dashes. No hashtags inside slides.
 - Content rule: NEVER write the words "porn", "pornography", "adult content", "explicit", or "NSFW". Use the 🌽 emoji instead (e.g. "quit 🌽", "🌽 sites").
 - NEVER prefix a slide with a positional label like "Slide 1:", "Slide 2 -", "1)". The slide text is only the words the viewer reads — no numbering, no labels.
+- The app has NO community, forum, or support group. Never invent or reference an in-app community, "the community", other members, or their stories/motivation. Accountability comes from the strict blocker itself, not from other users.
 - No two slides should make the same point. ${bodyN > 0 ? `You have ${bodyN} middle slides — each needs its own distinct idea.` : ''}
 
 Respond with a JSON object of this exact shape:
