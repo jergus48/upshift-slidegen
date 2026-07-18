@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-/* Montserrat is the closest free stand-in for TikTok's proprietary Proxima Nova
-   caption font — used by the 'tiktok' caption style. */
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&display=swap');
+/* TikTok Sans — TikTok's official font, open-sourced under the SIL Open Font
+   License 1.1 (free for commercial use). Used by the 'tiktok' caption style. */
+@import url('https://fonts.googleapis.com/css2?family=TikTok+Sans:wght@600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
