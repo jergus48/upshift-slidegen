@@ -145,29 +145,34 @@ export function GenerateModal({
             <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Caption font</label>
             <div className="grid grid-cols-2 gap-2">
               {([
-                { key: 'app', label: 'App default', hint: 'Inter, clean outline', family: 'Inter, sans-serif', weight: 800 },
-                { key: 'tiktok', label: 'TikTok', hint: 'Classic TikTok look', family: "'Helvetica Neue', Helvetica, Arial, sans-serif", weight: 700 },
+                { key: 'app', label: 'App default', hint: 'Inter, clean outline', family: 'Inter, sans-serif', weight: 800, stroke: '0.6px black' },
+                { key: 'tiktok', label: 'TikTok', hint: 'Classic TikTok look', family: "'Helvetica Neue', Helvetica, Arial, sans-serif", weight: 700, stroke: '1px black' },
               ] as const).map((o) => (
                 <button
                   key={o.key}
                   onClick={() => setCaptionStyle(o.key)}
                   disabled={generating}
-                  className={`h-auto py-2 px-3 rounded-lg border text-left transition-colors disabled:opacity-50 ${
-                    captionStyle === o.key ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
+                  className={`overflow-hidden rounded-lg border text-left transition-colors disabled:opacity-50 ${
+                    captionStyle === o.key ? 'border-ink ring-2 ring-ink' : 'border-line hover:border-line-2'
                   }`}
                 >
-                  <div className="text-[13px] font-medium">{o.label}</div>
-                  <div className={`text-[11px] ${captionStyle === o.key ? 'text-bg/70' : 'text-ink-6'}`}>{o.hint}</div>
-                  <div
-                    className="mt-1.5 text-[15px] leading-none"
-                    style={{ fontFamily: o.family, fontWeight: o.weight, color: '#fff', WebkitTextStroke: '0.6px black', paintOrder: 'stroke fill' }}
-                  >
-                    Aa quit 🌽
+                  {/* Sample rendered on a dark strip, exactly how the caption sits on a real slide */}
+                  <div className="h-12 flex items-center justify-center bg-neutral-800">
+                    <span
+                      className="text-[17px] leading-none"
+                      style={{ fontFamily: o.family, fontWeight: o.weight, color: '#fff', WebkitTextStroke: o.stroke, paintOrder: 'stroke fill' }}
+                    >
+                      Save this
+                    </span>
+                  </div>
+                  <div className="px-3 py-1.5 bg-card">
+                    <div className="text-[13px] font-medium text-ink">{o.label}</div>
+                    <div className="text-[11px] text-ink-6">{o.hint}</div>
                   </div>
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-ink-6 mt-1">Sets the on-image caption look for this batch.</p>
+            <p className="text-[11px] text-ink-6 mt-1">Preview of how the caption text will look on your slides.</p>
           </div>
 
           {/* Packs */}
