@@ -7,7 +7,7 @@
 // lib/captionStyle.ts — the SAME constants the editor preview uses — so the
 // scheduled PNG matches what the user saw when editing.
 import type { Slide, Slideshow } from '../types';
-import { FONT_SIZE_PCT, STROKE_RATIO, LINE_HEIGHT, SIDE_PAD_PCT, pct } from './captionStyle';
+import { FONT_SIZE_PCT, LINE_HEIGHT, SIDE_PAD_PCT, pct, captionStyleSpec } from './captionStyle';
 import { resolveImageSrc } from './imageSrc';
 
 const W = 1080;
@@ -91,12 +91,14 @@ export async function renderSlide(slide: Slide): Promise<string> {
   }
 
   // Caption: white bold text, black outline, centered — driven by the SAME
-  // percentages the editor preview uses, so the two always match.
+  // percentages the editor preview uses, so the two always match. Font family,
+  // weight and outline thickness come from the slide's chosen caption style.
+  const style = captionStyleSpec(slide.captionStyle);
   const fontPx = Math.round(H * pct(FONT_SIZE_PCT));
   const lineHeight = Math.round(fontPx * LINE_HEIGHT);
-  const strokeW = Math.max(2, Math.round(fontPx * STROKE_RATIO));
+  const strokeW = Math.max(2, Math.round(fontPx * style.strokeRatio));
 
-  ctx.font = `800 ${fontPx}px Inter, sans-serif`;
+  ctx.font = `${style.fontWeight} ${fontPx}px ${style.fontFamily}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.lineJoin = 'round';

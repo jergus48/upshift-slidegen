@@ -52,7 +52,7 @@ export function SlidePreview({ slide, className = '', showText = true }: SlidePr
           className="absolute inset-0 flex items-center justify-center"
           style={{ paddingLeft: `${SIDE_PAD_PCT}%`, paddingRight: `${SIDE_PAD_PCT}%` }}
         >
-          <span style={captionTextStyle()}>{slide.text}</span>
+          <span style={captionTextStyle(slide.captionStyle)}>{slide.text}</span>
         </div>
       )}
     </div>

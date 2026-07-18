@@ -36,6 +36,7 @@ import type {
   BrainState,
   ViewKey,
 } from './types';
+import type { CaptionStyle } from './lib/captionStyle';
 
 export default function App() {
   // Config is assembled from two sources: API-key status (server) and the
@@ -130,7 +131,7 @@ export default function App() {
     if (activeProjectId && queueProject === activeProjectId) saveQueue(activeProjectId, queue);
   }, [queue, queueProject, activeProjectId]);
 
-  const generate = async (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string }) => {
+  const generate = async (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string; captionStyle: CaptionStyle }) => {
     if (!activeProject) return;
     setError(null);
     setGenerating(true);
@@ -146,7 +147,12 @@ export default function App() {
       // Backgrounds are assigned client-side now — the server no longer knows
       // about scraped/uploaded images (they live in this browser's IndexedDB).
       const pool = opts.packs.length ? (await getMergedLibrary()).filter((i) => opts.packs.includes(i.pack)) : [];
-      const withBackgrounds = assignBackgrounds(slideshows, pool);
+      const withBackgrounds = assignBackgrounds(slideshows, pool).map((show) => ({
+        ...show,
+        // Stamp the chosen caption look onto every slide so the preview and the
+        // baked PNG both render it.
+        slides: show.slides.map((sl) => ({ ...sl, captionStyle: opts.captionStyle })),
+      }));
       setQueue((q) => [...withBackgrounds, ...q]);
       setGenerateOpen(false);
     } catch (e) {

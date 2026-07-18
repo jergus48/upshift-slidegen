@@ -8,6 +8,8 @@ export interface Slide {
   imageUrl?: string;
   bgFrom?: string;
   bgTo?: string;
+  // Caption font look ('app' default vs 'tiktok'); undefined = app default.
+  captionStyle?: import('./lib/captionStyle').CaptionStyle;
 }
 
 export interface Slideshow {

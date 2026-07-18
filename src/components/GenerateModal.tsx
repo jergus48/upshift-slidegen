@@ -3,13 +3,14 @@ import { X, Loader2, Sparkles } from 'lucide-react';
 import { Button } from './Button';
 import { PackPicker } from './PackPicker';
 import { QUIT_PRESETS } from '../lib/quitPresets';
+import type { CaptionStyle } from '../lib/captionStyle';
 
 interface GenerateModalProps {
   defaultAudience: string;
   defaultStyleMemory: string;
   generating: boolean;
   onClose: () => void;
-  onGenerate: (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string }) => void;
+  onGenerate: (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string; captionStyle: CaptionStyle }) => void;
 }
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
@@ -30,6 +31,7 @@ export function GenerateModal({
   const [count, setCount] = useState(3);
   const [slidesPerShow, setSlidesPerShow] = useState(6);
   const [length, setLength] = useState<'short' | 'long'>('short');
+  const [captionStyle, setCaptionStyle] = useState<CaptionStyle>('app');
   const [packs, setPacks] = useState<string[]>([]);
   const [audience, setAudience] = useState('');
   const [styleMemory, setStyleMemory] = useState('');
@@ -42,6 +44,7 @@ export function GenerateModal({
       packs,
       audience: audience.trim() || undefined,
       styleMemory: styleMemory.trim() || undefined,
+      captionStyle,
     });
 
   return (
@@ -135,6 +138,36 @@ export function GenerateModal({
               ))}
             </div>
             <p className="text-[11px] text-ink-6 mt-1">The first slide is always a one-line hook, either way.</p>
+          </div>
+
+          {/* Caption font */}
+          <div>
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Caption font</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { key: 'app', label: 'App default', hint: 'Inter, clean outline', family: 'Inter, sans-serif', weight: 800 },
+                { key: 'tiktok', label: 'TikTok', hint: 'Classic TikTok look', family: "'Helvetica Neue', Helvetica, Arial, sans-serif", weight: 700 },
+              ] as const).map((o) => (
+                <button
+                  key={o.key}
+                  onClick={() => setCaptionStyle(o.key)}
+                  disabled={generating}
+                  className={`h-auto py-2 px-3 rounded-lg border text-left transition-colors disabled:opacity-50 ${
+                    captionStyle === o.key ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
+                  }`}
+                >
+                  <div className="text-[13px] font-medium">{o.label}</div>
+                  <div className={`text-[11px] ${captionStyle === o.key ? 'text-bg/70' : 'text-ink-6'}`}>{o.hint}</div>
+                  <div
+                    className="mt-1.5 text-[15px] leading-none"
+                    style={{ fontFamily: o.family, fontWeight: o.weight, color: '#fff', WebkitTextStroke: '0.6px black', paintOrder: 'stroke fill' }}
+                  >
+                    Aa quit 🌽
+                  </div>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-ink-6 mt-1">Sets the on-image caption look for this batch.</p>
           </div>
 
           {/* Packs */}
