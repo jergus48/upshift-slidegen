@@ -52,7 +52,15 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
 }
 
 export async function renderSlide(slide: Slide): Promise<string> {
-  // Make sure the web font is ready, otherwise the first render uses a fallback.
+  const style = captionStyleSpec(slide.captionStyle);
+
+  // Make sure the caption font is actually loaded before drawing — a web font
+  // that's declared but never used in the DOM isn't "pending", so awaiting
+  // fonts.ready alone can still bake with a fallback. Explicitly request the
+  // exact weight/family this slide uses.
+  try {
+    await document.fonts?.load(`${style.fontWeight} 100px ${style.fontFamily}`);
+  } catch { /* fonts API unavailable — fall through to whatever's loaded */ }
   if (document.fonts?.ready) await document.fonts.ready;
 
   const canvas = document.createElement('canvas');
@@ -92,8 +100,8 @@ export async function renderSlide(slide: Slide): Promise<string> {
 
   // Caption: white bold text, black outline, centered — driven by the SAME
   // percentages the editor preview uses, so the two always match. Font family,
-  // weight and outline thickness come from the slide's chosen caption style.
-  const style = captionStyleSpec(slide.captionStyle);
+  // weight and outline thickness come from the slide's chosen caption style
+  // (resolved at the top of this function).
   const fontPx = Math.round(H * pct(FONT_SIZE_PCT));
   const lineHeight = Math.round(fontPx * LINE_HEIGHT);
   const strokeW = Math.max(2, Math.round(fontPx * style.strokeRatio));

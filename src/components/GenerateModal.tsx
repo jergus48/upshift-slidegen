@@ -145,8 +145,8 @@ export function GenerateModal({
             <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Caption font</label>
             <div className="grid grid-cols-2 gap-2">
               {([
-                { key: 'app', label: 'App default', hint: 'Inter, clean outline', family: 'Inter, sans-serif', weight: 800, stroke: '0.6px black' },
-                { key: 'tiktok', label: 'TikTok', hint: 'Classic TikTok look', family: "'Helvetica Neue', Helvetica, Arial, sans-serif", weight: 700, stroke: '1px black' },
+                { key: 'app', label: 'App default', hint: 'Inter, thin outline', family: 'Inter, sans-serif', weight: 800, stroke: '0.6px black' },
+                { key: 'tiktok', label: 'TikTok', hint: 'Montserrat, bold outline', family: "'Montserrat', 'Helvetica Neue', Arial, sans-serif", weight: 800, stroke: '1.6px black' },
               ] as const).map((o) => (
                 <button
                   key={o.key}

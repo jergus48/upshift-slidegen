@@ -48,9 +48,12 @@ export const CAPTION_STYLES: Record<CaptionStyle, CaptionStyleSpec> = {
     strokeRatio: STROKE_RATIO,
   },
   tiktok: {
-    fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif",
-    fontWeight: 700,
-    strokeRatio: 0.11,
+    // Montserrat is a free, geometric stand-in for TikTok's proprietary
+    // Proxima Nova caption font; the heavy weight + thick outline give the
+    // instantly-recognizable TikTok/CapCut meme-caption look.
+    fontFamily: "'Montserrat', 'Helvetica Neue', Arial, sans-serif",
+    fontWeight: 800,
+    strokeRatio: 0.16,
   },
 };
 
