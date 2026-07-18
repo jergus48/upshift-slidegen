@@ -210,8 +210,9 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 2 (Reality): How short-form feeds fried your attention span.\n' +
       'Slide 3 (Nuance): The algorithm is the problem, not talking to your friends.\n' +
       'Slide 4 (Keep chat): Keep WhatsApp and Messenger fully open.\n' +
-      'Slide 5 (Block feed): Hard daily limits on TikTok and Instagram.\n' +
-      'Slide 6 (The App): Upshift\'s Quest Block — your apps only unlock once your chosen daily quests (gym, work, reading) are done.\n' +
+      'What Upshift actually does (use these on the app slide, pick what fits — do not invent others): strict mode daily time limits on TikTok/Instagram; Quest Block (Instagram only unlocks after your quests like gym or homework are done); Work Schedule Block (socials locked during your work hours); Sleep Schedule Block (socials locked around bedtime).\n\n' +
+      'Slide 5 (Block feed): Strict daily time limits on TikTok and Instagram that you can\'t bypass.\n' +
+      'Slide 6 (The App): Upshift does this for you — Quest Block so Instagram only unlocks after the gym or homework, plus work-hours and bedtime schedule blocks.\n' +
       'Slide 7 (The result): You get the scroll back only after you\'ve earned it, so the day isn\'t gone.\n' +
       'Slide 8 (CTA): Blunt closer.',
   },
