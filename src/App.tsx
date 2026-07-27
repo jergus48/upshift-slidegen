@@ -12,6 +12,7 @@ import { LibraryView } from './views/LibraryView';
 import { RedditView } from './views/RedditView';
 import { ReplyView } from './views/ReplyView';
 import { WriteView } from './views/WriteView';
+import { SubredditView } from './views/SubredditView';
 import { PromptView } from './views/PromptView';
 import { ScrubView } from './views/ScrubView';
 import { ScheduleView } from './views/ScheduleView';
@@ -379,6 +380,7 @@ export default function App() {
         {activeView === 'reddit' && <RedditView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'reply' && <ReplyView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'write' && <WriteView canGenerate={hasOpenrouter} model={config.model} />}
+        {activeView === 'subreddit' && <SubredditView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'prompt' && <PromptView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'clean' && <ScrubView />}
         {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}

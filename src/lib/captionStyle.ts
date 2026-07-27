@@ -48,11 +48,13 @@ export const CAPTION_STYLES: Record<CaptionStyle, CaptionStyleSpec> = {
     strokeRatio: STROKE_RATIO,
   },
   tiktok: {
-    // TikTok Sans — TikTok's official font (open-source, SIL OFL 1.1). Heavy
-    // weight + thick outline give the recognizable TikTok caption look.
-    fontFamily: "'TikTok Sans', 'Helvetica Neue', Arial, sans-serif",
-    fontWeight: 800,
-    strokeRatio: 0.16,
+    // The classic TikTok/CapCut caption look. Verified letter-by-letter
+    // against real caption screenshots: geometric-round forms = Poppins
+    // SemiBold, moderate black outline. (TikTok Sans and Mulish were both
+    // tried and visibly do NOT match — don't go back to them.)
+    fontFamily: "'Poppins', 'Helvetica Neue', Arial, sans-serif",
+    fontWeight: 600,
+    strokeRatio: 0.12,
   },
 };
 
@@ -60,6 +62,28 @@ export const DEFAULT_CAPTION_STYLE: CaptionStyle = 'app';
 
 export function captionStyleSpec(style?: CaptionStyle): CaptionStyleSpec {
   return CAPTION_STYLES[style || DEFAULT_CAPTION_STYLE] ?? CAPTION_STYLES.app;
+}
+
+// The first family name in a font-family list, unquoted — e.g.
+// "'Poppins', 'Helvetica Neue', Arial" → "Poppins". document.fonts.load()
+// wants a single family; handing it the whole fallback list can make it throw,
+// which silently skips loading and bakes the caption in Arial instead.
+export function primaryFontFamily(fontFamily: string): string {
+  return (fontFamily.split(',')[0] || '').trim().replace(/^['"]|['"]$/g, '');
+}
+
+// Captions are plain text — the model is told not to use markdown, but if it
+// slips (e.g. "**my app**"), strip the markers so the viewer never sees raw
+// asterisks/underscores/backticks. Applied by BOTH the editor preview and the
+// baked PNG so already-saved slides get cleaned too.
+export function cleanCaption(text: string): string {
+  if (typeof text !== 'string') return text;
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')            // **bold**
+    .replace(/__(.+?)__/g, '$1')                // __bold__
+    .replace(/(^|[^*\w])\*(?!\s)(.+?)(?<!\s)\*(?![*\w])/g, '$1$2') // *italic*
+    .replace(/(^|[^_\w])_(?!\s)(.+?)(?<!\s)_(?![_\w])/g, '$1$2')   // _italic_
+    .replace(/`([^`]+)`/g, '$1');               // `code`
 }
 
 // ─── CSS for the preview overlay text ───────────────────────────────────────

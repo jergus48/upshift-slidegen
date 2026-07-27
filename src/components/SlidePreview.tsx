@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Slide } from '../types';
-import { captionTextStyle, SLIDE_CONTAINER_STYLE, SIDE_PAD_PCT } from '../lib/captionStyle';
+import { captionTextStyle, SLIDE_CONTAINER_STYLE, SIDE_PAD_PCT, cleanCaption } from '../lib/captionStyle';
 import { resolveImageSrc } from '../lib/imageSrc';
 
 interface SlidePreviewProps {
@@ -52,7 +52,7 @@ export function SlidePreview({ slide, className = '', showText = true }: SlidePr
           className="absolute inset-0 flex items-center justify-center"
           style={{ paddingLeft: `${SIDE_PAD_PCT}%`, paddingRight: `${SIDE_PAD_PCT}%` }}
         >
-          <span style={captionTextStyle(slide.captionStyle)}>{slide.text}</span>
+          <span style={captionTextStyle(slide.captionStyle)}>{cleanCaption(slide.text)}</span>
         </div>
       )}
     </div>

@@ -104,6 +104,35 @@ export const generatePosts = (opts: { topic?: string; length?: 'short' | 'medium
     body: JSON.stringify(opts),
   });
 
+// ── Subreddit-tailored drafts ───────────────────────────────────────────────
+export interface SubredditRule {
+  name: string;
+  description: string;
+}
+export interface SubredditContext {
+  name: string;
+  title: string;
+  publicDescription: string;
+  subscribers: number;
+  over18: boolean;
+  submissionType: string; // 'any' | 'self' | 'link'
+  rules: SubredditRule[];
+  samplePosts: { title: string; score: number }[];
+}
+
+// Given a subreddit, reads its rules + recent top posts and drafts 3 post
+// variants (title + body) tailored to it. Returns the context it used too.
+export const draftSubredditPost = (opts: {
+  subreddit: string;
+  topic?: string;
+  length?: 'short' | 'medium' | 'long';
+  model: string;
+}) =>
+  req<{ context: SubredditContext; posts: { title: string; body: string }[] }>('/subreddit/draft', {
+    method: 'POST',
+    body: JSON.stringify(opts),
+  });
+
 // Structured JSON image-prompts (Google Flow) with an anchored character.
 export const generateFlowPrompts = (opts: {
   gender: 'man' | 'woman';

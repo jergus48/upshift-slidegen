@@ -146,7 +146,7 @@ export function GenerateModal({
             <div className="grid grid-cols-2 gap-2">
               {([
                 { key: 'app', label: 'App default', hint: 'Inter, thin outline', family: 'Inter, sans-serif', weight: 800, stroke: '0.6px black' },
-                { key: 'tiktok', label: 'TikTok', hint: 'TikTok Sans (official)', family: "'TikTok Sans', 'Helvetica Neue', Arial, sans-serif", weight: 800, stroke: '1.6px black' },
+                { key: 'tiktok', label: 'TikTok', hint: 'Classic caption look', family: "'Poppins', 'Helvetica Neue', Arial, sans-serif", weight: 600, stroke: '2px black' },
               ] as const).map((o) => (
                 <button
                   key={o.key}

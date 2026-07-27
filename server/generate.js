@@ -73,6 +73,7 @@ Voice & rules for every slide:
 - ${sentenceRule}
 - ${appRule}
 - NEVER use these AI/marketing words: rediscover, embrace, unlock, journey, elevate, empower, "dive in", "in today's world", boost, foster, cultivate, nurture, "take back control", "rewire your brain", "say goodbye to", "level up your life", "game changer", "hustle". No em-dashes. No hashtags inside slides.
+- Write PLAIN TEXT only. NEVER use markdown or formatting characters: no ** or __ for bold, no * or _ for italics, no backticks, no # headings. The app name and everything else is just plain words — the viewer sees these characters literally, so "**my app**" is broken.
 - Content rule: NEVER write the words "porn", "pornography", "adult content", "explicit", or "NSFW". Use the 🌽 emoji instead (e.g. "quit 🌽", "🌽 sites").
 - NEVER prefix a slide with a positional label like "Slide 1:", "Slide 2 -", "1)". The slide text is only the words the viewer reads — no numbering, no labels.
 - The app has NO community, forum, or support group. Never invent or reference an in-app community, "the community", other members, or their stories/motivation. Accountability comes from the strict blocker itself, not from other users.
@@ -154,6 +155,10 @@ function scrubCorn(text) {
   if (typeof text !== 'string') return text
   return text
     .replace(/^\s*slide\s*\d+\s*[:=.\-–—)]+\s*/i, '')
+    // Strip any markdown the model slipped in — the viewer sees these literally.
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
     .replace(/\bpornography\b/gi, '🌽')
     .replace(/\bporn\b/gi, '🌽')
     .replace(/\badult content\b/gi, '🌽')

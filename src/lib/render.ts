@@ -7,7 +7,7 @@
 // lib/captionStyle.ts — the SAME constants the editor preview uses — so the
 // scheduled PNG matches what the user saw when editing.
 import type { Slide, Slideshow } from '../types';
-import { FONT_SIZE_PCT, LINE_HEIGHT, SIDE_PAD_PCT, pct, captionStyleSpec } from './captionStyle';
+import { FONT_SIZE_PCT, LINE_HEIGHT, SIDE_PAD_PCT, pct, captionStyleSpec, primaryFontFamily, cleanCaption } from './captionStyle';
 import { resolveImageSrc } from './imageSrc';
 
 const W = 1080;
@@ -58,8 +58,12 @@ export async function renderSlide(slide: Slide): Promise<string> {
   // that's declared but never used in the DOM isn't "pending", so awaiting
   // fonts.ready alone can still bake with a fallback. Explicitly request the
   // exact weight/family this slide uses.
+  // Load by the PRIMARY family only (e.g. "Poppins") — passing the whole
+  // fallback list can make fonts.load() throw, which would silently leave the
+  // canvas baking in Arial instead of the caption font the user picked.
+  const primary = primaryFontFamily(style.fontFamily);
   try {
-    await document.fonts?.load(`${style.fontWeight} 100px ${style.fontFamily}`);
+    await document.fonts?.load(`${style.fontWeight} 100px "${primary}"`);
   } catch { /* fonts API unavailable — fall through to whatever's loaded */ }
   if (document.fonts?.ready) await document.fonts.ready;
 
@@ -113,7 +117,7 @@ export async function renderSlide(slide: Slide): Promise<string> {
   ctx.miterLimit = 2;
 
   const maxWidth = W * (1 - 2 * pct(SIDE_PAD_PCT));
-  const lines = wrap(ctx, slide.text || '', maxWidth);
+  const lines = wrap(ctx, cleanCaption(slide.text || ''), maxWidth);
   const blockH = lines.length * lineHeight;
   const startY = (H - blockH) / 2; // vertically centered, matching the preview
   const x = W / 2;
