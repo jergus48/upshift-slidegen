@@ -10,7 +10,7 @@ import { getKeys, saveKeys } from './store.js'
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
 import { generateSlideshows } from './generate.js'
 import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.js'
-import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, fetchSubredditContext, buildSubredditPostPrompt } from './reddit.js'
+import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
@@ -187,30 +187,28 @@ app.post('/api/post/generate', h(async (req, res) => {
   res.json({ posts })
 }))
 
-// Draft a post tailored to a specific subreddit: read its rules + recent top
-// posts for tone, then write title+body variants the user reviews and posts
-// themselves. Returns the context it based the drafts on so the UI can show it.
+// Draft 3 post options tailored to a subreddit, from just the name + an
+// optional topic — the model uses what it knows about a sub with that name.
+// No Reddit API call, so it needs no Reddit credentials and never 403s.
 app.post('/api/subreddit/draft', h(async (req, res) => {
   const keys = await getKeys()
   const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
-  const subreddit = String(req.body?.subreddit || '').trim()
-  if (!subreddit) throw new Error('Enter a subreddit (e.g. r/getdisciplined).')
+  const name = normalizeSubreddit(req.body?.subreddit) // validates + strips "r/"
   const length = ['short', 'medium', 'long'].includes(req.body?.length) ? req.body.length : 'medium'
   const topic = String(req.body?.topic || '').trim()
 
-  const context = await fetchSubredditContext(subreddit)
   const sampling = { temperature: 1.0, frequency_penalty: 0.4, presence_penalty: 0.3 }
   const out = await chatJSON({
     apiKey: keys.openrouter,
     model,
-    prompt: buildSubredditPostPrompt({ context, topic, length }),
+    prompt: buildSubredditPostPrompt({ name, topic, length }),
     sampling,
   })
   const posts = (Array.isArray(out.posts) ? out.posts : [])
     .map((p) => ({ title: String(p?.title || '').trim(), body: String(p?.body || '').trim() }))
     .filter((p) => p.title || p.body)
     .slice(0, 3)
-  res.json({ context, posts })
+  res.json({ subreddit: name, posts })
 }))
 
 // Structured JSON image-prompts (Google Flow) with an anchored character.

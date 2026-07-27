@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, Copy, Check, BookText, ExternalLink } from 'lucide-react';
+import { Sparkles, Loader2, Copy, Check } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
-import { draftSubredditPost, type SubredditContext } from '../lib/api';
+import { draftSubredditPost } from '../lib/api';
 
 interface SubredditViewProps {
   canGenerate: boolean;
@@ -19,7 +19,6 @@ export function SubredditView({ canGenerate, model }: SubredditViewProps) {
   const [subreddit, setSubreddit] = useState('');
   const [topic, setTopic] = useState('');
   const [length, setLength] = useState<Length>('medium');
-  const [context, setContext] = useState<SubredditContext | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +38,6 @@ export function SubredditView({ canGenerate, model }: SubredditViewProps) {
         length,
         model,
       });
-      setContext(r.context);
       setPosts(r.posts);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -59,7 +57,7 @@ export function SubredditView({ canGenerate, model }: SubredditViewProps) {
     <>
       <ViewHeader
         title="Subreddit"
-        subtitle="Give it a subreddit — it reads that sub's rules and recent top posts, then drafts a title + body that fits. Review it, then post it yourself."
+        subtitle="Give it a subreddit and it drafts a title + body that fits that community's vibe. Review it, then post it yourself."
       />
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-8">
@@ -121,65 +119,11 @@ export function SubredditView({ canGenerate, model }: SubredditViewProps) {
                 onClick={generate}
                 disabled={busy || !canGenerate}
               >
-                {busy ? 'Reading the sub…' : posts.length ? 'Regenerate' : 'Draft post'}
+                {busy ? 'Drafting…' : posts.length ? 'Regenerate' : 'Draft post'}
               </Button>
               {!canGenerate && <span className="text-[11px] text-ink-6">Add your OpenRouter key in Settings.</span>}
             </div>
           </div>
-
-          {/* What the draft was based on — the rules + sample titles it read. */}
-          {context && (
-            <div className="bg-raised border border-line rounded-xl p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-                  <BookText size={13} className="text-ink-5" />
-                  What r/{context.name} looks like
-                </div>
-                <a
-                  href={`https://www.reddit.com/r/${context.name}/`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-ink-5 hover:text-ink flex items-center gap-1"
-                >
-                  Open <ExternalLink size={11} />
-                </a>
-              </div>
-              {context.publicDescription && (
-                <p className="text-[12px] text-ink-4 mt-2 leading-relaxed">{context.publicDescription}</p>
-              )}
-              <p className="text-[11px] text-ink-6 mt-1.5">
-                {context.subscribers.toLocaleString()} members
-                {context.submissionType === 'link' && ' · mostly link posts'}
-                {context.over18 && ' · NSFW'}
-              </p>
-
-              {context.rules.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-[10px] uppercase tracking-widest text-ink-6 font-semibold mb-1">
-                    Rules it followed ({context.rules.length})
-                  </p>
-                  <ol className="list-decimal list-inside space-y-0.5">
-                    {context.rules.map((r, i) => (
-                      <li key={i} className="text-[12px] text-ink-4">{r.name}</li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-
-              {context.samplePosts.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-[10px] uppercase tracking-widest text-ink-6 font-semibold mb-1">
-                    Recent top posts (for tone)
-                  </p>
-                  <ul className="space-y-0.5">
-                    {context.samplePosts.slice(0, 6).map((p, i) => (
-                      <li key={i} className="text-[12px] text-ink-4 truncate">• {p.title}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
 
           {posts.length > 0 && (
             <div className="space-y-3">

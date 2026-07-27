@@ -2,7 +2,6 @@
 // prompt builders for the "sound like a real person" rewrite and the viral
 // comment generator. All generation goes through OpenRouter (the user's key).
 import { logger } from './log.js'
-import { redditApiGet } from './redditUsers.js'
 
 const log = logger('reddit')
 
@@ -210,7 +209,7 @@ Return ONLY a JSON object of this exact shape: {"prompts": [ {<prompt object 1>}
 // ── Subreddit-tailored drafts ────────────────────────────────────────────────
 // Turn a subreddit name (r/foo, /r/foo, foo) into just "foo", validating it
 // looks like a real subreddit name (3–21 chars, letters/digits/underscore).
-function normalizeSubreddit(input) {
+export function normalizeSubreddit(input) {
   const name = String(input || '').trim().replace(/^\/?(r\/)?/i, '').replace(/\/.*$/, '').trim()
   if (!/^[A-Za-z0-9_]{2,21}$/.test(name)) {
     throw new Error(`"${String(input).trim()}" does not look like a subreddit name. Try something like r/getdisciplined.`)
@@ -219,76 +218,15 @@ function normalizeSubreddit(input) {
 }
 
 /**
- * Best-effort read of a subreddit's public metadata so a draft can match its
- * rules and tone: the about blurb, its posting rules, and a handful of recent
- * top post titles. Rules/top posts are best-effort — a failure there still
- * returns whatever else loaded. A failed `about` (private/banned/blocked)
- * throws, since without it we can't confirm the sub even exists.
- * @param {string} subredditRaw
+ * Draft prompt for a subreddit, built from just the name + optional topic.
+ * The model leans on what it already knows about a sub with that name — no
+ * Reddit API call, so this needs no credentials and never 403s.
+ * @param {object} opts
+ * @param {string} opts.name normalized subreddit name (no "r/")
+ * @param {string} [opts.topic]
+ * @param {'short'|'medium'|'long'} [opts.length]
  */
-export async function fetchSubredditContext(subredditRaw) {
-  const name = normalizeSubreddit(subredditRaw)
-  log.start(`Reading r/${name}`)
-
-  let about
-  try {
-    const a = await redditApiGet(`/r/${name}/about`)
-    about = a?.data
-  } catch (e) {
-    log.fail(`r/${name} about: ${e.message}`)
-    throw new Error(
-      `Could not read r/${name} — it may be private, banned, or Reddit is blocking this server. ` +
-      `Set REDDIT_CLIENT_ID/SECRET (+ USERNAME/PASSWORD) to use the OAuth API.`
-    )
-  }
-  if (!about || about.dist === 0 || (!about.title && !about.display_name)) {
-    throw new Error(`r/${name} does not look like an accessible subreddit.`)
-  }
-
-  // Rules — best-effort.
-  let rules = []
-  try {
-    const r = await redditApiGet(`/r/${name}/about/rules`)
-    rules = (Array.isArray(r?.rules) ? r.rules : [])
-      .map((rule) => ({
-        name: String(rule.short_name || '').trim(),
-        description: String(rule.description || '').trim(),
-      }))
-      .filter((rule) => rule.name)
-      .slice(0, 15)
-  } catch (e) {
-    log.warn?.(`r/${name} rules: ${e.message}`)
-  }
-
-  // Recent top posts (this month) — best-effort, for tone.
-  let samplePosts = []
-  try {
-    const t = await redditApiGet(`/r/${name}/top`, { t: 'month', limit: '20' })
-    samplePosts = (t?.data?.children || [])
-      .map((c) => c?.data)
-      .filter((d) => d && !d.stickied && !d.over_18)
-      .map((d) => ({ title: String(d.title || '').trim(), score: Number(d.score) || 0 }))
-      .filter((p) => p.title)
-      .slice(0, 12)
-  } catch (e) {
-    log.warn?.(`r/${name} top: ${e.message}`)
-  }
-
-  log.ok(`r/${name}: ${rules.length} rules, ${samplePosts.length} sample posts`)
-  return {
-    name,
-    title: String(about.title || about.display_name || name),
-    publicDescription: String(about.public_description || '').trim(),
-    subscribers: Number(about.subscribers) || 0,
-    over18: !!about.over18,
-    // 'any' | 'self' (text only) | 'link' (link only)
-    submissionType: String(about.submission_type || 'any'),
-    rules,
-    samplePosts,
-  }
-}
-
-export function buildSubredditPostPrompt({ context, topic, length = 'medium' }) {
+export function buildSubredditPostPrompt({ name, topic, length = 'medium' }) {
   const lengthGuide =
     length === 'short'
       ? 'Each body is about 3 to 4 sentences.'
@@ -296,40 +234,15 @@ export function buildSubredditPostPrompt({ context, topic, length = 'medium' }) 
       ? 'Each body is 2 to 3 short paragraphs — a real little story or reflection with a beginning, a turn, and where it left you. Roughly 8 to 12 sentences.'
       : 'Each body is a solid paragraph, about 5 to 7 sentences.'
 
-  const rulesBlock = context.rules.length
-    ? context.rules.map((r, i) => `${i + 1}. ${r.name}${r.description ? ` — ${r.description}` : ''}`).join('\n')
-    : '(No rules were readable — follow normal Reddit etiquette and stay on-topic.)'
+  return `You are a real person writing a genuine text post for the subreddit r/${name}. Not a marketer, not a brand, not promoting anything. Just someone with something real to share or ask that fits this community.
 
-  const samplesBlock = context.samplePosts.length
-    ? context.samplePosts.map((p) => `- ${p.title}`).join('\n')
-    : '(No sample titles available.)'
-
-  const typeNote =
-    context.submissionType === 'link'
-      ? 'NOTE: this subreddit is primarily a LINK subreddit. Still write a title and a short body, but keep the body brief since a link may be expected.'
-      : ''
-
-  return `You are a real person writing a genuine text post for the subreddit r/${context.name}. Not a marketer, not a brand, not promoting anything. Just someone with something real to share or ask that fits this community.
-
-About the subreddit:
-- Title: ${context.title}
-${context.publicDescription ? `- Description: ${context.publicDescription}` : ''}
-- Subscribers: ${context.subscribers.toLocaleString('en-US')}
-
-The subreddit's rules (follow ALL of these strictly — a post that breaks a rule gets removed):
-${rulesBlock}
-
-Recent top post titles here (match this community's tone, format and vibe — do NOT copy them):
-${samplesBlock}
-
-${typeNote}
+Use what you know about a subreddit named "${name}" — its likely topic, audience and posting style — and write something that would fit right in. Follow normal Reddit etiquette, stay on-topic, and keep it non-promotional (no links, no self-advertising).
 
 ${topic ? `What the post should be about: ${topic}` : 'Pick a specific, relatable angle that genuinely fits this subreddit.'}
 
 Write 3 different post options. Each has a title and a body.
-- The title should read like the real post titles above — natural, specific, the kind of thing that fits right in. Lowercase is fine if that matches the sub.
+- The title should read like a real post in this community — natural, specific, the kind of thing that fits right in. Lowercase is fine if that matches the sub.
 - ${lengthGuide} Make it feel like a real experience or a real question, with concrete details — not generic advice.
-- Every option MUST obey the subreddit's rules above. Do not include anything promotional, no links, no self-advertising.
 
 ${HUMAN_RULES}
 

@@ -1,6 +1,7 @@
 // Local dev / self-hosted entry point. Boots the shared Express app (see
 // app.js) with a real HTTP server. On Vercel, api/index.js wraps the same
 // app as a serverless function instead — this file is never used there.
+import './env.js' // must be first — loads a local .env before app.js reads env
 import { app } from './app.js'
 import { CONFIG_DIR } from './store.js'
 

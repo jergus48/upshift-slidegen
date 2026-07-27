@@ -70,31 +70,6 @@ async function getAccessToken() {
   return cachedToken.token
 }
 
-// --- Generic authed GET -----------------------------------------------------
-
-/**
- * GET any Reddit API path, preferring the OAuth endpoint (reliable from
- * datacenter IPs like Vercel) and falling back to the anonymous `.json` host
- * when no app credentials are configured. Pass the path WITHOUT a `.json`
- * suffix, e.g. `/r/getdisciplined/about/rules`.
- * @param {string} path
- * @param {Record<string,string|number>} [params] extra query params
- * @returns {Promise<any>} parsed JSON
- */
-export async function redditApiGet(path, params = {}) {
-  const token = await getAccessToken()
-  const search = new URLSearchParams({ raw_json: '1', ...params }).toString()
-  const url = token
-    ? `https://oauth.reddit.com${path}?${search}`
-    : `https://www.reddit.com${path}.json?${search}`
-  const res = await fetch(url, {
-    headers: { 'User-Agent': UA, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    signal: AbortSignal.timeout(15000),
-  })
-  if (!res.ok) throw new Error(`Reddit returned ${res.status} ${res.statusText}`)
-  return res.json()
-}
-
 // --- Fetching the comment tree ---------------------------------------------
 
 async function fetchListing(postUrl) {
