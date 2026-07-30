@@ -297,21 +297,22 @@ const FLOWS: Record<Flow, string> = {
     'Slide 1 (Hook): Your own original hook in this spirit (keep the count if the hook names one).\n' +
     'Slide 2 (Callout): One blunt, honest line naming the problem — stuck, wasting time, glued to your phone.\n' +
     'Middle slides: each slide is ONE item from the list, numbered, concrete and genuinely useful — never vague filler.\n' +
-    'Second-to-last (The App): Tie in Upshift, first person and soft — none of this sticks while you scroll all day, ' +
-    'so what finally worked for me was keeping my apps locked until the real work was done.\n' +
+    'Second-to-last (The App): A dedicated slide that names Upshift — first person and soft: none of this sticks while ' +
+    "you scroll all day, so what finally worked for me was Upshift's Quest Block keeping my apps locked until my real " +
+    'quests (gym, reading, work) were done.\n' +
     'Last (CTA): Blunt closer (e.g. "Pick one. Start today. Save this.").',
   story:
     'Slide 1 (Hook): Your own personal hook in this spirit.\n' +
     'Slide 2 (Before): One blunt line on where you were — lost, behind, scrolling your life away.\n' +
     'Middle slides: the real moves you made, in order, one per slide — specific and doable, not motivational fluff.\n' +
-    'Second-to-last (The App): Tie in Upshift, first person and soft — the scroll was eating the day, so what worked ' +
-    'was locking my apps until my real quests were done.\n' +
+    'Second-to-last (The App): A dedicated slide that names Upshift — first person and soft: the scroll was eating my ' +
+    "day, so what worked was Upshift's Quest Block keeping my apps locked until my real quests were done.\n" +
     'Last (CTA): Blunt closer.',
   compare:
     'Slide 1 (Hook): Your own original hook contrasting the two.\n' +
     'Middle slides: one clean contrast per slide — fake does X, real does Y — concrete and specific.\n' +
-    'Second-to-last (The App): Tie in Upshift, first person and soft — it starts with your time, and mine went to ' +
-    'the scroll until I locked it behind my real work.\n' +
+    'Second-to-last (The App): A dedicated slide that names Upshift — first person and soft: it starts with your time, ' +
+    "and mine went to the scroll until Upshift's Quest Block locked my apps behind my real work.\n" +
     'Last (CTA): Blunt closer.',
 };
 
