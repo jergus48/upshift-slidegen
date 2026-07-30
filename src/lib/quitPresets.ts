@@ -1,6 +1,17 @@
 // One-click Brain presets for the slideshow niches. Each fills the audience +
 // style memory (niche/app fields are left untouched). The style memory encodes
 // the exact voice, the real hooks, and the per-slide structure for that niche.
+//
+// Every preset is gender-aware: the same niche reads differently for a men's
+// pack vs a women's pack (persona, pronouns, hobby examples, hooks). Pick the
+// pack with `getQuitPresets(gender)`.
+
+export type Gender = 'men' | 'women';
+
+export const GENDERS: { key: Gender; label: string }[] = [
+  { key: 'men', label: 'Men' },
+  { key: 'women', label: 'Women' },
+];
 
 export interface QuitPreset {
   key: string;
@@ -28,21 +39,37 @@ const VIRAL_VOICE =
   'Mention the app on ONE slide near the end, softly and first-person ("what finally worked for me was…"), never salesy.\n' +
   'HOOKS: any example hooks below are ONLY inspiration for the angle and tone — always write your OWN fresh, original hook. Never copy an example word for word, and vary it every time.';
 
+// Persona block — the most important gender lever. It tells the model who is
+// speaking and who they're speaking to, so examples/pronouns/hobbies land right
+// (no male-coded lines in a women's pack and vice versa).
+const PERSONA = (g: Gender) =>
+  g === 'women'
+    ? '\n\nPERSONA (non-negotiable): You are writing AS a woman, FOR women. Every pronoun, reference, example and hobby must fit a woman/girl. ' +
+      'NEVER use male-coded framing (no "become a 10/10 man", no boys\'/men\'s sports framing, no beard/gym-bro clichés, nothing that only makes sense for a guy). ' +
+      'Lean into what actually resonates with women (self-worth, glow-up, softness with discipline, feeling like herself again).'
+    : '\n\nPERSONA (non-negotiable): You are writing AS a man, FOR men. Every pronoun, reference, example and hobby must fit a man/guy. ' +
+      'NEVER use female-coded framing. Lean into what actually resonates with men (discipline, becoming who you should be, respect, getting your edge back).';
+
 // Hard content rule for the 🌽 niche — the literal words are never allowed.
 const CORN_RULE =
   '\n\nCONTENT RULE (non-negotiable): NEVER write the words "porn", "pornography", "adult content", "explicit", or "NSFW". ' +
   'Always use the 🌽 emoji instead (e.g. "quit 🌽", "🌽 sites", "watching 🌽", "🌽 addiction"). This applies to every single slide, no exceptions.';
 
-export const QUIT_PRESETS: QuitPreset[] = [
-  {
+// Each preset is a function of gender so the men's and women's packs stay a
+// single source of truth. Only the gendered bits branch; the rest is shared.
+type PresetBuilder = (g: Gender) => QuitPreset;
+
+const BUILDERS: PresetBuilder[] = [
+  // 🌽
+  (g) => ({
     key: 'corn',
     label: '🌽',
     niche: 'quitting 🌽',
-    audience: 'Guys trying to quit 🌽 for good!',
+    audience: g === 'women' ? 'Women trying to quit 🌽 for good!' : 'Guys trying to quit 🌽 for good!',
     styleMemory:
-      `${VIRAL_VOICE}${CORN_RULE}\n\n` +
+      `${VIRAL_VOICE}${PERSONA(g)}${CORN_RULE}\n\n` +
       'Hook inspiration (examples of the angle ONLY — write your own original, first person, no app mention):\n' +
-      '- "How I quit gooning after a decade"\n' +
+      '- "How I quit 🌽 after a decade"\n' +
       '- "How to quit watching 🌽 in 2026"\n' +
       '- "How I became 100 days 🌽 free in 2026"\n\n' +
       'Structure & Flow:\n' +
@@ -52,35 +79,53 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 4 (The fix): You need a blocker you literally can\'t delete once it\'s on.\n' +
       'Slide 5 (The App): Upshift\'s 🌽 Block — a 30-day strict block on 🌽 sites that you physically can\'t remove.\n' +
       'Slide 6 (CTA): Blunt closer (e.g. "Day 1 starts now. Save this.").',
-  },
-  {
+  }),
+
+  // Hobbies — the clearest place the packs diverge (different hobby examples).
+  (g) => ({
     key: 'hobbies',
     label: 'Hobbies',
     niche: 'attractive hobbies / self-improvement',
-    audience: 'Guys who feel stuck and want to become a 10/10!',
+    audience:
+      g === 'women'
+        ? 'Girls who feel stuck and want to become a 10/10!'
+        : 'Guys who feel stuck and want to become a 10/10!',
     styleMemory:
-      `${VIRAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}${PERSONA(g)}\n\n` +
       'Hook inspiration (examples of the angle ONLY — write your own original, no app mention):\n' +
-      '- "5 hobbies to finally become happy again"\n' +
-      '- "5 hobbies that make you a 10/10 man"\n' +
-      '- "How to unf*ck your life in 7 steps"\n\n' +
+      (g === 'women'
+        ? '- "5 hobbies that make you a 10/10 girl"\n' +
+          '- "5 hobbies that gave me my glow-up"\n' +
+          '- "How to become that girl in 7 steps"\n\n'
+        : '- "5 hobbies to finally become happy again"\n' +
+          '- "5 hobbies that make you a 10/10 man"\n' +
+          '- "How to unf*ck your life in 7 steps"\n\n') +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Your own original hook in this spirit.\n' +
       'Slide 2 (Callout): Blunt line about being glued to your phone doing nothing.\n' +
-      'Slide 3 (Hobby): One real hobby that builds a body (lifting, running, boxing).\n' +
-      'Slide 4 (Hobby): One that builds a brain (reading, an instrument, chess).\n' +
-      'Slide 5 (Hobby): One that gets you outside/around people (a sport, climbing, a club).\n' +
+      (g === 'women'
+        ? 'Slide 3 (Hobby): One that builds a body you\'re proud of (pilates, lifting, running).\n' +
+          'Slide 4 (Hobby): One that builds a brain (reading, journaling, learning a language).\n' +
+          'Slide 5 (Hobby): One that gets you outside/around people (a dance class, hiking, a run club).\n'
+        : 'Slide 3 (Hobby): One real hobby that builds a body (lifting, running, boxing).\n' +
+          'Slide 4 (Hobby): One that builds a brain (reading, an instrument, chess).\n' +
+          'Slide 5 (Hobby): One that gets you outside/around people (a sport, climbing, a club).\n') +
       'Slide 6 (The catch): None of it happens while you\'re doomscrolling 5 hours a day.\n' +
       'Slide 7 (The App): Upshift\'s Quest Block — your apps only unlock after you\'ve done your real quests, so you actually have time for hobbies.\n' +
       'Slide 8 (CTA): Blunt closer (e.g. "Pick one. Start today.").',
-  },
-  {
+  }),
+
+  // Rebuild yourself
+  (g) => ({
     key: 'rebuild',
     label: 'Rebuild yourself',
     niche: 'self-improvement / self-worth',
-    audience: 'People at rock bottom who want to rebuild!',
+    audience:
+      g === 'women'
+        ? 'Girls at rock bottom who want to rebuild!'
+        : 'Guys at rock bottom who want to rebuild!',
     styleMemory:
-      `${VIRAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}${PERSONA(g)}\n\n` +
       'Hook inspiration (examples of the angle ONLY — write your own original, no app mention):\n' +
       '- "7 steps to rebuild yourself"\n' +
       '- "5 ways to better yourself"\n' +
@@ -94,14 +139,16 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 6 (Step): Do one hard thing a day and keep the promise to yourself.\n' +
       'Slide 7 (The App): Upshift\'s Quest Block — your apps stay locked until your daily quests are done, so momentum wins over the scroll.\n' +
       'Slide 8 (CTA): Blunt closer (e.g. "Start with step one. Today.").',
-  },
-  {
+  }),
+
+  // Walk more
+  (g) => ({
     key: 'steps',
     label: 'Walk more',
     niche: 'detaching from your phone with a step-gated blocker',
     audience: 'People glued to TikTok who want to move more!',
     styleMemory:
-      `${VIRAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}${PERSONA(g)}\n\n` +
       'Hook inspiration (examples of the angle ONLY — write your own original, first person, no app mention):\n' +
       '- "My TikTok only unlocks after 5,000 steps"\n' +
       '- "How I walk 10k+ steps a day thanks to my TikTok addiction"\n\n' +
@@ -113,14 +160,16 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 4 (The App): Upshift\'s Walk Block — your socials only open after you hit your step goal, or every step converts into minutes of app time.\n' +
       'Slide 5 (The result): Now you rack up 10k+ steps a day just to unlock your feed, without even thinking about it.\n' +
       'Slide 6 (CTA): Blunt closer (e.g. "Walk to unlock. Save this.").',
-  },
-  {
+  }),
+
+  // Smoking
+  (g) => ({
     key: 'smoking',
     label: 'Smoking',
     niche: 'quitting smoking',
     audience: 'People trying to quit smoking for good!',
     styleMemory:
-      `${VIRAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}${PERSONA(g)}\n\n` +
       'Hook inspiration (example angle ONLY — write your own original, first person, no app): "How I quit smoking after X years".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Personal hook about quitting for good.\n' +
@@ -129,14 +178,16 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 4 (The move): Track every clean day so quitting feels like winning.\n' +
       'Slide 5 (The App): Name Upshift for tracking your streak and wins.\n' +
       'Slide 6 (CTA): Blunt closer (e.g. "Day 1. Save this.").',
-  },
-  {
+  }),
+
+  // Vaping
+  (g) => ({
     key: 'vaping',
     label: 'Vaping',
     niche: 'quitting vaping',
     audience: 'People trying to quit vaping for good!',
     styleMemory:
-      `${VIRAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}${PERSONA(g)}\n\n` +
       'Hook inspiration (example angle ONLY — write your own original, first person, no app): "How I finally put the vape down".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Personal hook about quitting the vape.\n' +
@@ -146,14 +197,16 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 5 (The move): Track every beaten craving.\n' +
       'Slide 6 (The App): Name Upshift for tracking your streak and wins.\n' +
       'Slide 7 (CTA): Blunt closer.',
-  },
-  {
+  }),
+
+  // Weed
+  (g) => ({
     key: 'weed',
     label: 'Weed',
     niche: 'quitting weed',
     audience: 'People trying to quit smoking weed!',
     styleMemory:
-      `${VIRAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}${PERSONA(g)}\n\n` +
       'Hook inspiration (example angle ONLY — write your own original, first person, no app): "How I quit weed and got my brain back".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Personal hook about quitting weed.\n' +
@@ -162,14 +215,16 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 4 (The move): Track every clean day so it feels like winning.\n' +
       'Slide 5 (The App): Name Upshift for tracking your streak and wins.\n' +
       'Slide 6 (CTA): Blunt closer (e.g. "Get your mind back. Save this.").',
-  },
-  {
+  }),
+
+  // Alcohol
+  (g) => ({
     key: 'alcohol',
     label: 'Alcohol',
     niche: 'quitting alcohol',
     audience: 'People trying to quit drinking!',
     styleMemory:
-      `${VIRAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}${PERSONA(g)}\n\n` +
       'Hook inspiration (example angle ONLY — write your own original, first person, no app): "How I quit drinking without telling anyone".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Personal hook about quitting drinking.\n' +
@@ -180,14 +235,16 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 6 (The move): Track every dry day.\n' +
       'Slide 7 (The App): Name Upshift for tracking your streak and wins.\n' +
       'Slide 8 (CTA): Blunt closer.',
-  },
-  {
+  }),
+
+  // Gambling
+  (g) => ({
     key: 'gambling',
     label: 'Gambling',
     niche: 'quitting gambling',
     audience: 'People trying to quit gambling!',
     styleMemory:
-      `${VIRAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}${PERSONA(g)}\n\n` +
       'Hook inspiration (example angle ONLY — write your own original, first person, no app): "How I quit gambling after losing everything".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Personal hook about quitting gambling.\n' +
@@ -196,14 +253,16 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 4 (The move): Track every bet you didn\'t place.\n' +
       'Slide 5 (The App): Name Upshift for the strict block + streak tracking.\n' +
       'Slide 6 (CTA): Blunt closer.',
-  },
-  {
+  }),
+
+  // Doomscrolling
+  (g) => ({
     key: 'doomscrolling',
     label: 'Doomscrolling',
     niche: 'quitting doomscrolling',
     audience: 'People who can\'t put their phone down!',
     styleMemory:
-      `${VIRAL_VOICE}\n\n` +
+      `${VIRAL_VOICE}${PERSONA(g)}\n\n` +
       'Hook inspiration (example angle ONLY — write your own original, no app): "How I stopped doomscrolling without deleting everything".\n\n' +
       'Structure & Flow:\n' +
       'Slide 1 (Hook): Strong hook about quitting the scroll without going off-grid.\n' +
@@ -215,5 +274,13 @@ export const QUIT_PRESETS: QuitPreset[] = [
       'Slide 6 (The App): Upshift does this for you — Quest Block so Instagram only unlocks after the gym or homework, plus work-hours and bedtime schedule blocks.\n' +
       'Slide 7 (The result): You get the scroll back only after you\'ve earned it, so the day isn\'t gone.\n' +
       'Slide 8 (CTA): Blunt closer.',
-  },
+  }),
 ];
+
+// Build the preset list for a given pack. Defaults to the men's pack.
+export function getQuitPresets(gender: Gender = 'men'): QuitPreset[] {
+  return BUILDERS.map((build) => build(gender));
+}
+
+// Back-compat: the default (men's) pack.
+export const QUIT_PRESETS: QuitPreset[] = getQuitPresets('men');

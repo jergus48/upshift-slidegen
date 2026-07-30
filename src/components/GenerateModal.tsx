@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, Loader2, Sparkles } from 'lucide-react';
 import { Button } from './Button';
 import { PackPicker } from './PackPicker';
-import { QUIT_PRESETS } from '../lib/quitPresets';
+import { GENDERS, getQuitPresets, type Gender } from '../lib/quitPresets';
 import type { CaptionStyle } from '../lib/captionStyle';
 
 interface GenerateModalProps {
@@ -35,6 +35,8 @@ export function GenerateModal({
   const [packs, setPacks] = useState<string[]>([]);
   const [audience, setAudience] = useState('');
   const [styleMemory, setStyleMemory] = useState('');
+  const [gender, setGender] = useState<Gender>('men');
+  const presets = getQuitPresets(gender);
 
   const submit = () =>
     onGenerate({
@@ -186,8 +188,24 @@ export function GenerateModal({
             <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
               Quick presets <span className="normal-case font-normal text-ink-6">(optional)</span>
             </label>
+            {/* Men / Women pack — gender-matched persona, hooks and hobbies */}
+            <div className="inline-flex p-0.5 rounded-lg border border-line bg-card mb-1.5">
+              {GENDERS.map((gnd) => (
+                <button
+                  key={gnd.key}
+                  type="button"
+                  disabled={generating}
+                  onClick={() => setGender(gnd.key)}
+                  className={`text-[12px] px-3 h-7 rounded-md transition-colors disabled:opacity-50 ${
+                    gender === gnd.key ? 'bg-raised text-ink' : 'text-ink-4 hover:text-ink'
+                  }`}
+                >
+                  {gnd.label}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-1.5">
-              {QUIT_PRESETS.map((p) => (
+              {presets.map((p) => (
                 <button
                   key={p.key}
                   type="button"

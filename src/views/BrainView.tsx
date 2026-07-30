@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import type { BrainState } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
-import { QUIT_PRESETS } from '../lib/quitPresets';
+import { GENDERS, getQuitPresets, type Gender } from '../lib/quitPresets';
 
 interface BrainViewProps {
   brain: BrainState;
@@ -18,6 +19,9 @@ const textareaClass =
   'focus:border-ink-7 focus:ring-2 focus:ring-ink/10';
 
 export function BrainView({ brain, onChange }: BrainViewProps) {
+  const [gender, setGender] = useState<Gender>('men');
+  const presets = getQuitPresets(gender);
+
   return (
     <>
       <ViewHeader
@@ -32,8 +36,22 @@ export function BrainView({ brain, onChange }: BrainViewProps) {
             title="Quick presets"
             description="One click fills the Audience and Style memory below for a quit-habit niche. You can still tweak everything after."
           >
+            {/* Men / Women pack — same niche, gender-matched persona, hooks and hobbies */}
+            <div className="inline-flex p-0.5 rounded-lg border border-line bg-card mb-1">
+              {GENDERS.map((gnd) => (
+                <button
+                  key={gnd.key}
+                  onClick={() => setGender(gnd.key)}
+                  className={`text-[12px] px-3 h-7 rounded-md transition-colors ${
+                    gender === gnd.key ? 'bg-raised text-ink' : 'text-ink-4 hover:text-ink'
+                  }`}
+                >
+                  {gnd.label}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-1.5">
-              {QUIT_PRESETS.map((p) => (
+              {presets.map((p) => (
                 <button
                   key={p.key}
                   onClick={() =>
