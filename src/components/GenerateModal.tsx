@@ -213,10 +213,11 @@ export function GenerateModal({
                   onClick={() => {
                     setAudience(p.audience);
                     setStyleMemory(p.styleMemory);
+                    setSlidesPerShow(p.slides);
                   }}
                   className="text-[12px] px-3 h-8 rounded-lg border border-line text-ink-3 hover:text-ink hover:border-line-2 hover:bg-raised transition-colors disabled:opacity-50"
                 >
-                  {p.label}
+                  {p.label} <span className="text-ink-6">({p.slides} slides)</span>
                 </button>
               ))}
             </div>

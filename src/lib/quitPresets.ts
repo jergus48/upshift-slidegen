@@ -5,6 +5,10 @@
 // Every preset is gender-aware: the same niche reads differently for a men's
 // pack vs a women's pack (persona, pronouns, hobby examples, hooks). Pick the
 // pack with `getQuitPresets(gender)`.
+//
+// Each preset also carries `slides`: the recommended "slides per slideshow" so
+// the deck isn't cut short (hook + every step/item + app slide + CTA). It is
+// derived directly from that preset's slide plan below.
 
 export type Gender = 'men' | 'women';
 
@@ -19,6 +23,7 @@ export interface QuitPreset {
   niche: string;
   audience: string;
   styleMemory: string;
+  slides: number; // recommended slides-per-slideshow for the full plan
 }
 
 // Shared voice block. The single most important job here is to stop the output
@@ -64,6 +69,7 @@ const BUILDERS: PresetBuilder[] = [
   (g) => ({
     key: 'corn',
     label: '🌽',
+    slides: 6,
     niche: 'quitting 🌽',
     audience: g === 'women' ? 'Women trying to quit 🌽 for good!' : 'Guys trying to quit 🌽 for good!',
     styleMemory:
@@ -85,6 +91,7 @@ const BUILDERS: PresetBuilder[] = [
   (g) => ({
     key: 'hobbies',
     label: 'Hobbies',
+    slides: 8,
     niche: 'attractive hobbies / self-improvement',
     audience:
       g === 'women'
@@ -119,6 +126,7 @@ const BUILDERS: PresetBuilder[] = [
   (g) => ({
     key: 'rebuild',
     label: 'Rebuild yourself',
+    slides: 8,
     niche: 'self-improvement / self-worth',
     audience:
       g === 'women'
@@ -145,6 +153,7 @@ const BUILDERS: PresetBuilder[] = [
   (g) => ({
     key: 'steps',
     label: 'Walk more',
+    slides: 6,
     niche: 'detaching from your phone with a step-gated blocker',
     audience: 'People glued to TikTok who want to move more!',
     styleMemory:
@@ -166,6 +175,7 @@ const BUILDERS: PresetBuilder[] = [
   (g) => ({
     key: 'smoking',
     label: 'Smoking',
+    slides: 6,
     niche: 'quitting smoking',
     audience: 'People trying to quit smoking for good!',
     styleMemory:
@@ -184,6 +194,7 @@ const BUILDERS: PresetBuilder[] = [
   (g) => ({
     key: 'vaping',
     label: 'Vaping',
+    slides: 7,
     niche: 'quitting vaping',
     audience: 'People trying to quit vaping for good!',
     styleMemory:
@@ -203,6 +214,7 @@ const BUILDERS: PresetBuilder[] = [
   (g) => ({
     key: 'weed',
     label: 'Weed',
+    slides: 6,
     niche: 'quitting weed',
     audience: 'People trying to quit smoking weed!',
     styleMemory:
@@ -221,6 +233,7 @@ const BUILDERS: PresetBuilder[] = [
   (g) => ({
     key: 'alcohol',
     label: 'Alcohol',
+    slides: 8,
     niche: 'quitting alcohol',
     audience: 'People trying to quit drinking!',
     styleMemory:
@@ -241,6 +254,7 @@ const BUILDERS: PresetBuilder[] = [
   (g) => ({
     key: 'gambling',
     label: 'Gambling',
+    slides: 6,
     niche: 'quitting gambling',
     audience: 'People trying to quit gambling!',
     styleMemory:
@@ -259,6 +273,7 @@ const BUILDERS: PresetBuilder[] = [
   (g) => ({
     key: 'doomscrolling',
     label: 'Doomscrolling',
+    slides: 8,
     niche: 'quitting doomscrolling',
     audience: 'People who can\'t put their phone down!',
     styleMemory:
@@ -284,6 +299,7 @@ const BUILDERS: PresetBuilder[] = [
 //   1. The titles below are the user's exact titles — do not rename them.
 //   2. The whole deck is about that one topic; only ONE slide (two at the very
 //      most) plugs the app, branded "Upshift: #1 Productivity App".
+// `slides` = hook + every step/item + the app slide + CTA, so nothing is cut.
 
 const UPSHIFT_RULE =
   '\n\nUPSHIFT PLUG (strict, overrides the softer app-mention note above): Exactly ONE slide plugs the app — two at ' +
@@ -295,6 +311,7 @@ const UPSHIFT_RULE =
 interface SelfSpec {
   key: string;
   label: string; // the user's exact title — used as the button label AND the hook
+  slides: number; // recommended slides-per-slideshow for the full plan
   niche: string;
   audience: string;
   body: string; // topic-specific slide plan; no two presets share one
@@ -304,6 +321,7 @@ const SELF_SPECS: SelfSpec[] = [
   {
     key: 'stop-wasting-8',
     label: '8 rules to stop wasting your life',
+    slides: 10,
     niche: 'stop wasting your life / self-discipline',
     audience: 'People who feel their life is quietly slipping away!',
     body:
@@ -313,11 +331,12 @@ const SELF_SPECS: SelfSpec[] = [
       'body 4-5x a week; read instead of watching other people live; cut the people who make you smaller; kill the ' +
       'endless scroll; track your days so a week never disappears again.\n' +
       'The "kill the endless scroll" rule (rule 7) is your ONE Upshift slide (Upshift: #1 Productivity App).\n' +
-      'Final slide (CTA): blunt closer (e.g. "Screenshot this. Start rule 1 today.").',
+      'Slide 10 (CTA): blunt closer (e.g. "Screenshot this. Start rule 1 today.").',
   },
   {
     key: 'morning-ascend',
     label: 'the morning routine to ascend',
+    slides: 10,
     niche: 'a morning routine that levels you up',
     audience: 'People who want mornings that set them up to win!',
     body:
@@ -325,13 +344,14 @@ const SELF_SPECS: SelfSpec[] = [
       'Slides 2-8: the routine step by step in the order you do it: no phone for the first hour; make your bed; ' +
       'water before coffee; sunlight and a short walk; train or stretch; a cold shower; plan the top 3 things that ' +
       'matter before touching anything else.\n' +
-      'One slide near the end is your Upshift slide (Upshift: #1 Productivity App) — how you keep the phone locked ' +
-      'for that first hour so the routine actually happens.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 9 is your Upshift slide (Upshift: #1 Productivity App) — how you keep the phone locked for that first ' +
+      'hour so the routine actually happens.\n' +
+      'Slide 10 (CTA): blunt closer.',
   },
   {
     key: 'win-20s',
     label: 'How to Win Your 20s',
+    slides: 9,
     niche: 'making your twenties count',
     audience: "People in their 20s who don't want to waste them!",
     body:
@@ -340,11 +360,12 @@ const SELF_SPECS: SelfSpec[] = [
       'your body will never be easier to build than now; save and invest early even if it is tiny; pick friends who ' +
       'are going somewhere; date on purpose instead of drifting; stop trading whole years for the scroll.\n' +
       'The "stop trading years for the scroll" slide is your Upshift slide (Upshift: #1 Productivity App).\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 9 (CTA): blunt closer.',
   },
   {
     key: 'mental-sentences',
     label: '8 Sentences That Make You Level Up Mentally',
+    slides: 10,
     niche: 'mindset shifts / one-line mental sentences',
     audience: 'People who want to think sharper and stronger!',
     body:
@@ -356,11 +377,12 @@ const SELF_SPECS: SelfSpec[] = [
       'only that you did." / "You do not need motivation, you need to begin."\n' +
       'The "your phone is spending your life for you" sentence is your Upshift slide (Upshift: #1 Productivity App), ' +
       'with one line under it on how the app takes that time back.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 10 (CTA): blunt closer.',
   },
   {
     key: 'signs-make-it',
     label: "5 signs you're going to make it",
+    slides: 7,
     niche: "signs you're on the right path",
     audience: "People grinding who need to know it's working!",
     body:
@@ -370,11 +392,12 @@ const SELF_SPECS: SelfSpec[] = [
       'and working while everyone else parties.\n' +
       'The "not addicted to your phone anymore" sign is your Upshift slide (Upshift: #1 Productivity App) — how you ' +
       'got there.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 7 (CTA): blunt closer.',
   },
   {
     key: 'stop-wasting-7',
     label: '7 rules to stop wasting your life',
+    slides: 9,
     niche: 'stop wasting your life / discipline (harder-edged take)',
     audience: 'People done wasting their potential!',
     body:
@@ -385,11 +408,12 @@ const SELF_SPECS: SelfSpec[] = [
       'yourself twice.\n' +
       'The "apps that eat your day" rule is your Upshift slide (Upshift: #1 Productivity App) — instead of relying ' +
       'on willpower you lock them until your work is done.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 9 (CTA): blunt closer.',
   },
   {
     key: 'manlier-hobbies',
     label: '6 hobbies that make you noticeably manlier',
+    slides: 9,
     niche: 'hobbies that build presence and character',
     audience: 'Guys who want more presence and respect!',
     body:
@@ -397,13 +421,14 @@ const SELF_SPECS: SelfSpec[] = [
       'Slides 2-7: six hobbies, ONE per slide, each with a one-line why: lifting or a combat sport (boxing/BJJ); ' +
       'learning to build or fix things with your hands; hunting, hiking or the outdoors; an instrument like guitar ' +
       'or piano; cooking real food; cold plunges or hard cardio.\n' +
-      'One slide near the end is your Upshift slide (Upshift: #1 Productivity App) — none of it happens while you ' +
-      'scroll, so you lock the phone until you have trained.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 8 is your Upshift slide (Upshift: #1 Productivity App) — none of it happens while you scroll, so you ' +
+      'lock the phone until you have trained.\n' +
+      'Slide 9 (CTA): blunt closer.',
   },
   {
     key: 'honor-one-life',
     label: '9 codes to honor your one life',
+    slides: 11,
     niche: 'living with intention / a personal code',
     audience: 'People who want to live like their time actually matters!',
     body:
@@ -413,37 +438,40 @@ const SELF_SPECS: SelfSpec[] = [
       'asked; stop numbing and start feeling; build something that outlasts you; forgive fast and move faster; ' +
       'never waste a day you can never get back.\n' +
       'The "protect your attention" code is your Upshift slide (Upshift: #1 Productivity App).\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 11 (CTA): blunt closer.',
   },
   {
     key: 'instead-of-scrolling',
     label: 'things to do instead of mindlessly scrolling',
+    slides: 10,
     niche: 'better things to do than doomscroll',
     audience: 'People who scroll for hours and hate themselves for it!',
     body:
       'Slide 1 (Hook): the title.\n' +
       'Slides 2-8: specific things to do instead, ONE per slide: go for a walk with no phone; read 10 pages; call ' +
       'someone who matters; train; learn one thing on a real skill; cook a proper meal; write down tomorrow\'s top 3.\n' +
-      'One slide near the end is your Upshift slide (Upshift: #1 Productivity App) — the thing that actually stops ' +
-      'the scroll so you have time for the rest. This topic fits the app perfectly, lean into it here.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 9 is your Upshift slide (Upshift: #1 Productivity App) — the thing that actually stops the scroll so ' +
+      'you have time for the rest. This topic fits the app perfectly, lean into it here.\n' +
+      'Slide 10 (CTA): blunt closer.',
   },
   {
     key: 'smart-hobbies',
     label: '4 hobbies to become dangerously intelligent',
+    slides: 7,
     niche: 'hobbies that make you sharper',
     audience: 'People who want to actually get smarter, not just feel busy!',
     body:
       'Slide 1 (Hook): the title.\n' +
       'Slides 2-5: four hobbies, ONE per slide, each with a one-line why: reading real books every day; chess or ' +
       'strategy games; writing or journaling to think clearly; learning a language or an instrument.\n' +
-      'One slide near the end is your Upshift slide (Upshift: #1 Productivity App) — you cannot get smarter while ' +
-      'your brain is fried from scrolling, so you lock the feed first.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 6 is your Upshift slide (Upshift: #1 Productivity App) — you cannot get smarter while your brain is ' +
+      'fried from scrolling, so you lock the feed first.\n' +
+      'Slide 7 (CTA): blunt closer.',
   },
   {
     key: 'struggle-to-win',
     label: 'How to struggle to win',
+    slides: 8,
     niche: 'using hard seasons to come out ahead',
     audience: 'People in a brutal season who refuse to quit!',
     body:
@@ -454,11 +482,12 @@ const SELF_SPECS: SelfSpec[] = [
       'stopped.\n' +
       'The "cut every comfort" slide is your Upshift slide (Upshift: #1 Productivity App) — killing the scroll was ' +
       'the first comfort you cut.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 8 (CTA): blunt closer.',
   },
   {
     key: 'change-yourself',
     label: '5 best ways to change yourself',
+    slides: 7,
     niche: 'genuinely changing yourself for the better',
     audience: 'People ready to actually change, not just talk about it!',
     body:
@@ -467,11 +496,12 @@ const SELF_SPECS: SelfSpec[] = [
       'habit like daily training; cut the inputs frying your brain; keep one promise to yourself every single day; ' +
       'give it 90 days, not 9.\n' +
       'The "cut the inputs frying your brain" way is your Upshift slide (Upshift: #1 Productivity App).\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 7 (CTA): blunt closer.',
   },
   {
     key: 'changed-at-21',
     label: 'How I changed my entire life in one year at 21',
+    slides: 8,
     niche: 'a one-year full life turnaround at 21',
     audience: 'Young people who want a total turnaround!',
     body:
@@ -480,11 +510,12 @@ const SELF_SPECS: SelfSpec[] = [
       'Slides 3-7: what you actually did, in order, one per slide: fixed your sleep; started training every day; ' +
       'killed the 5-hour scroll; learned a skill that made money; swapped your circle for better people.\n' +
       'The "killed the scroll" slide is your Upshift slide (Upshift: #1 Productivity App).\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 8 (CTA): blunt closer.',
   },
   {
     key: 'six-month-plan',
     label: '6 month plan To become the best version of yourself',
+    slides: 8,
     niche: 'a 6-month plan to become your best self',
     audience: 'People who want a real month-by-month plan, not vibes!',
     body:
@@ -493,11 +524,12 @@ const SELF_SPECS: SelfSpec[] = [
       'a week and lock the scroll; Month 3 build one money skill; Month 4 dial in diet and physique; Month 5 fix ' +
       'your circle and social life; Month 6 lock it all in as identity, not effort.\n' +
       'The Month 2 slide names Upshift (Upshift: #1 Productivity App) as how you lock the scroll.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 8 (CTA): blunt closer.',
   },
   {
     key: 'change-yourself-2',
     label: 'The 5 best ways to change yourself',
+    slides: 7,
     niche: 'changing yourself for good (identity-first take)',
     audience: 'People done being the old version of themselves!',
     body:
@@ -507,11 +539,12 @@ const SELF_SPECS: SelfSpec[] = [
       'find people already living it; fall in love with boring consistency.\n' +
       'The "remove temptation instead of resisting it" way is your Upshift slide (Upshift: #1 Productivity App) — ' +
       'you do not white-knuckle the scroll, you lock it.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 7 (CTA): blunt closer.',
   },
   {
     key: 'aura-hobbies',
     label: 'Hobbies that will 10x your aura',
+    slides: 9,
     niche: 'hobbies that raise your presence / aura',
     audience: 'People who want to walk into a room and feel different!',
     body:
@@ -519,13 +552,14 @@ const SELF_SPECS: SelfSpec[] = [
       'Slides 2-7: hobbies, ONE per slide, each with a one-line why: lifting or martial arts (you carry yourself ' +
       'different); reading (you speak with depth); an instrument (quiet confidence); solo travel or hiking; style ' +
       'and grooming treated as a craft; journaling for a calm, grounded presence.\n' +
-      'One slide near the end is your Upshift slide (Upshift: #1 Productivity App) — nothing raises your aura while ' +
-      'you are glued to a feed, so you lock it first.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 8 is your Upshift slide (Upshift: #1 Productivity App) — nothing raises your aura while you are glued ' +
+      'to a feed, so you lock it first.\n' +
+      'Slide 9 (CTA): blunt closer.',
   },
   {
     key: 'confidence-habits',
     label: 'uncomfortable habits that will build extreme confidence',
+    slides: 9,
     niche: 'uncomfortable habits that build real confidence',
     audience: 'People who want confidence that does not shake!',
     body:
@@ -534,11 +568,12 @@ const SELF_SPECS: SelfSpec[] = [
       'contact; speak up first; take cold showers; train in a busy gym anyway; post the thing you are scared to; ' +
       'be the one who says the hard truth; sit with boredom instead of reaching for your phone.\n' +
       'The "sit with boredom instead of your phone" habit is your Upshift slide (Upshift: #1 Productivity App).\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 9 (CTA): blunt closer.',
   },
   {
     key: 'bruce-wayne',
     label: 'The Bruce Wayne Lifestyle',
+    slides: 8,
     niche: 'building yourself in private, letting the results talk',
     audience: 'People who want to build in silence and let results talk!',
     body:
@@ -549,11 +584,12 @@ const SELF_SPECS: SelfSpec[] = [
       'always.\n' +
       'The "discipline over dopamine" slide is your Upshift slide (Upshift: #1 Productivity App) — you kill the ' +
       'scroll so you can build in silence.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 8 (CTA): blunt closer.',
   },
   {
     key: 'become-great',
     label: 'How to become great',
+    slides: 8,
     niche: 'what it actually takes to become great',
     audience: 'People who refuse to be average!',
     body:
@@ -562,11 +598,12 @@ const SELF_SPECS: SelfSpec[] = [
       'Slides 3-7: what it takes, one per slide: pick one thing and go obsessive; out-work the talented; guard your ' +
       'focus like it is sacred; embrace the reps everyone else skips; keep going when nobody claps.\n' +
       'The "guard your focus" slide is your Upshift slide (Upshift: #1 Productivity App).\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 8 (CTA): blunt closer.',
   },
   {
     key: 'rich-young',
     label: 'Rules to become rich young',
+    slides: 10,
     niche: 'building wealth young through habits and skills',
     audience: 'Young people who want to build wealth early!',
     body:
@@ -577,34 +614,37 @@ const SELF_SPECS: SelfSpec[] = [
       'The "stop pouring hours into the feed" rule is your Upshift slide (Upshift: #1 Productivity App).\n' +
       'Keep it to habits, skills, discipline and mindset — do NOT give specific investment or financial advice or ' +
       'name any investment.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 10 (CTA): blunt closer.',
   },
   {
     key: 'fake-vs-real-rich',
     label: 'Fake Rich vs Real Rich For Men',
+    slides: 8,
     niche: 'real wealth vs just looking rich',
     audience: 'Men done faking it who want the real thing!',
     body:
       'Slide 1 (Hook): the title.\n' +
-      'Slides 2-7: ONE clean contrast per slide: fake rich leases the car, real rich owns his time; fake rich ' +
+      'Slides 2-6: ONE clean contrast per slide: fake rich leases the car, real rich owns his time; fake rich ' +
       'flexes online, real rich stays quiet; fake rich buys logos, real rich buys assets; fake rich looks busy, ' +
       'real rich is free; fake rich burns the night out, real rich builds in the morning.\n' +
-      'One slide is your Upshift slide (Upshift: #1 Productivity App) — real rich guards his attention, so he locks ' +
+      'Slide 7 is your Upshift slide (Upshift: #1 Productivity App) — real rich guards his attention, so he locks ' +
       'the scroll and spends the hours on what compounds.\n' +
       'Keep it about habits and mindset, not specific financial advice.\n' +
-      'Final slide (CTA): blunt closer.',
+      'Slide 8 (CTA): blunt closer.',
   },
 ];
 
 const selfBuilder = (s: SelfSpec): PresetBuilder => (g) => ({
   key: s.key,
   label: s.label,
+  slides: s.slides,
   niche: s.niche,
   audience: s.audience,
   styleMemory:
     `${VIRAL_VOICE}${PERSONA(g)}${UPSHIFT_RULE}\n\n` +
     `Hook: slide 1 opens on this exact topic titled "${s.label}" — keep it almost word for word (keep any count/number). ` +
     'This overrides the "write your own hook" note above.\n\n' +
+    `Recommended deck length: ${s.slides} slides (hook + every item + the app slide + CTA) so nothing gets cut.\n\n` +
     'Structure & Flow (specific to THIS topic — never fall back to a generic template):\n' +
     s.body,
 });
