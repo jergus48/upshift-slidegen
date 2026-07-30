@@ -277,330 +277,336 @@ const BUILDERS: PresetBuilder[] = [
   }),
 ];
 
-// ---- Self-improvement / "aura" listicle presets ----------------------------
-// A second family of niches: motivational self-improvement slideshows (rules,
-// hobbies, glow-up stories) rather than quit-a-habit guides. They share one
-// voice, persona and app tie-in, so each spec only supplies the topic, hooks
-// and flow shape — one source of truth for both packs.
+// ---- Self-improvement presets ----------------------------------------------
+// A second family: motivational self-improvement slideshows. Unlike the shared
+// quit-habit voice, EACH of these carries its OWN topic-specific slide plan, so
+// no two presets ever generate the same deck. Two hard rules for all of them:
+//   1. The titles below are the user's exact titles — do not rename them.
+//   2. The whole deck is about that one topic; only ONE slide (two at the very
+//      most) plugs the app, branded "Upshift: #1 Productivity App".
 
-// Accurate app description so the model never invents features on the app slide.
-const SELF_APP_NOTE =
-  '\n\nWhat Upshift actually does (be accurate on the app slide): it is a screen-time app. Quest Block keeps your ' +
-  'social apps locked until your real quests are done (gym, reading, work, chores); it also has strict daily time ' +
-  'limits and work/sleep schedule blocks. Do not invent other features.';
-
-// Three flow shapes cover every topic below.
-type Flow = 'list' | 'story' | 'compare';
-
-const FLOWS: Record<Flow, string> = {
-  list:
-    'Slide 1 (Hook): Your own original hook in this spirit (keep the count if the hook names one).\n' +
-    'Slide 2 (Callout): One blunt, honest line naming the problem — stuck, wasting time, glued to your phone.\n' +
-    'Middle slides: each slide is ONE item from the list, numbered, concrete and genuinely useful — never vague filler.\n' +
-    'Second-to-last (The App): A dedicated slide that names Upshift — first person and soft: none of this sticks while ' +
-    "you scroll all day, so what finally worked for me was Upshift's Quest Block keeping my apps locked until my real " +
-    'quests (gym, reading, work) were done.\n' +
-    'Last (CTA): Blunt closer (e.g. "Pick one. Start today. Save this.").',
-  story:
-    'Slide 1 (Hook): Your own personal hook in this spirit.\n' +
-    'Slide 2 (Before): One blunt line on where you were — lost, behind, scrolling your life away.\n' +
-    'Middle slides: the real moves you made, in order, one per slide — specific and doable, not motivational fluff.\n' +
-    'Second-to-last (The App): A dedicated slide that names Upshift — first person and soft: the scroll was eating my ' +
-    "day, so what worked was Upshift's Quest Block keeping my apps locked until my real quests were done.\n" +
-    'Last (CTA): Blunt closer.',
-  compare:
-    'Slide 1 (Hook): Your own original hook contrasting the two.\n' +
-    'Middle slides: one clean contrast per slide — fake does X, real does Y — concrete and specific.\n' +
-    'Second-to-last (The App): A dedicated slide that names Upshift — first person and soft: it starts with your time, ' +
-    "and mine went to the scroll until Upshift's Quest Block locked my apps behind my real work.\n" +
-    'Last (CTA): Blunt closer.',
-};
+const UPSHIFT_RULE =
+  '\n\nUPSHIFT PLUG (strict, overrides the softer app-mention note above): Exactly ONE slide plugs the app — two at ' +
+  'the very most — and it names it as "Upshift: #1 Productivity App". In one honest, first-person line say what it ' +
+  'does: it locks your social apps and kills the mindless scroll until your real work (gym, reading, tasks) is done. ' +
+  'Every other slide is 100% about the topic with ZERO app mention. Never exceed two Upshift slides and never turn ' +
+  'the deck into an ad.';
 
 interface SelfSpec {
   key: string;
-  label: string;
-  labelWomen?: string;
+  label: string; // the user's exact title — used as the button label AND the hook
   niche: string;
   audience: string;
-  audienceWomen?: string;
-  flow: Flow;
-  hooks: string[];
-  hooksWomen?: string[];
-  note?: string;
+  body: string; // topic-specific slide plan; no two presets share one
 }
 
 const SELF_SPECS: SelfSpec[] = [
   {
-    key: 'stop-wasting',
-    label: 'Stop wasting your life',
-    niche: 'self-discipline / making your time count',
-    audience: 'People who feel their life is slipping away!',
-    flow: 'list',
-    hooks: [
-      '8 rules to stop wasting your life',
-      '7 rules to stop wasting your life',
-      'How I stopped wasting my one life',
-    ],
+    key: 'stop-wasting-8',
+    label: '8 rules to stop wasting your life',
+    niche: 'stop wasting your life / self-discipline',
+    audience: 'People who feel their life is quietly slipping away!',
+    body:
+      'Slide 1 (Hook): the title, personal.\n' +
+      'Slides 2-9: eight blunt, specific rules, ONE per slide, numbered 1-8: wake at the same time with no snooze; ' +
+      'do the hardest thing first before your brain talks you out of it; stop waiting to feel motivated; train your ' +
+      'body 4-5x a week; read instead of watching other people live; cut the people who make you smaller; kill the ' +
+      'endless scroll; track your days so a week never disappears again.\n' +
+      'The "kill the endless scroll" rule (rule 7) is your ONE Upshift slide (Upshift: #1 Productivity App).\n' +
+      'Final slide (CTA): blunt closer (e.g. "Screenshot this. Start rule 1 today.").',
   },
   {
-    key: 'morning-routine',
-    label: 'Morning routine',
-    niche: 'a morning routine that sets up your whole day',
+    key: 'morning-ascend',
+    label: 'the morning routine to ascend',
+    niche: 'a morning routine that levels you up',
     audience: 'People who want mornings that set them up to win!',
-    flow: 'list',
-    hooks: [
-      'The morning routine that changed everything for me',
-      'My morning routine to actually get ahead',
-      'The morning routine to become who you want to be',
-    ],
-    note: 'Each middle slide is one real step of the routine, in the order you do it (wake time, no phone, water, movement, etc.).',
+    body:
+      'Slide 1 (Hook): the title, personal.\n' +
+      'Slides 2-8: the routine step by step in the order you do it: no phone for the first hour; make your bed; ' +
+      'water before coffee; sunlight and a short walk; train or stretch; a cold shower; plan the top 3 things that ' +
+      'matter before touching anything else.\n' +
+      'One slide near the end is your Upshift slide (Upshift: #1 Productivity App) — how you keep the phone locked ' +
+      'for that first hour so the routine actually happens.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'win-20s',
-    label: 'Win your 20s',
-    niche: 'making the most of your twenties',
+    label: 'How to Win Your 20s',
+    niche: 'making your twenties count',
     audience: "People in their 20s who don't want to waste them!",
-    flow: 'list',
-    hooks: [
-      'How to win your 20s',
-      'What I wish I knew at the start of my 20s',
-      'How to not waste your 20s',
-    ],
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-8: the real lessons, one per slide: your 20s are for building, not coasting; skills beat comfort; ' +
+      'your body will never be easier to build than now; save and invest early even if it is tiny; pick friends who ' +
+      'are going somewhere; date on purpose instead of drifting; stop trading whole years for the scroll.\n' +
+      'The "stop trading years for the scroll" slide is your Upshift slide (Upshift: #1 Productivity App).\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
-    key: 'mindset-sentences',
-    label: 'Mindset sentences',
-    niche: 'mindset shifts that change how you think',
+    key: 'mental-sentences',
+    label: '8 Sentences That Make You Level Up Mentally',
+    niche: 'mindset shifts / one-line mental sentences',
     audience: 'People who want to think sharper and stronger!',
-    flow: 'list',
-    hooks: [
-      '8 sentences that make you level up mentally',
-      '8 lines that changed how I think',
-      "Sentences you'll wish you read sooner",
-    ],
-    note: 'Each middle slide is ONE short, punchy sentence — a line the reader could screenshot on its own. Make them true and a little uncomfortable, not cheesy.',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-9: eight short, screenshot-worthy sentences, ONE per slide, no explanation needed — true and a ' +
+      'little uncomfortable: "Discipline is just self-respect in action." / "No one is coming to save you." / ' +
+      '"Boredom is where discipline is built." / "You are the average of what you repeat." / "Comfort is the ' +
+      'slowest way to lose." / "Your phone is spending your life for you." / "Nobody remembers the day you started, ' +
+      'only that you did." / "You do not need motivation, you need to begin."\n' +
+      'The "your phone is spending your life for you" sentence is your Upshift slide (Upshift: #1 Productivity App), ' +
+      'with one line under it on how the app takes that time back.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'signs-make-it',
-    label: "Signs you'll make it",
+    label: "5 signs you're going to make it",
     niche: "signs you're on the right path",
     audience: "People grinding who need to know it's working!",
-    flow: 'list',
-    hooks: [
-      "5 signs you're going to make it",
-      "5 signs you're closer than you think",
-      'Quiet signs your life is about to change',
-    ],
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-6: five quiet signs, one per slide: you have started saying no; boring routines feel good now; you ' +
+      'are not addicted to your phone anymore; you keep the promises you make to yourself; you are fine being alone ' +
+      'and working while everyone else parties.\n' +
+      'The "not addicted to your phone anymore" sign is your Upshift slide (Upshift: #1 Productivity App) — how you ' +
+      'got there.\n' +
+      'Final slide (CTA): blunt closer.',
+  },
+  {
+    key: 'stop-wasting-7',
+    label: '7 rules to stop wasting your life',
+    niche: 'stop wasting your life / discipline (harder-edged take)',
+    audience: 'People done wasting their potential!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-8: seven blunt rules, ONE per slide, numbered 1-7, DIFFERENT flavor from any other list: protect ' +
+      'your mornings; stop consuming and start creating; make discomfort a daily habit; audit who you spend time ' +
+      'with; get the apps that eat your day off your back; measure progress every week; never break a promise to ' +
+      'yourself twice.\n' +
+      'The "apps that eat your day" rule is your Upshift slide (Upshift: #1 Productivity App) — instead of relying ' +
+      'on willpower you lock them until your work is done.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'manlier-hobbies',
-    label: 'Manlier hobbies',
-    labelWomen: 'Magnetic hobbies',
+    label: '6 hobbies that make you noticeably manlier',
     niche: 'hobbies that build presence and character',
     audience: 'Guys who want more presence and respect!',
-    audienceWomen: 'Girls who want more presence and magnetism!',
-    flow: 'list',
-    hooks: [
-      '6 hobbies that make you noticeably manlier',
-      '6 hobbies that give you real presence',
-      'Hobbies that quietly make you more respected',
-    ],
-    hooksWomen: [
-      '6 hobbies that make you noticeably more magnetic',
-      '6 hobbies that give you real presence',
-      'Hobbies that make you that girl without trying',
-    ],
-    note: 'Each middle slide is one hobby with a one-line why it works.',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-7: six hobbies, ONE per slide, each with a one-line why: lifting or a combat sport (boxing/BJJ); ' +
+      'learning to build or fix things with your hands; hunting, hiking or the outdoors; an instrument like guitar ' +
+      'or piano; cooking real food; cold plunges or hard cardio.\n' +
+      'One slide near the end is your Upshift slide (Upshift: #1 Productivity App) — none of it happens while you ' +
+      'scroll, so you lock the phone until you have trained.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'honor-one-life',
-    label: 'Honor your one life',
-    niche: 'living with intention / not wasting your one life',
-    audience: 'People who want to live like their time matters!',
-    flow: 'list',
-    hooks: [
-      '9 codes to honor your one life',
-      '9 rules I live by to not waste this life',
-      'The codes that changed how I live',
-    ],
+    label: '9 codes to honor your one life',
+    niche: 'living with intention / a personal code',
+    audience: 'People who want to live like their time actually matters!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-10: nine codes to live by, ONE per slide, numbered 1-9: your word is law; train the body you were ' +
+      'given; protect your attention like your life depends on it; do hard things on purpose; help without being ' +
+      'asked; stop numbing and start feeling; build something that outlasts you; forgive fast and move faster; ' +
+      'never waste a day you can never get back.\n' +
+      'The "protect your attention" code is your Upshift slide (Upshift: #1 Productivity App).\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'instead-of-scrolling',
-    label: 'Instead of scrolling',
+    label: 'things to do instead of mindlessly scrolling',
     niche: 'better things to do than doomscroll',
-    audience: 'People who scroll for hours and hate it!',
-    flow: 'list',
-    hooks: [
-      'Things to do instead of mindlessly scrolling',
-      'What to do instead of picking up your phone',
-      'Replace the scroll with these',
-    ],
-    note: 'Each middle slide is one specific thing to do instead of scrolling. This niche fits the app perfectly — lean into it on the app slide.',
+    audience: 'People who scroll for hours and hate themselves for it!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-8: specific things to do instead, ONE per slide: go for a walk with no phone; read 10 pages; call ' +
+      'someone who matters; train; learn one thing on a real skill; cook a proper meal; write down tomorrow\'s top 3.\n' +
+      'One slide near the end is your Upshift slide (Upshift: #1 Productivity App) — the thing that actually stops ' +
+      'the scroll so you have time for the rest. This topic fits the app perfectly, lean into it here.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'smart-hobbies',
-    label: 'Smarter hobbies',
+    label: '4 hobbies to become dangerously intelligent',
     niche: 'hobbies that make you sharper',
-    audience: 'People who want to actually get smarter!',
-    flow: 'list',
-    hooks: [
-      '4 hobbies to become dangerously intelligent',
-      '4 hobbies that made me noticeably smarter',
-      'Hobbies that build a sharper mind',
-    ],
-    note: 'Each middle slide is one hobby (reading, chess, writing, learning an instrument) with a one-line why.',
+    audience: 'People who want to actually get smarter, not just feel busy!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-5: four hobbies, ONE per slide, each with a one-line why: reading real books every day; chess or ' +
+      'strategy games; writing or journaling to think clearly; learning a language or an instrument.\n' +
+      'One slide near the end is your Upshift slide (Upshift: #1 Productivity App) — you cannot get smarter while ' +
+      'your brain is fried from scrolling, so you lock the feed first.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'struggle-to-win',
-    label: 'Struggle to win',
-    niche: 'using hard times to come out ahead',
-    audience: 'People in a hard season who refuse to quit!',
-    flow: 'story',
-    hooks: [
-      'How to struggle to win',
-      'How my worst year became the turning point',
-      'How to use the struggle instead of drowning in it',
-    ],
+    label: 'How to struggle to win',
+    niche: 'using hard seasons to come out ahead',
+    audience: 'People in a brutal season who refuse to quit!',
+    body:
+      'Slide 1 (Hook): the title, personal.\n' +
+      'Slide 2 (Truth): one blunt line that the struggle is the point, not a detour.\n' +
+      'Slides 3-7: the moves, one per slide: show up on the worst days; shrink the goal down to just today; use the ' +
+      'pain as fuel instead of an excuse; cut every comfort keeping you soft; keep going long after everyone else ' +
+      'stopped.\n' +
+      'The "cut every comfort" slide is your Upshift slide (Upshift: #1 Productivity App) — killing the scroll was ' +
+      'the first comfort you cut.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'change-yourself',
-    label: 'Change yourself',
+    label: '5 best ways to change yourself',
     niche: 'genuinely changing yourself for the better',
-    audience: 'People ready to actually change!',
-    flow: 'list',
-    hooks: [
-      '5 best ways to change yourself',
-      'The 5 things that actually changed me',
-      'How to become a different person in a year',
-    ],
+    audience: 'People ready to actually change, not just talk about it!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-6: five real ways, ONE per slide, numbered 1-5: change your environment first; build one keystone ' +
+      'habit like daily training; cut the inputs frying your brain; keep one promise to yourself every single day; ' +
+      'give it 90 days, not 9.\n' +
+      'The "cut the inputs frying your brain" way is your Upshift slide (Upshift: #1 Productivity App).\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'changed-at-21',
-    label: 'Changed my life at 21',
-    niche: 'a one-year full life turnaround',
+    label: 'How I changed my entire life in one year at 21',
+    niche: 'a one-year full life turnaround at 21',
     audience: 'Young people who want a total turnaround!',
-    flow: 'story',
-    hooks: [
-      'How I changed my entire life in one year at 21',
-      'One year of change that fixed everything',
-      'What I did at 21 that changed my life',
-    ],
+    body:
+      'Slide 1 (Hook): the title, personal.\n' +
+      'Slide 2 (Before): one blunt line on rock bottom at 21 — broke, unfit, scrolling all day.\n' +
+      'Slides 3-7: what you actually did, in order, one per slide: fixed your sleep; started training every day; ' +
+      'killed the 5-hour scroll; learned a skill that made money; swapped your circle for better people.\n' +
+      'The "killed the scroll" slide is your Upshift slide (Upshift: #1 Productivity App).\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'six-month-plan',
-    label: '6-month plan',
+    label: '6 month plan To become the best version of yourself',
     niche: 'a 6-month plan to become your best self',
-    audience: 'People who want a real plan, not vibes!',
-    flow: 'list',
-    hooks: [
-      'My 6 month plan to become the best version of myself',
-      'How to change everything in 6 months',
-      'The 6 month plan that actually works',
-    ],
-    note: 'Middle slides walk month by month (or phase by phase) in order — what you focus on first, next, and last.',
+    audience: 'People who want a real month-by-month plan, not vibes!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-7: month by month, ONE month per slide: Month 1 fix sleep, water and daily walks; Month 2 train 5x ' +
+      'a week and lock the scroll; Month 3 build one money skill; Month 4 dial in diet and physique; Month 5 fix ' +
+      'your circle and social life; Month 6 lock it all in as identity, not effort.\n' +
+      'The Month 2 slide names Upshift (Upshift: #1 Productivity App) as how you lock the scroll.\n' +
+      'Final slide (CTA): blunt closer.',
+  },
+  {
+    key: 'change-yourself-2',
+    label: 'The 5 best ways to change yourself',
+    niche: 'changing yourself for good (identity-first take)',
+    audience: 'People done being the old version of themselves!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-6: five ways, ONE per slide, a DIFFERENT angle from any other change list: stop identifying with ' +
+      'your old self; design your day so willpower is not even needed; remove temptation instead of resisting it; ' +
+      'find people already living it; fall in love with boring consistency.\n' +
+      'The "remove temptation instead of resisting it" way is your Upshift slide (Upshift: #1 Productivity App) — ' +
+      'you do not white-knuckle the scroll, you lock it.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'aura-hobbies',
-    label: '10x your aura',
-    niche: 'hobbies that raise your presence',
-    audience: 'People who want to walk into a room different!',
-    flow: 'list',
-    hooks: [
-      'Hobbies that will 10x your aura',
-      'Hobbies that quietly raise your aura',
-      'What actually gives someone presence',
-    ],
-    note: 'Each middle slide is one hobby with a one-line why it changes how people read you.',
+    label: 'Hobbies that will 10x your aura',
+    niche: 'hobbies that raise your presence / aura',
+    audience: 'People who want to walk into a room and feel different!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-7: hobbies, ONE per slide, each with a one-line why: lifting or martial arts (you carry yourself ' +
+      'different); reading (you speak with depth); an instrument (quiet confidence); solo travel or hiking; style ' +
+      'and grooming treated as a craft; journaling for a calm, grounded presence.\n' +
+      'One slide near the end is your Upshift slide (Upshift: #1 Productivity App) — nothing raises your aura while ' +
+      'you are glued to a feed, so you lock it first.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'confidence-habits',
-    label: 'Confidence habits',
+    label: 'uncomfortable habits that will build extreme confidence',
     niche: 'uncomfortable habits that build real confidence',
-    audience: 'People who want unshakeable confidence!',
-    flow: 'list',
-    hooks: [
-      'Uncomfortable habits that build extreme confidence',
-      'The awkward habits that made me confident',
-      'Do these uncomfortable things and watch your confidence change',
-    ],
-    note: "Each middle slide is one uncomfortable habit — the point is they're hard, not easy tips.",
+    audience: 'People who want confidence that does not shake!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-8: uncomfortable habits, ONE per slide — the point is they are HARD, not easy tips: hold eye ' +
+      'contact; speak up first; take cold showers; train in a busy gym anyway; post the thing you are scared to; ' +
+      'be the one who says the hard truth; sit with boredom instead of reaching for your phone.\n' +
+      'The "sit with boredom instead of your phone" habit is your Upshift slide (Upshift: #1 Productivity App).\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'bruce-wayne',
-    label: 'Bruce Wayne lifestyle',
-    labelWomen: 'Build in silence',
-    niche: 'building yourself in private, letting results talk',
-    audience: 'Guys who want to build in silence and let results talk!',
-    audienceWomen: 'Girls who want to build in silence and let results talk!',
-    flow: 'story',
-    hooks: [
-      'The Bruce Wayne lifestyle',
-      'How to build yourself in private like Bruce Wayne',
-      'Become the guy who trains in silence',
-    ],
-    hooksWomen: [
-      'The build-in-silence lifestyle',
-      'How to become her in private and let the results talk',
-      'Train in silence, let them find out later',
-    ],
+    label: 'The Bruce Wayne Lifestyle',
+    niche: 'building yourself in private, letting the results talk',
+    audience: 'People who want to build in silence and let results talk!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slide 2 (Idea): one line — become the person who trains in the shadows and shows up already finished.\n' +
+      'Slides 3-7: the lifestyle, one per slide: train your body like it is a weapon; master your mind (read, sit ' +
+      'in silence); build wealth and skills quietly; keep your goals off the internet; discipline over dopamine, ' +
+      'always.\n' +
+      'The "discipline over dopamine" slide is your Upshift slide (Upshift: #1 Productivity App) — you kill the ' +
+      'scroll so you can build in silence.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'become-great',
-    label: 'Become great',
+    label: 'How to become great',
     niche: 'what it actually takes to become great',
     audience: 'People who refuse to be average!',
-    flow: 'story',
-    hooks: [
-      'How to become great',
-      'What separates great people from average ones',
-      'How greatness is actually built',
-    ],
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slide 2 (Truth): one blunt line that great is boring, daily and lonely.\n' +
+      'Slides 3-7: what it takes, one per slide: pick one thing and go obsessive; out-work the talented; guard your ' +
+      'focus like it is sacred; embrace the reps everyone else skips; keep going when nobody claps.\n' +
+      'The "guard your focus" slide is your Upshift slide (Upshift: #1 Productivity App).\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'rich-young',
-    label: 'Rich young',
+    label: 'Rules to become rich young',
     niche: 'building wealth young through habits and skills',
     audience: 'Young people who want to build wealth early!',
-    flow: 'list',
-    hooks: [
-      'Rules to become rich young',
-      'How to build wealth in your 20s',
-      'What got me out of being broke young',
-    ],
-    note: 'Keep it to habits, skills, discipline and mindset. Do NOT give specific investment or financial advice or name any investment.',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-8: the rules, ONE per slide, numbered: learn a skill people actually pay for; sell before you feel ' +
+      'ready; live below your means while you are broke; reinvest every early dollar into yourself; guard your time ' +
+      'like it is money; surround yourself with builders; stop pouring hours into the feed and pour them into work.\n' +
+      'The "stop pouring hours into the feed" rule is your Upshift slide (Upshift: #1 Productivity App).\n' +
+      'Keep it to habits, skills, discipline and mindset — do NOT give specific investment or financial advice or ' +
+      'name any investment.\n' +
+      'Final slide (CTA): blunt closer.',
   },
   {
     key: 'fake-vs-real-rich',
-    label: 'Fake vs real rich',
+    label: 'Fake Rich vs Real Rich For Men',
     niche: 'real wealth vs just looking rich',
-    audience: 'People done faking it who want the real thing!',
-    flow: 'compare',
-    hooks: [
-      'Fake rich vs real rich for men',
-      'Fake rich vs real rich',
-      'The difference between looking rich and being rich',
-    ],
-    hooksWomen: [
-      'Fake rich vs real rich',
-      'The difference between looking rich and being rich',
-      'Stop faking rich and build the real thing',
-    ],
-    note: 'Keep it about habits and mindset, not specific investment or financial advice.',
+    audience: 'Men done faking it who want the real thing!',
+    body:
+      'Slide 1 (Hook): the title.\n' +
+      'Slides 2-7: ONE clean contrast per slide: fake rich leases the car, real rich owns his time; fake rich ' +
+      'flexes online, real rich stays quiet; fake rich buys logos, real rich buys assets; fake rich looks busy, ' +
+      'real rich is free; fake rich burns the night out, real rich builds in the morning.\n' +
+      'One slide is your Upshift slide (Upshift: #1 Productivity App) — real rich guards his attention, so he locks ' +
+      'the scroll and spends the hours on what compounds.\n' +
+      'Keep it about habits and mindset, not specific financial advice.\n' +
+      'Final slide (CTA): blunt closer.',
   },
 ];
 
 const selfBuilder = (s: SelfSpec): PresetBuilder => (g) => ({
   key: s.key,
-  label: g === 'women' ? s.labelWomen ?? s.label : s.label,
+  label: s.label,
   niche: s.niche,
-  audience: g === 'women' ? s.audienceWomen ?? s.audience : s.audience,
+  audience: s.audience,
   styleMemory:
-    `${VIRAL_VOICE}${PERSONA(g)}${SELF_APP_NOTE}\n\n` +
-    'Hook inspiration (angle ONLY — write your own original, first person, no app mention):\n' +
-    (g === 'women' ? s.hooksWomen ?? s.hooks : s.hooks).map((h) => `- "${h}"\n`).join('') +
-    (s.note ? `\n${s.note}\n` : '') +
-    '\nStructure & Flow:\n' +
-    FLOWS[s.flow],
+    `${VIRAL_VOICE}${PERSONA(g)}${UPSHIFT_RULE}\n\n` +
+    `Hook: slide 1 opens on this exact topic titled "${s.label}" — keep it almost word for word (keep any count/number). ` +
+    'This overrides the "write your own hook" note above.\n\n' +
+    'Structure & Flow (specific to THIS topic — never fall back to a generic template):\n' +
+    s.body,
 });
 
 // Quit-habit presets first, then the self-improvement family.
