@@ -9,6 +9,7 @@
 import type { Slide, Slideshow } from '../types';
 import { FONT_SIZE_PCT, LINE_HEIGHT, SIDE_PAD_PCT, pct, captionStyleSpec, primaryFontFamily, cleanCaption } from './captionStyle';
 import { resolveImageSrc } from './imageSrc';
+import { createZip, dataUrlToBytes, type ZipEntry } from './zip';
 
 const W = 1080;
 const H = 1920;
@@ -168,4 +169,61 @@ export async function downloadSlideshow(show: Slideshow): Promise<void> {
     a.remove();
     if (i < slides.length - 1) await new Promise((r) => setTimeout(r, 200));
   }
+}
+
+// The companion text file bundled alongside each post's images: title, body,
+// hashtags, and the folder it lives in.
+function captionFile(show: Slideshow, folder: string): string {
+  const tags = show.hashtags.map((t) => `#${t}`).join(' ');
+  return [
+    `Title: ${show.hook || ''}`,
+    '',
+    'Body:',
+    show.caption || '',
+    '',
+    `Hashtags: ${tags}`,
+    '',
+    `Folder: ${folder}`,
+    '',
+  ].join('\n');
+}
+
+// Bundle several slideshows into ONE zip. Each post gets its own folder
+// containing its images (named with the slide's order number at the end) and a
+// text file with the title, body, hashtags and folder name. Triggers a single
+// browser download.
+export async function downloadSlideshowsZip(shows: Slideshow[]): Promise<void> {
+  const entries: ZipEntry[] = [];
+  const usedFolders = new Set<string>();
+
+  for (const show of shows) {
+    // Give every post a distinct folder even if two share the same hook.
+    let folder = slugify(show.hook || show.caption || show.id);
+    if (usedFolders.has(folder)) {
+      let n = 2;
+      while (usedFolders.has(`${folder}-${n}`)) n++;
+      folder = `${folder}-${n}`;
+    }
+    usedFolders.add(folder);
+
+    const slides = await renderSlideshow(show);
+    slides.forEach((dataUrl, i) => {
+      entries.push({ name: `${folder}/${folder}-${i + 1}.png`, data: dataUrlToBytes(dataUrl) });
+    });
+    entries.push({
+      name: `${folder}/${folder}.txt`,
+      data: new TextEncoder().encode(captionFile(show, folder)),
+    });
+  }
+
+  const blob = createZip(entries);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.download = `slidesmith-posts-${stamp}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }

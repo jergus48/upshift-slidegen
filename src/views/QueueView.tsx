@@ -6,7 +6,7 @@ import { SlidePreview } from '../components/SlidePreview';
 import { BulkBackgroundTool } from '../components/BulkBackgroundTool';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
-import { downloadSlideshow } from '../lib/render';
+import { downloadSlideshow, downloadSlideshowsZip } from '../lib/render';
 
 interface QueueViewProps {
   slideshows: Slideshow[];
@@ -40,6 +40,17 @@ export function QueueView({
   onBulkSetBackground,
 }: QueueViewProps) {
   const selectedCount = selectedIds.length;
+  const [downloadingBulk, setDownloadingBulk] = useState(false);
+
+  const downloadSelected = async () => {
+    setDownloadingBulk(true);
+    try {
+      await downloadSlideshowsZip(slideshows.filter((s) => selectedIds.includes(s.id)));
+    } finally {
+      setDownloadingBulk(false);
+    }
+  };
+
   return (
     <>
       <ViewHeader
@@ -54,6 +65,14 @@ export function QueueView({
                   slideshows={slideshows.filter((s) => selectedIds.includes(s.id))}
                   onApply={onBulkSetBackground}
                 />
+                <Button
+                  variant="secondary"
+                  icon={downloadingBulk ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                  onClick={downloadSelected}
+                  disabled={downloadingBulk}
+                >
+                  {downloadingBulk ? 'Zipping…' : `Download ${selectedCount}`}
+                </Button>
                 <Button variant="primary" icon={<Check size={13} />} onClick={onBulkSchedule}>
                   Schedule {selectedCount}
                 </Button>
