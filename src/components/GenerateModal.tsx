@@ -28,7 +28,7 @@ export function GenerateModal({
   onClose,
   onGenerate,
 }: GenerateModalProps) {
-  const [count, setCount] = useState(3);
+  const [count, setCount] = useState(1);
   const [slidesPerShow, setSlidesPerShow] = useState(6);
   const [length, setLength] = useState<'short' | 'long'>('short');
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>('app');
