@@ -133,14 +133,10 @@ export default function App() {
     if (activeProjectId && queueProject === activeProjectId) saveQueue(activeProjectId, queue);
   }, [queue, queueProject, activeProjectId]);
 
-  const generate = async (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string; captionStyle: CaptionStyle; gender: Gender; povPackMen?: string; povPackWomen?: string }) => {
+  const generate = async (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string; captionStyle: CaptionStyle; gender: Gender }) => {
     if (!activeProject) return;
     setError(null);
     setGenerating(true);
-    // Remember the POV pack picks on the project so they're pre-filled next time.
-    if (opts.povPackMen !== activeProject.povPackMen || opts.povPackWomen !== activeProject.povPackWomen) {
-      setWorkspace((w) => (w ? ws.updateProject(w, activeProject.id, { povPackMen: opts.povPackMen ?? '', povPackWomen: opts.povPackWomen ?? '' }) : w));
-    }
     try {
       // The per-batch audience/style-memory overrides win; otherwise fall back
       // to this project's saved Brain.
@@ -154,9 +150,10 @@ export default function App() {
       // about scraped/uploaded images (they live in this browser's IndexedDB).
       const library = await getMergedLibrary();
       const pool = opts.packs.length ? library.filter((i) => opts.packs.includes(i.pack)) : [];
-      // POV pack for this batch's gender — a random shot from it lands on the
-      // app ("Upshift") slide so it never has to be swapped in by hand.
-      const povPack = opts.gender === 'women' ? opts.povPackWomen : opts.povPackMen;
+      // POV pack for this batch's gender — set once in Brain — a random shot
+      // from it lands on the app ("Upshift") slide so it never has to be
+      // swapped in by hand.
+      const povPack = opts.gender === 'women' ? activeProject.povPackWomen : activeProject.povPackMen;
       const povPool = povPack ? library.filter((i) => i.pack === povPack) : [];
       const withBackgrounds = assignAppSlidePov(assignBackgrounds(slideshows, pool), povPool).map((show) => ({
         ...show,
@@ -273,6 +270,11 @@ export default function App() {
   const saveBrain = (brain: BrainState) => {
     if (!activeProject || !workspace) return;
     setWorkspace(ws.updateProject(workspace, activeProject.id, { brain }));
+  };
+
+  const savePovPacks = (patch: { povPackMen?: string; povPackWomen?: string }) => {
+    if (!activeProject || !workspace) return;
+    setWorkspace(ws.updateProject(workspace, activeProject.id, patch));
   };
 
   const switchProject = (id: string) => {
@@ -395,7 +397,15 @@ export default function App() {
         {activeView === 'clean' && <ScrubView />}
         {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
         {activeView === 'results' && <ResultsView configured={hasPostbridge} />}
-        {activeView === 'brain' && <BrainView brain={activeProject.brain} onChange={saveBrain} />}
+        {activeView === 'brain' && (
+          <BrainView
+            brain={activeProject.brain}
+            onChange={saveBrain}
+            povPackMen={activeProject.povPackMen}
+            povPackWomen={activeProject.povPackWomen}
+            onChangePovPacks={savePovPacks}
+          />
+        )}
         {activeView === 'settings' && (
           <SettingsView
             config={config}
@@ -444,8 +454,6 @@ export default function App() {
         <GenerateModal
           defaultAudience={activeProject.brain.audience}
           defaultStyleMemory={activeProject.brain.styleMemory}
-          initialPovPackMen={activeProject.povPackMen}
-          initialPovPackWomen={activeProject.povPackWomen}
           generating={generating}
           onClose={() => setGenerateOpen(false)}
           onGenerate={generate}

@@ -1,11 +1,15 @@
-import { useState } from 'react';
-import type { BrainState } from '../types';
+import { useEffect, useState } from 'react';
+import type { BrainState, LibraryPack } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { GENDERS, getQuitPresets, type Gender } from '../lib/quitPresets';
+import { getMergedPacks } from '../lib/mergedLibrary';
 
 interface BrainViewProps {
   brain: BrainState;
   onChange: (brain: BrainState) => void;
+  povPackMen?: string;
+  povPackWomen?: string;
+  onChangePovPacks: (patch: { povPackMen?: string; povPackWomen?: string }) => void;
 }
 
 const inputClass =
@@ -18,9 +22,14 @@ const textareaClass =
   'placeholder:text-ink-6 outline-none transition-colors resize-none ' +
   'focus:border-ink-7 focus:ring-2 focus:ring-ink/10';
 
-export function BrainView({ brain, onChange }: BrainViewProps) {
+export function BrainView({ brain, onChange, povPackMen, povPackWomen, onChangePovPacks }: BrainViewProps) {
   const [gender, setGender] = useState<Gender>('men');
+  const [packs, setPacks] = useState<LibraryPack[]>([]);
   const presets = getQuitPresets(gender);
+
+  useEffect(() => {
+    getMergedPacks().then(setPacks).catch(() => setPacks([]));
+  }, []);
 
   return (
     <>
@@ -62,6 +71,29 @@ export function BrainView({ brain, onChange }: BrainViewProps) {
                   {p.label} <span className="text-ink-6">({p.slides} slides)</span>
                 </button>
               ))}
+            </div>
+          </Section>
+
+          {/* App-slide POV image packs */}
+          <Section
+            title="App-slide POV packs"
+            description="Set once. When you generate with a preset, a random image from the matching pack is dropped onto the slide that mentions the app — Men or Women is decided by the pack you pick in Generate. Leave blank to keep the normal background."
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Men POV pack">
+                <PovSelect
+                  packs={packs}
+                  value={povPackMen ?? ''}
+                  onChange={(v) => onChangePovPacks({ povPackMen: v })}
+                />
+              </Field>
+              <Field label="Women POV pack">
+                <PovSelect
+                  packs={packs}
+                  value={povPackWomen ?? ''}
+                  onChange={(v) => onChangePovPacks({ povPackWomen: v })}
+                />
+              </Field>
             </div>
           </Section>
 
@@ -127,6 +159,19 @@ function Section({ title, description, children }: { title: string; description:
       </div>
       {children}
     </section>
+  );
+}
+
+function PovSelect({ packs, value, onChange }: { packs: LibraryPack[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={inputClass}>
+      <option value="">None — normal background</option>
+      {packs.map((p) => (
+        <option key={p.name} value={p.name}>
+          {p.name} ({p.count})
+        </option>
+      ))}
+    </select>
   );
 }
 

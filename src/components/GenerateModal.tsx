@@ -1,20 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { X, Loader2, Sparkles } from 'lucide-react';
 import { Button } from './Button';
 import { PackPicker } from './PackPicker';
 import { GENDERS, getQuitPresets, type Gender } from '../lib/quitPresets';
-import { getMergedPacks } from '../lib/mergedLibrary';
-import type { LibraryPack } from '../types';
 import type { CaptionStyle } from '../lib/captionStyle';
 
 interface GenerateModalProps {
   defaultAudience: string;
   defaultStyleMemory: string;
-  initialPovPackMen?: string;
-  initialPovPackWomen?: string;
   generating: boolean;
   onClose: () => void;
-  onGenerate: (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string; captionStyle: CaptionStyle; gender: Gender; povPackMen?: string; povPackWomen?: string }) => void;
+  onGenerate: (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string; captionStyle: CaptionStyle; gender: Gender }) => void;
 }
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
@@ -28,8 +24,6 @@ const textareaClass =
 export function GenerateModal({
   defaultAudience,
   defaultStyleMemory,
-  initialPovPackMen,
-  initialPovPackWomen,
   generating,
   onClose,
   onGenerate,
@@ -42,18 +36,7 @@ export function GenerateModal({
   const [audience, setAudience] = useState('');
   const [styleMemory, setStyleMemory] = useState('');
   const [gender, setGender] = useState<Gender>('men');
-  const [povPackMen, setPovPackMen] = useState(initialPovPackMen ?? '');
-  const [povPackWomen, setPovPackWomen] = useState(initialPovPackWomen ?? '');
-  const [allPacks, setAllPacks] = useState<LibraryPack[]>([]);
   const presets = getQuitPresets(gender);
-
-  useEffect(() => {
-    getMergedPacks().then(setAllPacks).catch(() => setAllPacks([]));
-  }, []);
-
-  // The POV pack applied to the app slide follows the Men/Women toggle above.
-  const povPack = gender === 'women' ? povPackWomen : povPackMen;
-  const setPovPack = gender === 'women' ? setPovPackWomen : setPovPackMen;
 
   const submit = () =>
     onGenerate({
@@ -65,8 +48,6 @@ export function GenerateModal({
       styleMemory: styleMemory.trim() || undefined,
       captionStyle,
       gender,
-      povPackMen: povPackMen || undefined,
-      povPackWomen: povPackWomen || undefined,
     });
 
   return (
@@ -242,31 +223,6 @@ export function GenerateModal({
               ))}
             </div>
             <p className="text-[11px] text-ink-6 mt-1">One click fills Audience and Style memory below.</p>
-          </div>
-
-          {/* App-slide POV image — follows the Men/Women toggle above */}
-          <div>
-            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
-              App-slide POV image <span className="normal-case font-normal text-ink-6">(optional)</span>
-            </label>
-            <p className="text-[11px] text-ink-5 mb-1.5">
-              A random image from this pack is dropped onto the slide that mentions the app, for the{' '}
-              <span className="text-ink-3 font-medium">{gender === 'women' ? 'Women' : 'Men'}</span> pack selected above.
-            </p>
-            <select
-              value={povPack}
-              disabled={generating}
-              onChange={(e) => setPovPack(e.target.value)}
-              className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
-            >
-              <option value="">None — keep the normal background</option>
-              {allPacks.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name} ({p.count})
-                </option>
-              ))}
-            </select>
-            <p className="text-[11px] text-ink-6 mt-1">Saved per project. Set one for Men and one for Women.</p>
           </div>
 
           {/* Audience override */}
