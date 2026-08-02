@@ -34,6 +34,8 @@ export function makeProject(name: string, defaultPacks: string[], partial?: Part
     brain: { ...DEFAULT_BRAIN, ...partial?.brain },
     defaults: { ...DEFAULT_DEFAULTS, ...partial?.defaults },
     imagePacks: partial?.imagePacks ?? defaultPacks,
+    povPackMen: partial?.povPackMen,
+    povPackWomen: partial?.povPackWomen,
   };
 }
 
@@ -45,6 +47,8 @@ function normalize(raw: Partial<Workspace> | null, defaultPacks: string[]): Work
         brain: { ...DEFAULT_BRAIN, ...p.brain },
         defaults: { ...DEFAULT_DEFAULTS, ...p.defaults },
         imagePacks: p.imagePacks ?? defaultPacks,
+        povPackMen: p.povPackMen,
+        povPackWomen: p.povPackWomen,
       }))
     : [makeProject('Project 1', defaultPacks)];
 
@@ -100,7 +104,7 @@ export function createProject(ws: Workspace, defaultPacks: string[]): Workspace 
 export function updateProject(
   ws: Workspace,
   id: string,
-  patch: Partial<Pick<Project, 'name' | 'brain' | 'defaults' | 'imagePacks'>>
+  patch: Partial<Pick<Project, 'name' | 'brain' | 'defaults' | 'imagePacks' | 'povPackMen' | 'povPackWomen'>>
 ): Workspace {
   const projects = ws.projects.map((p) =>
     p.id === id
@@ -110,6 +114,8 @@ export function updateProject(
           brain: patch.brain ? { ...p.brain, ...patch.brain } : p.brain,
           defaults: patch.defaults ? { ...p.defaults, ...patch.defaults } : p.defaults,
           imagePacks: patch.imagePacks ?? p.imagePacks,
+          povPackMen: patch.povPackMen !== undefined ? patch.povPackMen : p.povPackMen,
+          povPackWomen: patch.povPackWomen !== undefined ? patch.povPackWomen : p.povPackWomen,
         }
       : p
   );

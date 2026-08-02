@@ -41,6 +41,12 @@ export interface Project {
   brain: BrainState;
   defaults: ProjectDefaults;
   imagePacks: string[]; // background packs generation draws from ([] = gradients only)
+  // POV background packs for the app ("Upshift") slide, chosen per gender. When
+  // set, generation drops one random image from the matching pack onto the slide
+  // that mentions the app, so it never has to be swapped in by hand. Empty/unset
+  // = the app slide just keeps its normal background.
+  povPackMen?: string;
+  povPackWomen?: string;
 }
 
 // Which API keys are set. Never the real values — only whether each one is

@@ -20,3 +20,27 @@ export function assignBackgrounds(slideshows: Slideshow[], pool: LibraryImage[])
     return { ...show, slides };
   });
 }
+
+// The app slide is the one that names the product. Every preset plugs it as
+// "Upshift…" on exactly one slide, so a case-insensitive text match finds it
+// reliably. Free-form generations with no such slide simply match nothing.
+function isAppSlide(text: string): boolean {
+  return /upshift/i.test(text);
+}
+
+// Drop a random POV image onto each slideshow's app ("Upshift") slide, so the
+// product slide gets a matching point-of-view shot without hand-swapping it in
+// every generated deck. A different random image is picked per slideshow. Slides
+// that don't mention the app are left untouched (they keep their background from
+// assignBackgrounds). No pool → returns the slideshows unchanged.
+export function assignAppSlidePov(slideshows: Slideshow[], pool: LibraryImage[]): Slideshow[] {
+  if (!pool.length) return slideshows;
+  return slideshows.map((show) => {
+    if (!show.slides.some((s) => isAppSlide(s.text))) return show;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const slides = show.slides.map((slide) =>
+      isAppSlide(slide.text) ? { ...slide, imageUrl: libraryRef(pick) } : slide
+    );
+    return { ...show, slides };
+  });
+}
