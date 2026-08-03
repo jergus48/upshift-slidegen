@@ -240,10 +240,13 @@ export async function downloadSlideshowsZip(shows: Slideshow[]): Promise<void> {
 // clip itself.
 
 const VIDEO_FPS = 30;
-const TRANSITION_MS = 550; // horizontal slide from one slide to the next
-const READ_BASE_MS = 2200; // floor: even a one-word slide stays up this long
-const READ_PER_WORD_MS = 380; // added reading time per word
-const READ_MAX_MS = 14000; // cap so a wordy slide can't stall forever
+const TRANSITION_MS = 280; // quick horizontal slide from one slide to the next
+// Reading pace tuned for Shorts: punchy, not lingering. Roughly a ~4.5 words/sec
+// skim plus a short floor. A typical ~8-word slide lands near ~2.5s, so a
+// 10-slide deck comes out around ~28s instead of over a minute.
+const READ_BASE_MS = 900; // floor: even a one-word slide stays up this long
+const READ_PER_WORD_MS = 220; // added reading time per word
+const READ_MAX_MS = 5500; // cap so a wordy slide can't stall forever
 
 // How long slide `text` should stay on screen: a base plus reading time per word.
 function readingHoldMs(text: string): number {
