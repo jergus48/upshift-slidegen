@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Download } from 'lucide-react';
+import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Download, Film } from 'lucide-react';
 import type { Slideshow } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { SlidePreview } from '../components/SlidePreview';
 import { BulkBackgroundTool } from '../components/BulkBackgroundTool';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
-import { downloadSlideshow, downloadSlideshowsZip } from '../lib/render';
+import { downloadSlideshow, downloadSlideshowsZip, downloadSlideshowsVideo } from '../lib/render';
 
 interface QueueViewProps {
   slideshows: Slideshow[];
@@ -41,13 +41,25 @@ export function QueueView({
 }: QueueViewProps) {
   const selectedCount = selectedIds.length;
   const [downloadingBulk, setDownloadingBulk] = useState(false);
+  const [videoProgress, setVideoProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const selectedShows = () => slideshows.filter((s) => selectedIds.includes(s.id));
 
   const downloadSelected = async () => {
     setDownloadingBulk(true);
     try {
-      await downloadSlideshowsZip(slideshows.filter((s) => selectedIds.includes(s.id)));
+      await downloadSlideshowsZip(selectedShows());
     } finally {
       setDownloadingBulk(false);
+    }
+  };
+
+  const downloadSelectedVideo = async () => {
+    setVideoProgress({ done: 0, total: selectedCount });
+    try {
+      await downloadSlideshowsVideo(selectedShows(), (done, total) => setVideoProgress({ done, total }));
+    } finally {
+      setVideoProgress(null);
     }
   };
 
@@ -69,9 +81,24 @@ export function QueueView({
                   variant="secondary"
                   icon={downloadingBulk ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
                   onClick={downloadSelected}
-                  disabled={downloadingBulk}
+                  disabled={downloadingBulk || videoProgress !== null}
                 >
                   {downloadingBulk ? 'Zipping…' : `Download ${selectedCount}`}
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={videoProgress ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
+                  onClick={downloadSelectedVideo}
+                  disabled={videoProgress !== null || downloadingBulk}
+                  title="Turn each slideshow into a video that slides through the slides at reading speed"
+                >
+                  {videoProgress
+                    ? videoProgress.total > 1
+                      ? `Rendering ${videoProgress.done}/${videoProgress.total}…`
+                      : 'Rendering…'
+                    : selectedCount > 1
+                      ? `Video ${selectedCount}`
+                      : 'Video'}
                 </Button>
                 <Button variant="primary" icon={<Check size={13} />} onClick={onBulkSchedule}>
                   Schedule {selectedCount}
@@ -155,6 +182,7 @@ interface CardProps {
 
 function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onReject, onEdit }: CardProps) {
   const [downloading, setDownloading] = useState(false);
+  const [renderingVideo, setRenderingVideo] = useState(false);
 
   const download = async () => {
     setDownloading(true);
@@ -162,6 +190,15 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
       await downloadSlideshow(slideshow);
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const downloadVideo = async () => {
+    setRenderingVideo(true);
+    try {
+      await downloadSlideshowsVideo([slideshow]);
+    } finally {
+      setRenderingVideo(false);
     }
   };
 
@@ -222,6 +259,13 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
             label="Download slides"
             onClick={download}
             disabled={downloading}
+          />
+          <IconButton
+            variant="secondary"
+            icon={renderingVideo ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
+            label="Download as video"
+            onClick={downloadVideo}
+            disabled={renderingVideo}
           />
           <IconButton
             variant="secondary"

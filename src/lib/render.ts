@@ -172,20 +172,11 @@ export async function downloadSlideshow(show: Slideshow): Promise<void> {
 }
 
 // The companion text file bundled alongside each post's images: title, body,
-// hashtags, and the folder it lives in.
-function captionFile(show: Slideshow, folder: string): string {
+// then hashtags — each block on its own line with no labels, so the text can be
+// copied straight into a post.
+function captionFile(show: Slideshow): string {
   const tags = show.hashtags.map((t) => `#${t}`).join(' ');
-  return [
-    `Title: ${show.hook || ''}`,
-    '',
-    'Body:',
-    show.caption || '',
-    '',
-    `Hashtags: ${tags}`,
-    '',
-    `Folder: ${folder}`,
-    '',
-  ].join('\n');
+  return [show.hook || '', '', show.caption || '', '', tags, ''].join('\n');
 }
 
 // Bundle several slideshows into ONE zip. Each post gets its own folder
@@ -195,6 +186,14 @@ function captionFile(show: Slideshow, folder: string): string {
 export async function downloadSlideshowsZip(shows: Slideshow[]): Promise<void> {
   const entries: ZipEntry[] = [];
   const usedFolders = new Set<string>();
+
+  // Stamp every file with a steadily increasing modified time so that sorting by
+  // "date modified" (e.g. after downloading the folder from Google Drive) shows
+  // the posts and their slides in this exact order. One minute apart keeps them
+  // distinct even at DOS timestamps' 2-second resolution.
+  const base = Date.now();
+  let step = 0;
+  const nextDate = () => new Date(base + step++ * 60_000);
 
   for (const show of shows) {
     // Give every post a distinct folder even if two share the same hook.
@@ -208,11 +207,16 @@ export async function downloadSlideshowsZip(shows: Slideshow[]): Promise<void> {
 
     const slides = await renderSlideshow(show);
     slides.forEach((dataUrl, i) => {
-      entries.push({ name: `${folder}/${folder}-${i + 1}.png`, data: dataUrlToBytes(dataUrl) });
+      entries.push({
+        name: `${folder}/${folder}-${i + 1}.png`,
+        data: dataUrlToBytes(dataUrl),
+        date: nextDate(),
+      });
     });
     entries.push({
       name: `${folder}/${folder}.txt`,
-      data: new TextEncoder().encode(captionFile(show, folder)),
+      data: new TextEncoder().encode(captionFile(show)),
+      date: nextDate(),
     });
   }
 
@@ -222,6 +226,174 @@ export async function downloadSlideshowsZip(shows: Slideshow[]): Promise<void> {
   a.href = url;
   const stamp = new Date().toISOString().slice(0, 10);
   a.download = `slidesmith-posts-${stamp}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ── Video export ────────────────────────────────────────────────────────────
+// Turn a slideshow into a vertical (9:16) video that holds each slide on screen
+// long enough to read, then slides horizontally to the next — a "YouTube
+// slideshow". The video is recorded in REAL TIME from a canvas via
+// canvas.captureStream + MediaRecorder, so exporting takes about as long as the
+// clip itself.
+
+const VIDEO_FPS = 30;
+const TRANSITION_MS = 550; // horizontal slide from one slide to the next
+const READ_BASE_MS = 2200; // floor: even a one-word slide stays up this long
+const READ_PER_WORD_MS = 380; // added reading time per word
+const READ_MAX_MS = 14000; // cap so a wordy slide can't stall forever
+
+// How long slide `text` should stay on screen: a base plus reading time per word.
+function readingHoldMs(text: string): number {
+  const words = cleanCaption(text || '').trim().split(/\s+/).filter(Boolean).length;
+  return Math.min(READ_MAX_MS, READ_BASE_MS + words * READ_PER_WORD_MS);
+}
+
+// Smooth acceleration/deceleration for the slide transition.
+function easeInOut(p: number): number {
+  return p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
+}
+
+// Pick the best webm codec the browser can actually record.
+function pickVideoMime(): string {
+  const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  const supported =
+    typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function';
+  for (const m of candidates) {
+    if (supported && MediaRecorder.isTypeSupported(m)) return m;
+  }
+  return 'video/webm';
+}
+
+// Render one slideshow to a webm video Blob.
+export async function renderSlideshowVideo(show: Slideshow): Promise<Blob> {
+  if (typeof MediaRecorder === 'undefined') {
+    throw new Error('Video export needs a browser with MediaRecorder support.');
+  }
+  const imgs = await Promise.all((await renderSlideshow(show)).map(loadImage));
+  if (!imgs.length) throw new Error('This slideshow has no slides to turn into a video.');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  const holds = show.slides.map((s) => readingHoldMs(s.text));
+  // Total = every hold plus one transition between each adjacent pair.
+  const total = holds.reduce((n, d) => n + d, 0) + Math.max(0, imgs.length - 1) * TRANSITION_MS;
+
+  // Draw whatever should be on screen at time `t` (ms into the clip).
+  const drawAt = (t: number) => {
+    let cursor = 0;
+    for (let i = 0; i < imgs.length; i++) {
+      if (t < cursor + holds[i]) {
+        ctx.drawImage(imgs[i], 0, 0, W, H); // holding slide i, full frame
+        return;
+      }
+      cursor += holds[i];
+      if (i < imgs.length - 1) {
+        if (t < cursor + TRANSITION_MS) {
+          const dx = Math.round(-easeInOut((t - cursor) / TRANSITION_MS) * W);
+          ctx.drawImage(imgs[i], dx, 0, W, H); // outgoing slides left
+          ctx.drawImage(imgs[i + 1], dx + W, 0, W, H); // incoming follows from the right
+          return;
+        }
+        cursor += TRANSITION_MS;
+      }
+    }
+    ctx.drawImage(imgs[imgs.length - 1], 0, 0, W, H); // past the end — hold the last frame
+  };
+
+  const stream = canvas.captureStream(VIDEO_FPS);
+  const mimeType = pickVideoMime();
+  const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
+  const chunks: BlobPart[] = [];
+  rec.ondataavailable = (e) => {
+    if (e.data.size) chunks.push(e.data);
+  };
+  const stopped = new Promise<void>((resolve) => {
+    rec.onstop = () => resolve();
+  });
+
+  drawAt(0); // seed the first frame before recording starts
+  rec.start();
+  await new Promise<void>((resolve) => {
+    const startT = performance.now();
+    const frame = () => {
+      const t = performance.now() - startT;
+      drawAt(Math.min(t, total));
+      if (t >= total) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  rec.stop();
+  await stopped;
+
+  return new Blob(chunks, { type: mimeType });
+}
+
+// Download selected slideshows as video(s). A single selection saves one .webm;
+// several are bundled into one zip. `onProgress` reports how many are finished so
+// the UI can show live progress during the (real-time) render.
+export async function downloadSlideshowsVideo(
+  shows: Slideshow[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
+  if (!shows.length) return;
+
+  // Single selection → one plain .webm file.
+  if (shows.length === 1) {
+    onProgress?.(0, 1);
+    const blob = await renderSlideshowVideo(shows[0]);
+    onProgress?.(1, 1);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${slugify(shows[0].hook || shows[0].caption || shows[0].id)}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  // Several → render each and bundle into one zip (stored, since webm is already
+  // compressed), stamped in order so they sort by "date modified".
+  const entries: ZipEntry[] = [];
+  const usedNames = new Set<string>();
+  const base = Date.now();
+  onProgress?.(0, shows.length);
+  for (let i = 0; i < shows.length; i++) {
+    const show = shows[i];
+    let name = slugify(show.hook || show.caption || show.id);
+    if (usedNames.has(name)) {
+      let n = 2;
+      while (usedNames.has(`${name}-${n}`)) n++;
+      name = `${name}-${n}`;
+    }
+    usedNames.add(name);
+
+    const blob = await renderSlideshowVideo(show);
+    entries.push({
+      name: `${name}.webm`,
+      data: new Uint8Array(await blob.arrayBuffer()),
+      date: new Date(base + i * 60_000),
+    });
+    onProgress?.(i + 1, shows.length);
+  }
+
+  const zip = createZip(entries);
+  const url = URL.createObjectURL(zip);
+  const a = document.createElement('a');
+  a.href = url;
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.download = `slidesmith-videos-${stamp}.zip`;
   document.body.appendChild(a);
   a.click();
   a.remove();

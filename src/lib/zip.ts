@@ -8,6 +8,20 @@ export interface ZipEntry {
   // "my-post/my-post-1.png"). Folders are implied by the path.
   name: string;
   data: Uint8Array;
+  // Optional last-modified time stamped into the entry. When entries are given
+  // increasing dates in the order they should appear, tools that sort by
+  // "date modified" (e.g. Google Drive after a folder download) show them in
+  // that real order instead of a random one. Defaults to the current time.
+  date?: Date;
+}
+
+// Convert a JS Date into the packed DOS date/time fields the ZIP format uses.
+// DOS time has 2-second resolution and can't represent years before 1980.
+function dosDateTime(d: Date): { time: number; date: number } {
+  const year = Math.max(d.getFullYear(), 1980);
+  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const date = ((year - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  return { time: time & 0xffff, date: date & 0xffff };
 }
 
 // Standard CRC-32 (used by the ZIP format), computed with a cached lookup table.
@@ -42,6 +56,7 @@ export function createZip(entries: ZipEntry[]): Blob {
     const nameBytes = encoder.encode(entry.name);
     const crc = crc32(entry.data);
     const size = entry.data.length;
+    const { time: modTime, date: modDate } = dosDateTime(entry.date ?? new Date());
 
     // Local file header (signature 0x04034b50).
     const local = new Uint8Array(30 + nameBytes.length);
@@ -50,8 +65,8 @@ export function createZip(entries: ZipEntry[]): Blob {
     lv.setUint16(4, 20, true); // version needed
     lv.setUint16(6, 0, true); // flags
     lv.setUint16(8, 0, true); // method: 0 = store
-    lv.setUint16(10, 0, true); // mod time
-    lv.setUint16(12, 0, true); // mod date
+    lv.setUint16(10, modTime, true); // mod time
+    lv.setUint16(12, modDate, true); // mod date
     lv.setUint32(14, crc, true);
     lv.setUint32(18, size, true); // compressed size
     lv.setUint32(22, size, true); // uncompressed size
@@ -69,8 +84,8 @@ export function createZip(entries: ZipEntry[]): Blob {
     cv.setUint16(6, 20, true); // version needed
     cv.setUint16(8, 0, true); // flags
     cv.setUint16(10, 0, true); // method
-    cv.setUint16(12, 0, true); // mod time
-    cv.setUint16(14, 0, true); // mod date
+    cv.setUint16(12, modTime, true); // mod time
+    cv.setUint16(14, modDate, true); // mod date
     cv.setUint32(16, crc, true);
     cv.setUint32(20, size, true);
     cv.setUint32(24, size, true);
