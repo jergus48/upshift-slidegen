@@ -159,6 +159,8 @@ function scrubCorn(text) {
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/__(.+?)__/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
+    // Never use semicolons in slideshow text — swap them for commas.
+    .replace(/[ \t]*;[ \t]*/g, ', ')
     .replace(/\bpornography\b/gi, '🌽')
     .replace(/\bporn\b/gi, '🌽')
     .replace(/\badult content\b/gi, '🌽')
