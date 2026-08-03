@@ -256,9 +256,20 @@ function easeInOut(p: number): number {
   return p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
 }
 
-// Pick the best webm codec the browser can actually record.
+// Pick the best container/codec the browser can record. MP4 (H.264) is
+// preferred: it plays everywhere (incl. Windows Media Player, phones, YouTube)
+// and — unlike MediaRecorder's WebM — carries a correct duration, so players
+// don't show a bogus "1 hour" length. WebM is only a fallback for browsers that
+// can't record MP4.
 function pickVideoMime(): string {
-  const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  const candidates = [
+    'video/mp4;codecs=avc1.42E01E', // H.264 baseline
+    'video/mp4;codecs=h264',
+    'video/mp4',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
   const supported =
     typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function';
   for (const m of candidates) {
@@ -267,7 +278,12 @@ function pickVideoMime(): string {
   return 'video/webm';
 }
 
-// Render one slideshow to a webm video Blob.
+// File extension matching the recorded container.
+function extForMime(mime: string): string {
+  return mime.includes('mp4') ? 'mp4' : 'webm';
+}
+
+// Render one slideshow to a video Blob (MP4 when the browser supports it).
 export async function renderSlideshowVideo(show: Slideshow): Promise<Blob> {
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('Video export needs a browser with MediaRecorder support.');
@@ -338,16 +354,17 @@ export async function renderSlideshowVideo(show: Slideshow): Promise<Blob> {
   return new Blob(chunks, { type: mimeType });
 }
 
-// Download selected slideshows as video(s). A single selection saves one .webm;
-// several are bundled into one zip. `onProgress` reports how many are finished so
-// the UI can show live progress during the (real-time) render.
+// Download selected slideshows as video(s). A single selection saves one file
+// (.mp4 where supported, else .webm); several are bundled into one zip.
+// `onProgress` reports how many are finished so the UI can show live progress
+// during the (real-time) render.
 export async function downloadSlideshowsVideo(
   shows: Slideshow[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<void> {
   if (!shows.length) return;
 
-  // Single selection → one plain .webm file.
+  // Single selection → one plain video file.
   if (shows.length === 1) {
     onProgress?.(0, 1);
     const blob = await renderSlideshowVideo(shows[0]);
@@ -355,7 +372,7 @@ export async function downloadSlideshowsVideo(
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${slugify(shows[0].hook || shows[0].caption || shows[0].id)}.webm`;
+    a.download = `${slugify(shows[0].hook || shows[0].caption || shows[0].id)}.${extForMime(blob.type)}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -363,8 +380,8 @@ export async function downloadSlideshowsVideo(
     return;
   }
 
-  // Several → render each and bundle into one zip (stored, since webm is already
-  // compressed), stamped in order so they sort by "date modified".
+  // Several → render each and bundle into one zip (stored, since the video is
+  // already compressed), stamped in order so they sort by "date modified".
   const entries: ZipEntry[] = [];
   const usedNames = new Set<string>();
   const base = Date.now();
@@ -381,7 +398,7 @@ export async function downloadSlideshowsVideo(
 
     const blob = await renderSlideshowVideo(show);
     entries.push({
-      name: `${name}.webm`,
+      name: `${name}.${extForMime(blob.type)}`,
       data: new Uint8Array(await blob.arrayBuffer()),
       date: new Date(base + i * 60_000),
     });

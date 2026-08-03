@@ -83,7 +83,8 @@ export function cleanCaption(text: string): string {
     .replace(/__(.+?)__/g, '$1')                // __bold__
     .replace(/(^|[^*\w])\*(?!\s)(.+?)(?<!\s)\*(?![*\w])/g, '$1$2') // *italic*
     .replace(/(^|[^_\w])_(?!\s)(.+?)(?<!\s)_(?![_\w])/g, '$1$2')   // _italic_
-    .replace(/`([^`]+)`/g, '$1');               // `code`
+    .replace(/`([^`]+)`/g, '$1')                // `code`
+    .replace(/[ \t]*;[ \t]*/g, ', ');           // never show semicolons — use commas
 }
 
 // ─── CSS for the preview overlay text ───────────────────────────────────────
