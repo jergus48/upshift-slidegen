@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { getKeys, saveKeys } from './store.js'
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
 import { generateSlideshows } from './generate.js'
+import { generatePhotoPacks } from './photopack.js'
 import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.js'
 import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
@@ -115,6 +116,45 @@ app.post('/api/generate', h(async (req, res) => {
 
   const slideshows = await generateSlideshows({ apiKey: keys.openrouter, model, brain, count, slidesPerShow, length })
   res.json(slideshows)
+}))
+
+// Photo packs — real photos from the Upshift photo library, one random image per
+// slot in a fixed category order, with AI-written per-slide rules (server/photopack.js).
+app.post('/api/photopack', h(async (req, res) => {
+  const keys = await getKeys()
+  const count = Math.min(Math.max(Math.round(Number(req.body?.count) || 1), 1), 30)
+  const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
+  const brain = {
+    niche: '',
+    appName: '',
+    appDescription: '',
+    audience: '',
+    styleMemory: '',
+    ...(req.body?.brain || {}),
+  }
+
+  const packs = await generatePhotoPacks({ apiKey: keys.openrouter, model, brain, count })
+  res.json(packs)
+}))
+
+// Same-origin image proxy for the R2 photo library. The client renderer bakes
+// slides onto a <canvas> and calls toDataURL — a cross-origin image (R2 sends no
+// CORS header) would taint the canvas and break PNG/ZIP/video export. Fetching
+// the bytes through our own origin sidesteps that. Locked to the photo-library
+// host + path prefix so it can't be used as an open proxy (SSRF).
+const PHOTO_HOST = 'pub-bfc81603fd4b4df8ac0e06b2eb1e364b.r2.dev'
+const PHOTO_PREFIX = '/tools/upshift/photo_library/'
+app.get('/api/photo', h(async (req, res) => {
+  let target
+  try { target = new URL(String(req.query.u || '')) } catch { return res.status(400).send('bad url') }
+  if (target.protocol !== 'https:' || target.hostname !== PHOTO_HOST || !target.pathname.startsWith(PHOTO_PREFIX)) {
+    return res.status(403).send('forbidden')
+  }
+  const upstream = await fetch(target.href)
+  if (!upstream.ok) return res.status(upstream.status).send('upstream error')
+  res.set('Content-Type', upstream.headers.get('content-type') || 'image/jpeg')
+  res.set('Cache-Control', 'public, max-age=86400')
+  res.send(Buffer.from(await upstream.arrayBuffer()))
 }))
 
 // ── Image library ──────────────────────────────────────────────────────────────

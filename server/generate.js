@@ -151,7 +151,7 @@ function clampSlides(slides, want) {
 // reach the user, even if the model slips. Replace them with the 🌽 emoji. Also
 // strip any positional "Slide N:" / "Slide N =" label the model leaked from the
 // prompt's slot map into the actual text. Runs on every hook/slide/caption.
-function scrubCorn(text) {
+export function scrubCorn(text) {
   if (typeof text !== 'string') return text
   return text
     .replace(/^\s*slide\s*\d+\s*[:=.\-–—)]+\s*/i, '')

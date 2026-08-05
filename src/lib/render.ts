@@ -40,7 +40,12 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`image load failed: ${src}`));
-    img.src = src;
+    // Remote (cross-origin http[s]) images — e.g. the R2 photo library — would
+    // taint the canvas and break toDataURL, and R2 sends no CORS header so
+    // crossOrigin='anonymous' can't save it either. Route them through the
+    // same-origin server proxy (/api/photo) instead. Local paths, blob: and
+    // data: URLs are already same-origin/safe and load directly.
+    img.src = /^https?:\/\//i.test(src) ? `/api/photo?u=${encodeURIComponent(src)}` : src;
   });
 }
 

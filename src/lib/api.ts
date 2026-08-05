@@ -63,6 +63,13 @@ export const getModels = () => req<ModelOption[]>('/models');
 export const generate = (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; model: string; brain: BrainState }) =>
   req<Slideshow[]>('/generate', { method: 'POST', body: JSON.stringify(opts) });
 
+// Photo packs — the server picks real photos from the Upshift photo library (one
+// per slot, fixed category order) and writes the per-slide rules. Returns whole
+// slideshows with `imageUrl` already set on every slide (R2 URLs), so unlike
+// generate() there's no client-side background assignment step.
+export const photoPack = (opts: { count: number; model: string; brain: BrainState }) =>
+  req<Slideshow[]>('/photopack', { method: 'POST', body: JSON.stringify(opts) });
+
 // ── Image library ─────────────────────────────────────────────────────────────
 // Bundled aesthetic packs only. Scraped/uploaded images live in the browser's
 // IndexedDB — see lib/localLibrary.ts.

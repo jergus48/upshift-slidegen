@@ -8,6 +8,7 @@ import { SlideshowEditorModal } from './components/SlideshowEditorModal';
 import { LoginGate } from './components/LoginGate';
 import { QueueView } from './views/QueueView';
 import { CreateView } from './views/CreateView';
+import { PhotoPackView } from './views/PhotoPackView';
 import { LibraryView } from './views/LibraryView';
 import { RedditView } from './views/RedditView';
 import { ReplyView } from './views/ReplyView';
@@ -165,6 +166,30 @@ export default function App() {
       setGenerateOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Photo packs: the server returns whole slideshows with real R2 photos already
+  // on every slide (no client-side background step). We only stamp the chosen
+  // caption look, push them onto the queue, and jump to the Queue to review.
+  const generatePhotoPacks = async (opts: { count: number; captionStyle: CaptionStyle }) => {
+    if (!activeProject) return;
+    setError(null);
+    setGenerating(true);
+    try {
+      const brain: BrainState = { ...activeProject.brain };
+      const packs = await api.photoPack({ count: opts.count, model: workspace!.model, brain });
+      const withStyle = packs.map((show) => ({
+        ...show,
+        slides: show.slides.map((sl) => ({ ...sl, captionStyle: opts.captionStyle })),
+      }));
+      setQueue((q) => [...withStyle, ...q]);
+      setActiveView('queue');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
     } finally {
       setGenerating(false);
     }
@@ -386,6 +411,13 @@ export default function App() {
             onApplyToSlideshow={(id, slides) =>
               setQueue((q) => q.map((s) => (s.id === id ? { ...s, slides } : s)))
             }
+          />
+        )}
+        {activeView === 'photopack' && (
+          <PhotoPackView
+            generating={generating}
+            canGenerate={hasOpenrouter}
+            onGenerate={generatePhotoPacks}
           />
         )}
         {activeView === 'library' && <LibraryView hasApify={hasApify} pinterestActor={config.pinterestActor} />}
