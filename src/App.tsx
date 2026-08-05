@@ -24,6 +24,7 @@ import { renderSlideshow } from './lib/render';
 import { loadQueue, saveQueue, recoverOrphanQueues } from './lib/localQueue';
 import { getMergedLibrary } from './lib/mergedLibrary';
 import { assignBackgrounds, assignAppSlidePov } from './lib/backgrounds';
+import { libraryRef } from './lib/imageSrc';
 import type { Gender } from './lib/quitPresets';
 import * as ws from './lib/localWorkspace';
 import * as api from './lib/api';
@@ -35,6 +36,7 @@ import type {
   Project,
   Slideshow,
   Slide,
+  LibraryImage,
   SocialAccount,
   BrainState,
   ViewKey,
@@ -174,16 +176,34 @@ export default function App() {
   // Photo packs: the server returns whole slideshows with real R2 photos already
   // on every slide (no client-side background step). We only stamp the chosen
   // caption look, push them onto the queue, and jump to the Queue to review.
-  const generatePhotoPacks = async (opts: { count: number; captionStyle: CaptionStyle }) => {
+  const generatePhotoPacks = async (opts: { count: number; captionStyle: CaptionStyle; coverPack?: string; appPack?: string }) => {
     if (!activeProject) return;
     setError(null);
     setGenerating(true);
     try {
       const brain: BrainState = { ...activeProject.brain };
       const packs = await api.photoPack({ count: opts.count, model: workspace!.model, brain });
+      // The cover (slide 0) and app slide (slide 4) can be overridden with the
+      // user's own library packs. Those images live in this browser, so we swap
+      // them in here — a fresh random image per pack — after the server has
+      // supplied the text and the default library photos.
+      let coverPool: LibraryImage[] = [];
+      let appPool: LibraryImage[] = [];
+      if (opts.coverPack || opts.appPack) {
+        const library = await getMergedLibrary();
+        coverPool = opts.coverPack ? library.filter((i) => i.pack === opts.coverPack) : [];
+        appPool = opts.appPack ? library.filter((i) => i.pack === opts.appPack) : [];
+      }
+      const rand = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
       const withStyle = packs.map((show) => ({
         ...show,
-        slides: show.slides.map((sl) => ({ ...sl, captionStyle: opts.captionStyle })),
+        slides: show.slides.map((sl, idx) => {
+          const imageUrl =
+            idx === 0 && coverPool.length ? libraryRef(rand(coverPool))
+            : idx === 4 && appPool.length ? libraryRef(rand(appPool))
+            : sl.imageUrl;
+          return { ...sl, imageUrl, captionStyle: opts.captionStyle };
+        }),
       }));
       setQueue((q) => [...withStyle, ...q]);
       setActiveView('queue');
