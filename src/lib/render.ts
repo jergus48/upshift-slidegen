@@ -414,14 +414,29 @@ export async function renderSlideshowVideo(show: Slideshow, music?: MusicTrack |
     ctx.drawImage(imgs[imgs.length - 1], 0, 0, W, H); // past the end — hold the last frame
   };
 
-  // Auto-capture at VIDEO_FPS as a baseline that works on every browser, and
-  // ALSO push a frame manually each tick via requestFrame() where supported — so
-  // the video keeps advancing deterministically even if auto-capture stalls while
-  // the tab is hidden.
-  const stream = canvas.captureStream(VIDEO_FPS);
+  // Capture in MANUAL mode: captureStream(0) means the browser emits a frame ONLY
+  // when we call requestFrame(). This is deliberate — passing a frame rate instead
+  // makes the browser auto-sample the canvas on its own clock, which grabs a STALE
+  // frame whenever our render loop hitches (GC, or the H.264 encoder spiking on a
+  // slide-transition keyframe). That stale-frame sampling is what makes a
+  // transition freeze for a beat and then jump. With manual capture, exactly one
+  // frame is emitted per frame we actually draw, so the picture can't freeze on a
+  // hitch — the worst case is the clip finishing a few ms late. (Auto-capture also
+  // silently ignores requestFrame(), so the old "push a frame each tick" safety net
+  // never actually ran.)
+  // Probe requestFrame support on a throwaway stream first: if the browser can't
+  // do manual capture, captureStream(0) would emit ZERO frames, so fall back to
+  // auto-capture at VIDEO_FPS.
+  const probeTrack = canvas.captureStream(0).getVideoTracks()[0] as
+    | CanvasCaptureMediaStreamTrack
+    | undefined;
+  const canRequestFrame = !!(probeTrack && typeof probeTrack.requestFrame === 'function');
+  probeTrack?.stop();
+
+  const stream = canvas.captureStream(canRequestFrame ? 0 : VIDEO_FPS);
   const videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined;
   const pushFrame = () => {
-    if (videoTrack && typeof videoTrack.requestFrame === 'function') videoTrack.requestFrame();
+    if (canRequestFrame && videoTrack) videoTrack.requestFrame();
   };
 
   // Optional background music: decode the track and route it into a
@@ -485,23 +500,35 @@ export async function renderSlideshowVideo(show: Slideshow, music?: MusicTrack |
     } catch { /* stop-scheduling unsupported — stopped manually below */ }
   }
 
-  // Drive the render off the WALL CLOCK via setTimeout, not requestAnimationFrame.
-  // rAF is paused entirely while the tab/window is hidden — which would freeze the
-  // canvas mid-clip while the audio (on the real clock) played on. setTimeout keeps
-  // firing when backgrounded (throttled, but never paused), so the clip always
-  // advances to the end and stops correctly; each tick pushes one frame.
+  // Drive the render off the WALL CLOCK (performance.now), so time — and the audio,
+  // which plays on the real clock — never drift from the picture. While the tab is
+  // VISIBLE we schedule via requestAnimationFrame: it's synced to the display's
+  // refresh, so frames land on an even cadence and transitions read smoothly. rAF
+  // is paused entirely while the tab is hidden, though, which would freeze the
+  // canvas mid-clip while the audio played on — so we fall back to setTimeout
+  // whenever the page isn't visible (it throttles when backgrounded but never
+  // pauses). Either way each tick draws for the current wall-clock time and pushes
+  // exactly one frame, so a slow tick just draws the right frame a little late
+  // rather than freezing the output.
   await new Promise<void>((resolve) => {
     const startT = performance.now();
     let done = false;
     const finish = () => { if (!done) { done = true; resolve(); } };
     const frameMs = 1000 / VIDEO_FPS;
+    const schedule = (fn: () => void) => {
+      if (typeof requestAnimationFrame === 'function' && document?.visibilityState !== 'hidden') {
+        requestAnimationFrame(fn);
+      } else {
+        setTimeout(fn, frameMs);
+      }
+    };
     const tick = () => {
       if (done) return;
       const t = performance.now() - startT;
       drawAt(Math.min(t, total));
       pushFrame();
       if (t >= total) { finish(); return; }
-      setTimeout(tick, frameMs);
+      schedule(tick);
     };
     tick();
     // Hard safety net: guarantee we stop even if the timer chain is throttled far
