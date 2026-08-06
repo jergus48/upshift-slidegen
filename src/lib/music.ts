@@ -16,6 +16,7 @@
 // When "start" is omitted the exporter auto-detects the first high-energy point.
 
 import { getStart } from './musicStarts';
+import { listLocalTracks, objectUrlForLocalTrack, getHidden } from './localMusic';
 
 export type MusicGender = 'male' | 'female';
 
@@ -58,32 +59,41 @@ function trackUrl(m: MusicManifest, gender: MusicGender, file: string): string {
   return `/music/${gender}/${enc}`;
 }
 
-// True if the chosen pool has at least one track configured.
+// True if the chosen pool has at least one playable track (bundled or local).
 export async function hasMusic(gender: MusicGender): Promise<boolean> {
-  const m = await loadManifest();
-  return !!m[gender]?.length;
+  return (await poolFor(gender)).length > 0;
 }
 
 // A track a caller can display and audition. `file` is the stable id used to
-// save a start point; `url` is loadable; `start` is the effective start point
-// (user-saved override, else the manifest's pinned start).
+// save a start point (a manifest filename, or a `local:…` id for uploads);
+// `url` is loadable; `start` is the effective start point (user-saved override,
+// else the manifest's pinned start). `local` marks user-uploaded tracks so the
+// editor can offer Remove (delete) vs Hide.
 export interface MusicListItem {
   gender: MusicGender;
   file: string;
   url: string;
   start?: number;
+  name?: string;
+  local?: boolean;
 }
 
-// Every configured track across both pools, for the Brain "Video music" editor.
+// Every track across both pools — bundled (minus any hidden) plus the user's
+// local uploads — for the Brain "Video music" editor.
 export async function listAllTracks(): Promise<MusicListItem[]> {
   const m = await loadManifest();
+  const hidden = getHidden();
   const out: MusicListItem[] = [];
   for (const gender of ['male', 'female'] as const) {
     for (const entry of m[gender] ?? []) {
       const file = typeof entry === 'string' ? entry : entry.file;
+      if (hidden.has(file)) continue;
       const manifestStart = typeof entry === 'string' ? undefined : entry.start;
       out.push({ gender, file, url: trackUrl(m, gender, file), start: getStart(file) ?? manifestStart });
     }
+  }
+  for (const t of await listLocalTracks()) {
+    out.push({ gender: t.gender, file: t.id, url: t.url, start: getStart(t.id), name: t.name, local: true });
   }
   return out;
 }
@@ -93,13 +103,37 @@ function effectiveStart(file: string, manifestStart?: number): number | undefine
   return getStart(file) ?? manifestStart;
 }
 
+interface Candidate {
+  file: string;
+  url: string;
+  start?: number;
+}
+
+// The pickable pool for a gender: bundled manifest tracks (minus hidden) plus
+// the user's local uploads for that gender. Local URLs are minted fresh from the
+// stored blob at pick time (object URLs don't survive a reload).
+async function poolFor(gender: MusicGender): Promise<Candidate[]> {
+  const m = await loadManifest();
+  const hidden = getHidden();
+  const pool: Candidate[] = [];
+  for (const entry of m[gender] ?? []) {
+    const file = typeof entry === 'string' ? entry : entry.file;
+    if (hidden.has(file)) continue;
+    const manifestStart = typeof entry === 'string' ? undefined : entry.start;
+    pool.push({ file, url: trackUrl(m, gender, file), start: effectiveStart(file, manifestStart) });
+  }
+  for (const t of await listLocalTracks()) {
+    if (t.gender !== gender) continue;
+    const url = (await objectUrlForLocalTrack(t.id)) ?? t.url;
+    pool.push({ file: t.id, url, start: getStart(t.id) });
+  }
+  return pool;
+}
+
 // A random track from the pool, or null if the pool is empty/unconfigured.
 export async function pickMusicTrack(gender: MusicGender): Promise<MusicTrack | null> {
-  const m = await loadManifest();
-  const list = m[gender] ?? [];
-  if (!list.length) return null;
-  const entry = list[Math.floor(Math.random() * list.length)];
-  const file = typeof entry === 'string' ? entry : entry.file;
-  const manifestStart = typeof entry === 'string' ? undefined : entry.start;
-  return { url: trackUrl(m, gender, file), start: effectiveStart(file, manifestStart) };
+  const pool = await poolFor(gender);
+  if (!pool.length) return null;
+  const c = pool[Math.floor(Math.random() * pool.length)];
+  return { url: c.url, start: c.start };
 }
