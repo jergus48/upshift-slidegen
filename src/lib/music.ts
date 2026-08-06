@@ -54,6 +54,9 @@ function trackUrl(m: MusicManifest, gender: MusicGender, file: string): string {
   // must be percent-encoded. Use encodeURI, NOT encodeURIComponent: the static
   // server matches literal , @ & [ ] in the path but not their %2C/%40/%26
   // forms, so those must stay unescaped (encodeURI leaves them alone).
+  // NOTE: avoid "+" in filenames — hosts disagree on decoding a path "+" (Vercel
+  // reads it as a space, Vite doesn't match %2B), so such files are renamed
+  // instead of relying on encoding.
   const enc = encodeURI(file);
   if (m.base) return `${m.base.replace(/\/?$/, '/')}${enc}`;
   return `/music/${gender}/${enc}`;

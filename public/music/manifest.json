@@ -1,59 +1,205 @@
 {
   "male": [
-    "Central Cee - Doja Official Music Video.mp3",
-    "DVRST - Close Eyes.mp3",
-    "Denzel Curry - Ultimate feat. Juicy J [OFFICIAL MUSIC VIDEO].mp3",
-    "Eminem - Till I Collapse Feat. Nate Dogg [OFFICIAL MUSIC VIDEO].mp3",
-    "Future - Mask Off Official Music Video.mp3",
-    "Ghostface Playa - Why Not.mp3",
-    "Hensonn-Sahara.mp3",
-    "INTERWORLD - METAMORPHOSIS.mp3",
-    "Juice WRLD - Righteous Official Video.mp3",
-    "KORDHELL - MURDER IN MY MIND.mp3",
-    "Kanye West - Cant Tell Me Nothing.mp3",
-    "Kanye West - POWER.mp3",
-    "METAMORPHOSIS Slowed + Reverb.mp3",
-    "Monëy Twerk [Official Music Vidëo].mp3",
-    "MoonDeity - NEON BLADE.mp3",
-    "Narvent - Fainted 4K Music Video.mp3",
-    "POP SMOKE - DIOR OFFICIAL VIDEO.mp3",
-    "Superhero Heroes & Villains ChoppedNotSlopped.mp3",
-    "Tears For Fears - Everybody Wants To Rule The World Official Music Video.mp3",
-    "The Weeknd - The Hills.mp3",
-    "Travis Scott - HIGHEST IN THE ROOM Official Music Video.mp3",
-    "VØJ, Narvent - Memory Reboot 4K Music Video.mp3",
-    "Welcome To My Crib Mega Slowed.mp3",
-    "Your Next Opponent Is You.mp3",
-    "g3ox_em GigaChad Theme - Phonk House Version Slowed.mp3",
-    "scarlxrd - HEART ATTACK [Prod. JVCXB].mp3"
+    {
+      "file": "Central Cee - Doja Official Music Video.mp3",
+      "start": 3
+    },
+    {
+      "file": "DVRST - Close Eyes.mp3",
+      "start": 17
+    },
+    {
+      "file": "Denzel Curry - Ultimate feat. Juicy J [OFFICIAL MUSIC VIDEO].mp3",
+      "start": 16
+    },
+    {
+      "file": "Eminem - Till I Collapse Feat. Nate Dogg [OFFICIAL MUSIC VIDEO].mp3",
+      "start": 0
+    },
+    {
+      "file": "Future - Mask Off Official Music Video.mp3",
+      "start": 6
+    },
+    {
+      "file": "Ghostface Playa - Why Not.mp3",
+      "start": 5
+    },
+    {
+      "file": "Hensonn-Sahara.mp3",
+      "start": 34
+    },
+    {
+      "file": "INTERWORLD - METAMORPHOSIS.mp3",
+      "start": 10
+    },
+    {
+      "file": "Juice WRLD - Righteous Official Video.mp3",
+      "start": 7
+    },
+    {
+      "file": "KORDHELL - MURDER IN MY MIND.mp3",
+      "start": 1
+    },
+    {
+      "file": "Kanye West - Cant Tell Me Nothing.mp3",
+      "start": 1
+    },
+    {
+      "file": "Kanye West - POWER.mp3",
+      "start": 1
+    },
+    "METAMORPHOSIS Slowed Reverb.mp3",
+    {
+      "file": "Monëy Twerk [Official Music Vidëo].mp3",
+      "start": 2
+    },
+    {
+      "file": "MoonDeity - NEON BLADE.mp3",
+      "start": 24
+    },
+    {
+      "file": "Narvent - Fainted 4K Music Video.mp3",
+      "start": 44
+    },
+    {
+      "file": "POP SMOKE - DIOR OFFICIAL VIDEO.mp3",
+      "start": 57
+    },
+    {
+      "file": "Superhero Heroes & Villains ChoppedNotSlopped.mp3",
+      "start": 31
+    },
+    {
+      "file": "Tears For Fears - Everybody Wants To Rule The World Official Music Video.mp3",
+      "start": 35
+    },
+    {
+      "file": "The Weeknd - The Hills.mp3",
+      "start": 0
+    },
+    {
+      "file": "Travis Scott - HIGHEST IN THE ROOM Official Music Video.mp3",
+      "start": 0
+    },
+    {
+      "file": "VØJ, Narvent - Memory Reboot 4K Music Video.mp3",
+      "start": 1
+    },
+    {
+      "file": "Welcome To My Crib Mega Slowed.mp3",
+      "start": 1
+    },
+    {
+      "file": "Your Next Opponent Is You.mp3",
+      "start": 0
+    },
+    {
+      "file": "g3ox_em GigaChad Theme - Phonk House Version Slowed.mp3",
+      "start": 0
+    }
   ],
   "female": [
-    "@coldplay  - Sparks Lyrics.mp3",
-    "Apocalypse - Cigarettes After Sex.mp3",
-    "Arctic Monkeys - 505.mp3",
-    "Arctic Monkeys - Do I Wanna Know？ Official Video.mp3",
-    "Arctic Monkeys - I Wanna Be Yours.mp3",
-    "Beach Weather - Sex, Drugs, Etc. Official Video.mp3",
-    "Billie Eilish - LUNCH Official Music Video.mp3",
-    "Billie Eilish - WILDFLOWER Official Lyric Video.mp3",
-    "Chamber Of Reflection.mp3",
-    "Clairo - Bags.mp3",
-    "Ethereal Slowed.mp3",
-    "Frank Ocean - Ivy.mp3",
-    "Frank Ocean - Pink + White.mp3",
-    "Lana Del Rey - Born To Die.mp3",
-    "Lana Del Rey - Say Yes To Heaven Official Audio.mp3",
-    "Lana Del Rey - Young and Beautiful.mp3",
-    "Mitski - My Love Mine All Mine Official Lyric Video.mp3",
-    "Steve Lacy - Dark Red Lyrics.mp3",
-    "Sunsetz - Cigarettes After Sex.mp3",
-    "Tame Impala - Let It Happen Official Video.mp3",
-    "The Neighbourhood - Softcore Official Audio.mp3",
-    "The Neighbourhood - Sweater Weather Lyrics Slowed Down.mp3",
-    "Whered All The Time Go？ - Dr. Dog.mp3",
-    "[Nice Dream].mp3",
-    "beabadoobee - Glue Song Official Music Video.mp3",
-    "girl in red - we fell in love in october.mp3",
-    "ridgeclub - do i clench my fists？ slowed + reverb.mp3"
+    {
+      "file": "@coldplay  - Sparks Lyrics.mp3",
+      "start": 0
+    },
+    {
+      "file": "Apocalypse - Cigarettes After Sex.mp3",
+      "start": 1
+    },
+    {
+      "file": "Arctic Monkeys - 505.mp3",
+      "start": 147
+    },
+    {
+      "file": "Arctic Monkeys - Do I Wanna Know？ Official Video.mp3",
+      "start": 5
+    },
+    {
+      "file": "Arctic Monkeys - I Wanna Be Yours.mp3",
+      "start": 11
+    },
+    {
+      "file": "Beach Weather - Sex, Drugs, Etc. Official Video.mp3",
+      "start": 13
+    },
+    {
+      "file": "Billie Eilish - LUNCH Official Music Video.mp3",
+      "start": 8
+    },
+    {
+      "file": "Billie Eilish - WILDFLOWER Official Lyric Video.mp3",
+      "start": 7
+    },
+    {
+      "file": "Chamber Of Reflection.mp3",
+      "start": 7
+    },
+    {
+      "file": "Clairo - Bags.mp3",
+      "start": 11
+    },
+    {
+      "file": "Ethereal Slowed.mp3",
+      "start": 1
+    },
+    {
+      "file": "Frank Ocean - Ivy.mp3",
+      "start": 0
+    },
+    "Frank Ocean - Pink White.mp3",
+    {
+      "file": "Lana Del Rey - Born To Die.mp3",
+      "start": 0
+    },
+    {
+      "file": "Lana Del Rey - Say Yes To Heaven Official Audio.mp3",
+      "start": 96
+    },
+    {
+      "file": "Lana Del Rey - Young and Beautiful.mp3",
+      "start": 9
+    },
+    {
+      "file": "Mitski - My Love Mine All Mine Official Lyric Video.mp3",
+      "start": 0
+    },
+    {
+      "file": "Steve Lacy - Dark Red Lyrics.mp3",
+      "start": 12
+    },
+    {
+      "file": "Sunsetz - Cigarettes After Sex.mp3",
+      "start": 13
+    },
+    {
+      "file": "Tame Impala - Let It Happen Official Video.mp3",
+      "start": 8
+    },
+    {
+      "file": "The Neighbourhood - Softcore Official Audio.mp3",
+      "start": 0
+    },
+    {
+      "file": "The Neighbourhood - Sweater Weather Lyrics Slowed Down.mp3",
+      "start": 8
+    },
+    {
+      "file": "Whered All The Time Go？ - Dr. Dog.mp3",
+      "start": 4
+    },
+    {
+      "file": "[Nice Dream].mp3",
+      "start": 0
+    },
+    {
+      "file": "beabadoobee - Glue Song Official Music Video.mp3",
+      "start": 51
+    },
+    {
+      "file": "girl in red - we fell in love in october.mp3",
+      "start": 19
+    },
+    "ridgeclub - do i clench my fists slowed reverb.mp3"
   ]
 }
