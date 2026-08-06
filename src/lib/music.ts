@@ -9,13 +9,28 @@
 //   { "male": ["track-a.mp3", ...], "female": ["track-b.mp3", ...] }
 // Files with no scheme resolve to /music/<gender>/<file>; a top-level "base"
 // (e.g. an R2 URL) or an absolute http(s) file path override that.
+//
+// A track can also be an object to pin where playback starts — handy to skip an
+// intro and open on the drop/hook:
+//   { "file": "Future - Mask Off.mp3", "start": 8 }
+// When "start" is omitted the exporter auto-detects the first high-energy point.
 
 export type MusicGender = 'male' | 'female';
 
+// A track is either a bare filename/URL or an object with an explicit start.
+type MusicEntry = string | { file: string; start?: number };
+
 interface MusicManifest {
   base?: string;
-  male?: string[];
-  female?: string[];
+  male?: MusicEntry[];
+  female?: MusicEntry[];
+}
+
+// Resolved track handed to the exporter: where to fetch it and, if pinned in the
+// manifest, the second to start playback from (else undefined → auto-detect).
+export interface MusicTrack {
+  url: string;
+  start?: number;
 }
 
 let manifestPromise: Promise<MusicManifest> | null = null;
@@ -47,11 +62,13 @@ export async function hasMusic(gender: MusicGender): Promise<boolean> {
   return !!m[gender]?.length;
 }
 
-// A random track URL from the pool, or null if the pool is empty/unconfigured.
-export async function pickMusicTrack(gender: MusicGender): Promise<string | null> {
+// A random track from the pool, or null if the pool is empty/unconfigured.
+export async function pickMusicTrack(gender: MusicGender): Promise<MusicTrack | null> {
   const m = await loadManifest();
   const list = m[gender] ?? [];
   if (!list.length) return null;
-  const file = list[Math.floor(Math.random() * list.length)];
-  return trackUrl(m, gender, file);
+  const entry = list[Math.floor(Math.random() * list.length)];
+  const file = typeof entry === 'string' ? entry : entry.file;
+  const start = typeof entry === 'string' ? undefined : entry.start;
+  return { url: trackUrl(m, gender, file), start };
 }

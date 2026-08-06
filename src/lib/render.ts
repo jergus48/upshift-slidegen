@@ -10,7 +10,7 @@ import type { Slide, Slideshow } from '../types';
 import { FONT_SIZE_PCT, LINE_HEIGHT, SIDE_PAD_PCT, pct, captionStyleSpec, primaryFontFamily, cleanCaption } from './captionStyle';
 import { resolveImageSrc } from './imageSrc';
 import { createZip, dataUrlToBytes, type ZipEntry } from './zip';
-import { pickMusicTrack, type MusicGender } from './music';
+import { pickMusicTrack, type MusicGender, type MusicTrack } from './music';
 
 const W = 1080;
 const H = 1920;
@@ -331,10 +331,52 @@ async function loadAudioBuffer(ctx: AudioContext, url: string): Promise<AudioBuf
   }
 }
 
+// Find where a track's "energetic" part begins, so the video opens on the hook/
+// drop instead of a quiet intro. Scans loudness (RMS) in 0.5s windows and returns
+// the first window that reaches a high fraction of the track's peak AND stays
+// there briefly (so a lone transient click doesn't trigger it). Bounded to the
+// first 45s and always leaves a few seconds of runway; returns 0 if nothing
+// clearly louder stands out (e.g. a track that's full-energy from the top).
+function detectDropOffset(buf: AudioBuffer): number {
+  const data = buf.getChannelData(0);
+  const sr = buf.sampleRate;
+  const winLen = Math.floor(sr * 0.5);
+  if (winLen <= 0) return 0;
+
+  const rms: number[] = [];
+  for (let i = 0; i + winLen <= data.length; i += winLen) {
+    let sum = 0;
+    for (let j = 0; j < winLen; j++) {
+      const v = data[i + j];
+      sum += v * v;
+    }
+    rms.push(Math.sqrt(sum / winLen));
+  }
+  if (rms.length < 4) return 0;
+
+  const peak = Math.max(...rms);
+  if (peak <= 0) return 0;
+  const enter = peak * 0.7; // "loud enough" to count as the drop
+  const hold = peak * 0.55; // must not dip below this during the sustain check
+  const sustainWins = 3; // ~1.5s of sustained energy
+  const maxWin = Math.min(rms.length - sustainWins, Math.floor(45 / 0.5));
+
+  for (let i = 0; i < maxWin; i++) {
+    if (rms[i] < enter) continue;
+    let sustained = true;
+    for (let k = 1; k < sustainWins; k++) {
+      if (rms[i + k] < hold) { sustained = false; break; }
+    }
+    if (sustained) return i * 0.5;
+  }
+  return 0;
+}
+
 // Render one slideshow to a video Blob (MP4 when the browser supports it).
-// `musicUrl`, when given, is mixed in as a background track (looped/trimmed to
-// the clip length); a missing or unreadable track falls back to a silent video.
-export async function renderSlideshowVideo(show: Slideshow, musicUrl?: string | null): Promise<Blob> {
+// `music`, when given, is mixed in as a background track (looped/trimmed to the
+// clip length) starting at its pinned `start` or an auto-detected drop; a missing
+// or unreadable track falls back to a silent video.
+export async function renderSlideshowVideo(show: Slideshow, music?: MusicTrack | null): Promise<Blob> {
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('Video export needs a browser with MediaRecorder support.');
   }
@@ -372,7 +414,15 @@ export async function renderSlideshowVideo(show: Slideshow, musicUrl?: string | 
     ctx.drawImage(imgs[imgs.length - 1], 0, 0, W, H); // past the end — hold the last frame
   };
 
+  // Auto-capture at VIDEO_FPS as a baseline that works on every browser, and
+  // ALSO push a frame manually each tick via requestFrame() where supported — so
+  // the video keeps advancing deterministically even if auto-capture stalls while
+  // the tab is hidden.
   const stream = canvas.captureStream(VIDEO_FPS);
+  const videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined;
+  const pushFrame = () => {
+    if (videoTrack && typeof videoTrack.requestFrame === 'function') videoTrack.requestFrame();
+  };
 
   // Optional background music: decode the track and route it into a
   // MediaStreamDestination, whose audio track we splice onto the canvas stream
@@ -384,16 +434,27 @@ export async function renderSlideshowVideo(show: Slideshow, musicUrl?: string | 
     (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   let audioCtx: AudioContext | null = null;
   let musicSource: AudioBufferSourceNode | null = null;
-  if (musicUrl && AudioCtx) {
+  let musicOffset = 0; // seconds into the track where playback should begin
+  if (music?.url && AudioCtx) {
     audioCtx = new AudioCtx();
-    const buffer = await loadAudioBuffer(audioCtx, musicUrl);
+    const buffer = await loadAudioBuffer(audioCtx, music.url);
     if (buffer) {
+      // Start on the drop: use the manifest's pinned `start` if given, else
+      // auto-detect the first high-energy point. Clamp so we never start past
+      // the end (leave ≥2s of runway).
+      const wanted = music.start ?? detectDropOffset(buffer);
+      musicOffset = Math.max(0, Math.min(wanted, Math.max(0, buffer.duration - 2)));
+
       const dest = audioCtx.createMediaStreamDestination();
       const gain = audioCtx.createGain();
       gain.gain.value = 0.85;
       musicSource = audioCtx.createBufferSource();
       musicSource.buffer = buffer;
       musicSource.loop = true;
+      // Loop back to the drop (not 0:00) so a short song doesn't fall into its
+      // quiet intro on repeat.
+      musicSource.loopStart = musicOffset;
+      musicSource.loopEnd = buffer.duration;
       musicSource.connect(gain).connect(dest);
       dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
     } else {
@@ -414,20 +475,41 @@ export async function renderSlideshowVideo(show: Slideshow, musicUrl?: string | 
 
   drawAt(0); // seed the first frame before recording starts
   rec.start();
-  musicSource?.start(); // begin the soundtrack in lockstep with recording
+  pushFrame();
+  if (musicSource && audioCtx) {
+    // Begin on the drop and stop exactly when the video ends, so the audio can
+    // never outlast the picture even if the recording is uneven.
+    musicSource.start(0, musicOffset);
+    try {
+      musicSource.stop(audioCtx.currentTime + total / 1000);
+    } catch { /* stop-scheduling unsupported — stopped manually below */ }
+  }
+
+  // Drive the render off the WALL CLOCK via setTimeout, not requestAnimationFrame.
+  // rAF is paused entirely while the tab/window is hidden — which would freeze the
+  // canvas mid-clip while the audio (on the real clock) played on. setTimeout keeps
+  // firing when backgrounded (throttled, but never paused), so the clip always
+  // advances to the end and stops correctly; each tick pushes one frame.
   await new Promise<void>((resolve) => {
     const startT = performance.now();
-    const frame = () => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    const frameMs = 1000 / VIDEO_FPS;
+    const tick = () => {
+      if (done) return;
       const t = performance.now() - startT;
       drawAt(Math.min(t, total));
-      if (t >= total) {
-        resolve();
-        return;
-      }
-      requestAnimationFrame(frame);
+      pushFrame();
+      if (t >= total) { finish(); return; }
+      setTimeout(tick, frameMs);
     };
-    requestAnimationFrame(frame);
+    tick();
+    // Hard safety net: guarantee we stop even if the timer chain is throttled far
+    // past its schedule, so a render can't hang indefinitely.
+    setTimeout(finish, total + 1000);
   });
+  drawAt(total);
+  pushFrame();
   rec.stop();
   await stopped;
   try {
