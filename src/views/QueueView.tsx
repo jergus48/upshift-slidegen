@@ -6,7 +6,9 @@ import { SlidePreview } from '../components/SlidePreview';
 import { BulkBackgroundTool } from '../components/BulkBackgroundTool';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
+import { MusicChoiceModal } from '../components/MusicChoiceModal';
 import { downloadSlideshow, downloadSlideshowsZip, downloadSlideshowsVideo } from '../lib/render';
+import type { MusicGender } from '../lib/music';
 
 interface QueueViewProps {
   slideshows: Slideshow[];
@@ -42,6 +44,7 @@ export function QueueView({
   const selectedCount = selectedIds.length;
   const [downloadingBulk, setDownloadingBulk] = useState(false);
   const [videoProgress, setVideoProgress] = useState<{ done: number; total: number } | null>(null);
+  const [askMusic, setAskMusic] = useState(false);
 
   const selectedShows = () => slideshows.filter((s) => selectedIds.includes(s.id));
 
@@ -54,10 +57,15 @@ export function QueueView({
     }
   };
 
-  const downloadSelectedVideo = async () => {
+  const downloadSelectedVideo = async (music: MusicGender | null) => {
+    setAskMusic(false);
     setVideoProgress({ done: 0, total: selectedCount });
     try {
-      await downloadSlideshowsVideo(selectedShows(), (done, total) => setVideoProgress({ done, total }));
+      await downloadSlideshowsVideo(
+        selectedShows(),
+        (done, total) => setVideoProgress({ done, total }),
+        music,
+      );
     } finally {
       setVideoProgress(null);
     }
@@ -88,7 +96,7 @@ export function QueueView({
                 <Button
                   variant="secondary"
                   icon={videoProgress ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
-                  onClick={downloadSelectedVideo}
+                  onClick={() => setAskMusic(true)}
                   disabled={videoProgress !== null || downloadingBulk}
                   title="Turn each slideshow into a video that slides through the slides at reading speed"
                 >
@@ -167,6 +175,14 @@ export function QueueView({
           </div>
         </div>
       )}
+
+      {askMusic && (
+        <MusicChoiceModal
+          count={selectedCount}
+          onClose={() => setAskMusic(false)}
+          onChoose={downloadSelectedVideo}
+        />
+      )}
     </>
   );
 }
@@ -183,6 +199,7 @@ interface CardProps {
 function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onReject, onEdit }: CardProps) {
   const [downloading, setDownloading] = useState(false);
   const [renderingVideo, setRenderingVideo] = useState(false);
+  const [askMusic, setAskMusic] = useState(false);
 
   const download = async () => {
     setDownloading(true);
@@ -193,10 +210,11 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
     }
   };
 
-  const downloadVideo = async () => {
+  const downloadVideo = async (music: MusicGender | null) => {
+    setAskMusic(false);
     setRenderingVideo(true);
     try {
-      await downloadSlideshowsVideo([slideshow]);
+      await downloadSlideshowsVideo([slideshow], undefined, music);
     } finally {
       setRenderingVideo(false);
     }
@@ -264,7 +282,7 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
             variant="secondary"
             icon={renderingVideo ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
             label="Download as video"
-            onClick={downloadVideo}
+            onClick={() => setAskMusic(true)}
             disabled={renderingVideo}
           />
           <IconButton
@@ -275,6 +293,14 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
           />
         </div>
       </div>
+
+      {askMusic && (
+        <MusicChoiceModal
+          count={1}
+          onClose={() => setAskMusic(false)}
+          onChoose={downloadVideo}
+        />
+      )}
     </div>
   );
 }

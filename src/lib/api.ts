@@ -144,7 +144,10 @@ export const getAccounts = () => req<SocialAccount[]>('/accounts');
 export interface SchedulePayload {
   id: string;
   caption: string;
-  slides: string[]; // PNG data URLs
+  // Provide exactly one of `slides` (PNG data URLs → carousel) or `video` (a
+  // single MP4/WebM data URL → video post). `video` wins if both are set.
+  slides?: string[];
+  video?: string;
   socialAccounts: number[];
   scheduledAt: string | null;
   mode: 'draft' | 'schedule';

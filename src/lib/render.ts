@@ -10,6 +10,7 @@ import type { Slide, Slideshow } from '../types';
 import { FONT_SIZE_PCT, LINE_HEIGHT, SIDE_PAD_PCT, pct, captionStyleSpec, primaryFontFamily, cleanCaption } from './captionStyle';
 import { resolveImageSrc } from './imageSrc';
 import { createZip, dataUrlToBytes, type ZipEntry } from './zip';
+import { pickMusicTrack, type MusicGender } from './music';
 
 const W = 1080;
 const H = 1920;
@@ -184,6 +185,31 @@ function captionFile(show: Slideshow): string {
   return [show.hook || '', '', show.caption || '', '', tags, ''].join('\n');
 }
 
+// Per-video upload metadata — what a YouTube/Shorts uploader (post-bridge, the
+// scheduler, or a person posting by hand) needs to fill the title, description
+// and tag fields. Title = the hook; description = the caption followed by the
+// hashtags (YouTube shows in-description hashtags as clickable chips); tags =
+// the bare hashtag words. Kept in sync with captionFile() above so the sidecar
+// and the image .txt tell the same story.
+export interface VideoMeta {
+  title: string;
+  description: string;
+  tags: string[];
+}
+
+export function videoMeta(show: Slideshow): VideoMeta {
+  const tags = show.hashtags || [];
+  const hashLine = tags.map((t) => `#${t}`).join(' ');
+  const description = [show.caption || '', hashLine].filter(Boolean).join('\n\n');
+  return { title: show.hook || show.caption || 'Untitled', description, tags };
+}
+
+// The JSON sidecar bundled next to each exported .mp4, so every video file
+// carries its own title/description/tags and an uploader needs no second export.
+function videoMetaJson(show: Slideshow): string {
+  return JSON.stringify(videoMeta(show), null, 2);
+}
+
 // Bundle several slideshows into ONE zip. Each post gets its own folder
 // containing its images (named with the slide's order number at the end) and a
 // text file with the title, body, hashtags and folder name. Triggers a single
@@ -245,13 +271,13 @@ export async function downloadSlideshowsZip(shows: Slideshow[]): Promise<void> {
 // clip itself.
 
 const VIDEO_FPS = 30;
-const TRANSITION_MS = 280; // quick horizontal slide from one slide to the next
-// Reading pace tuned for Shorts: punchy, not lingering. Roughly a ~4.5 words/sec
-// skim plus a short floor. A typical ~8-word slide lands near ~2.5s, so a
-// 10-slide deck comes out around ~28s instead of over a minute.
-const READ_BASE_MS = 900; // floor: even a one-word slide stays up this long
-const READ_PER_WORD_MS = 220; // added reading time per word
-const READ_MAX_MS = 5500; // cap so a wordy slide can't stall forever
+const TRANSITION_MS = 240; // quick horizontal slide from one slide to the next
+// Reading pace tuned for Shorts: punchy, not lingering. Trimmed a notch tighter
+// so decks feel snappier. A typical ~8-word slide lands near ~2s, so a 10-slide
+// deck comes out around ~22s.
+const READ_BASE_MS = 650; // floor: even a one-word slide stays up this long
+const READ_PER_WORD_MS = 180; // added reading time per word
+const READ_MAX_MS = 4500; // cap so a wordy slide can't stall forever
 
 // How long slide `text` should stay on screen: a base plus reading time per word.
 function readingHoldMs(text: string): number {
@@ -291,8 +317,24 @@ function extForMime(mime: string): string {
   return mime.includes('mp4') ? 'mp4' : 'webm';
 }
 
+// Fetch + decode a music track into an AudioBuffer using the given context.
+// Returns null on any failure so a missing/broken track just yields a silent
+// video rather than aborting the export.
+async function loadAudioBuffer(ctx: AudioContext, url: string): Promise<AudioBuffer | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const bytes = await res.arrayBuffer();
+    return await ctx.decodeAudioData(bytes);
+  } catch {
+    return null;
+  }
+}
+
 // Render one slideshow to a video Blob (MP4 when the browser supports it).
-export async function renderSlideshowVideo(show: Slideshow): Promise<Blob> {
+// `musicUrl`, when given, is mixed in as a background track (looped/trimmed to
+// the clip length); a missing or unreadable track falls back to a silent video.
+export async function renderSlideshowVideo(show: Slideshow, musicUrl?: string | null): Promise<Blob> {
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('Video export needs a browser with MediaRecorder support.');
   }
@@ -331,6 +373,35 @@ export async function renderSlideshowVideo(show: Slideshow): Promise<Blob> {
   };
 
   const stream = canvas.captureStream(VIDEO_FPS);
+
+  // Optional background music: decode the track and route it into a
+  // MediaStreamDestination, whose audio track we splice onto the canvas stream
+  // so MediaRecorder captures picture + sound together. The source loops so a
+  // short song still covers a longer clip; we start/stop it around recording.
+  const AudioCtx: typeof AudioContext | undefined =
+    (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
+      .AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  let audioCtx: AudioContext | null = null;
+  let musicSource: AudioBufferSourceNode | null = null;
+  if (musicUrl && AudioCtx) {
+    audioCtx = new AudioCtx();
+    const buffer = await loadAudioBuffer(audioCtx, musicUrl);
+    if (buffer) {
+      const dest = audioCtx.createMediaStreamDestination();
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.85;
+      musicSource = audioCtx.createBufferSource();
+      musicSource.buffer = buffer;
+      musicSource.loop = true;
+      musicSource.connect(gain).connect(dest);
+      dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
+    } else {
+      await audioCtx.close();
+      audioCtx = null;
+    }
+  }
+
   const mimeType = pickVideoMime();
   const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
   const chunks: BlobPart[] = [];
@@ -343,6 +414,7 @@ export async function renderSlideshowVideo(show: Slideshow): Promise<Blob> {
 
   drawAt(0); // seed the first frame before recording starts
   rec.start();
+  musicSource?.start(); // begin the soundtrack in lockstep with recording
   await new Promise<void>((resolve) => {
     const startT = performance.now();
     const frame = () => {
@@ -358,6 +430,10 @@ export async function renderSlideshowVideo(show: Slideshow): Promise<Blob> {
   });
   rec.stop();
   await stopped;
+  try {
+    musicSource?.stop();
+  } catch { /* already stopped */ }
+  if (audioCtx) await audioCtx.close();
 
   return new Blob(chunks, { type: mimeType });
 }
@@ -369,22 +445,36 @@ export async function renderSlideshowVideo(show: Slideshow): Promise<Blob> {
 export async function downloadSlideshowsVideo(
   shows: Slideshow[],
   onProgress?: (done: number, total: number) => void,
+  music?: MusicGender | null,
 ): Promise<void> {
   if (!shows.length) return;
 
-  // Single selection → one plain video file.
+  // Each video gets its own randomly-picked track from the chosen pool, so a
+  // batch doesn't all share one song. No pool / empty pool → silent video.
+  const trackFor = async () => (music ? await pickMusicTrack(music) : null);
+
+  // Single selection → one plain video file plus its metadata sidecar.
   if (shows.length === 1) {
     onProgress?.(0, 1);
-    const blob = await renderSlideshowVideo(shows[0]);
+    const blob = await renderSlideshowVideo(shows[0], await trackFor());
     onProgress?.(1, 1);
+    const base = slugify(shows[0].hook || shows[0].caption || shows[0].id);
+    const saveFile = (href: string, name: string) => {
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${slugify(shows[0].hook || shows[0].caption || shows[0].id)}.${extForMime(blob.type)}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    saveFile(url, `${base}.${extForMime(blob.type)}`);
     URL.revokeObjectURL(url);
+    // Space the second download out — browsers throttle back-to-back saves.
+    await new Promise((r) => setTimeout(r, 200));
+    const metaUrl = URL.createObjectURL(new Blob([videoMetaJson(shows[0])], { type: 'application/json' }));
+    saveFile(metaUrl, `${base}.json`);
+    URL.revokeObjectURL(metaUrl);
     return;
   }
 
@@ -404,10 +494,16 @@ export async function downloadSlideshowsVideo(
     }
     usedNames.add(name);
 
-    const blob = await renderSlideshowVideo(show);
+    const blob = await renderSlideshowVideo(show, await trackFor());
     entries.push({
       name: `${name}.${extForMime(blob.type)}`,
       data: new Uint8Array(await blob.arrayBuffer()),
+      date: new Date(base + i * 60_000),
+    });
+    // A metadata sidecar next to each video so the whole zip is upload-ready.
+    entries.push({
+      name: `${name}.json`,
+      data: new TextEncoder().encode(videoMetaJson(show)),
       date: new Date(base + i * 60_000),
     });
     onProgress?.(i + 1, shows.length);

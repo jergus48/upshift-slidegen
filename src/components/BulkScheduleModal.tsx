@@ -2,8 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { X, Loader2, CalendarClock, CheckCircle2, ExternalLink } from 'lucide-react';
 import type { Slideshow, SocialAccount, ProjectDefaults } from '../types';
 import { Button } from './Button';
-import { renderSlideshow } from '../lib/render';
+import { renderSlideshow, renderSlideshowVideo, videoMeta } from '../lib/render';
 import { schedule as scheduleOne, getScheduledPosts } from '../lib/api';
+
+// Read a Blob back as a base64 data URL so the MP4 can ride the same JSON
+// /api/schedule call the PNG slides already use.
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error || new Error('Could not read video blob.'));
+    r.readAsDataURL(blob);
+  });
+}
 
 // post-bridge dashboard — where the user reviews what we just sent over.
 const PB_SCHEDULED_URL = 'https://www.post-bridge.com/dashboard/posts/scheduled';
@@ -30,6 +41,8 @@ function toLocalInput(d: Date): string {
 export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onDone }: BulkScheduleModalProps) {
   const [selectedAccounts, setSelectedAccounts] = useState<number[]>(defaults.socialAccountIds);
   const [mode, setMode] = useState<'schedule' | 'draft'>(defaults.mode === 'draft' ? 'draft' : 'schedule');
+  // Post each slideshow as a vertical video (Short/Reel) instead of a carousel.
+  const [asVideo, setAsVideo] = useState(false);
   const [hours, setHours] = useState(6);
   const [startLocal, setStartLocal] = useState(() => toLocalInput(new Date(Date.now() + 6 * 3600_000)));
   const [lastScheduledMs, setLastScheduledMs] = useState<number | null>(null);
@@ -86,7 +99,10 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
     // Each slideshow already fans out its slide uploads in parallel, so keep the
     // slideshow-level pool modest — too many at once overwhelms post-bridge's
     // upload endpoint and starts dropping slides.
-    const CONCURRENCY = 3;
+    // Video rendering records in real time from a single canvas + MediaRecorder,
+    // so several at once would fight over resources — render videos one at a
+    // time. Carousels are cheap; keep the small pool.
+    const CONCURRENCY = asVideo ? 1 : 3;
     const succeeded: string[] = [];
     let done = 0;
     let next = 0;
@@ -96,16 +112,20 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
         const i = next++;
         const show = slideshows[i];
         try {
-          const slides = await renderSlideshow(show);
-          const caption = `${show.caption}${show.hashtags.length ? ' ' + show.hashtags.map((t) => `#${t}`).join(' ') : ''}`;
-          await scheduleOne({
-            id: show.id,
-            caption,
-            slides,
-            socialAccounts: selectedAccounts,
-            scheduledAt: mode === 'schedule' ? new Date(startMs + i * stepMs).toISOString() : null,
-            mode,
-          });
+          const scheduledAt = mode === 'schedule' ? new Date(startMs + i * stepMs).toISOString() : null;
+          if (asVideo) {
+            const meta = videoMeta(show);
+            // First line is the hook so post-bridge uses it as the video title;
+            // the description (caption + hashtags) follows.
+            const caption = [meta.title, meta.description].filter(Boolean).join('\n\n');
+            const blob = await renderSlideshowVideo(show);
+            const video = await blobToDataUrl(blob);
+            await scheduleOne({ id: show.id, caption, video, socialAccounts: selectedAccounts, scheduledAt, mode });
+          } else {
+            const slides = await renderSlideshow(show);
+            const caption = `${show.caption}${show.hashtags.length ? ' ' + show.hashtags.map((t) => `#${t}`).join(' ') : ''}`;
+            await scheduleOne({ id: show.id, caption, slides, socialAccounts: selectedAccounts, scheduledAt, mode });
+          }
           succeeded.push(show.id);
         } catch (e) {
           console.error('[bulk] failed for', show.id, e);
@@ -166,6 +186,20 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
                     </label>
                   ))}
                 </div>
+              )}
+            </div>
+
+            {/* Media type */}
+            <div>
+              <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Post as</label>
+              <div className="flex gap-2">
+                <Button variant={!asVideo ? 'primary' : 'secondary'} onClick={() => setAsVideo(false)} disabled={busy}>Carousel (images)</Button>
+                <Button variant={asVideo ? 'primary' : 'secondary'} onClick={() => setAsVideo(true)} disabled={busy}>Video (Short/Reel)</Button>
+              </div>
+              {asVideo && (
+                <p className="text-[11px] text-ink-6 mt-1.5 leading-snug">
+                  Each slideshow renders to a vertical MP4 in real time (~20–30s each), so a big batch takes a while. The hook becomes the video title.
+                </p>
               )}
             </div>
 
