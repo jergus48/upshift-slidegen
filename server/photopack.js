@@ -20,7 +20,7 @@ const SLOTS = [
   { slot: 'rule', category: 'food', theme: 'a food / nutrition shot (protein, the same breakfast) — a nutrition/routine rule' },
   { slot: 'rule', category: 'gym_action', theme: 'a lifting-in-action shot — a rule about doing the work / logging the effort' },
   { slot: 'app', category: 'phone_pov', theme: 'a phone-on-lap shot — the app slide' },
-  { slot: 'closer', category: 'closer', theme: 'a quiet closing photo — a short reflective line' },
+  { slot: 'closer', category: 'closer', theme: 'a quiet closing photo (dead roses / thrown-out flowers) — remembering how you felt when she left or ignored you' },
 ]
 
 const BASE = manifest.base
@@ -58,7 +58,7 @@ The carousel is ONE real person sharing the rules that keep them disciplined. It
 3. RULE 2 (food / nutrition shot — protein, same breakfast): one concrete rule about eating / a fixed food routine.
 4. RULE 3 (lifting-in-action shot): one concrete rule about doing the actual work / logging or tracking the effort.
 5. RULE 4 (phone-on-lap shot — the app slide): softly name ${appName}, first person, as the tool that keeps you consistent. Mirror the showcased line "Stay consistent with ${appName}: #1 productivity app" but write your own. One line, never salesy.
-6. RULE 5 (quiet closing photo): a short reflective line about remembering why you started / how you felt that day.
+6. RULE 5 (quiet closing photo — dead roses thrown out on the street): the emotional gut-punch closer. A short line about remembering how you FELT the night she left you / ignored you / walked away — the pain that started all of this and still fuels the discipline. First person, raw, a little vulnerable. Think "remember how you felt that night…" — write your own, not that exact line.
 
 Voice & rules for every line:
 - Sound like a REAL person telling a friend, first person, warm and specific. Use contractions. Real details, not vague abstractions.
@@ -76,7 +76,7 @@ Respond with a JSON object of this exact shape:
       "rule2": "the nutrition/routine rule, one line",
       "rule3": "the do-the-work rule, one line",
       "appLine": "Stay consistent with ${appName}: ...",
-      "closer": "the short reflective closing line",
+      "closer": "remember how you felt the night she left, one raw line",
       "caption": "the post caption with 1-2 emoji",
       "hashtags": ["three", "relevant", "hashtags"]
     }
