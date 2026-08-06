@@ -58,7 +58,9 @@ The carousel is ONE real person sharing the rules that keep them disciplined. It
 3. RULE 2 (food / nutrition shot — protein, same breakfast): one concrete rule about eating / a fixed food routine.
 4. RULE 3 (lifting-in-action shot): one concrete rule about doing the actual work / logging or tracking the effort.
 5. RULE 4 (phone-on-lap shot — the app slide): softly name ${appName}, first person, as the tool that keeps you consistent. Mirror the showcased line "Stay consistent with ${appName}: #1 productivity app" but write your own. One line, never salesy.
-6. RULE 5 (quiet closing photo — dead roses thrown out on the street): the emotional gut-punch closer. A short line about remembering how you FELT the night she left you / ignored you / walked away — the pain that started all of this and still fuels the discipline. First person, raw, a little vulnerable. Think "remember how you felt that night…" — write your own, not that exact line.
+6. RULE 5 (quiet closing photo — dead roses thrown out on the street): the emotional gut-punch closer. It MUST be about the HEARTBREAK that started all of this — the night SHE left, walked out, stopped texting back, or looked at you like you weren't enough. That specific pain is what the dead roses mean and what still fuels the discipline. Second or first person, raw, short, a little vulnerable — it should sting.
+GOOD (this is the target — write your OWN in this vein): "never forget how you felt the night she walked out." / "do it for the guy she left crying at 2am." / "remember how small you felt when she stopped texting back." / "she left, and you swore you'd never feel that small again."
+BANNED — do NOT write a generic motivation line. If your closer doesn't clearly reference HER / the breakup / that night, it is wrong and you must rewrite it. Never write anything like: "remember why you started", "I always remember why I started", "remember how it felt to realize I was treading water", "never give up", "keep pushing yourself", or anything about "your goals" / "your why". Those are banned.
 
 Voice & rules for every line:
 - Sound like a REAL person telling a friend, first person, warm and specific. Use contractions. Real details, not vague abstractions.
@@ -76,7 +78,7 @@ Respond with a JSON object of this exact shape:
       "rule2": "the nutrition/routine rule, one line",
       "rule3": "the do-the-work rule, one line",
       "appLine": "Stay consistent with ${appName}: ...",
-      "closer": "remember how you felt the night she left, one raw line",
+      "closer": "never forget how you felt the night she walked out (one raw line about HER, not a generic motivation line)",
       "caption": "the post caption with 1-2 emoji",
       "hashtags": ["three", "relevant", "hashtags"]
     }

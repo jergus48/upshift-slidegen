@@ -3,6 +3,7 @@ import type { BrainState, LibraryPack } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { GENDERS, getQuitPresets, type Gender } from '../lib/quitPresets';
 import { getMergedPacks } from '../lib/mergedLibrary';
+import { MusicStartsEditor } from '../components/MusicStartsEditor';
 
 interface BrainViewProps {
   brain: BrainState;
@@ -143,6 +144,14 @@ export function BrainView({ brain, onChange, povPackMen, povPackWomen, onChangeP
               rows={16}
               className={`${textareaClass} font-mono text-[12px] leading-relaxed`}
             />
+          </Section>
+
+          {/* Video music start points */}
+          <Section
+            title="Video music"
+            description="Audition each soundtrack and pin the exact second it should start from in exported videos — set it to the drop/hook. Saved per track in this browser; overrides the automatic detection."
+          >
+            <MusicStartsEditor />
           </Section>
         </div>
       </div>

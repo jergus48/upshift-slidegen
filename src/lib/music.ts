@@ -15,6 +15,8 @@
 //   { "file": "Future - Mask Off.mp3", "start": 8 }
 // When "start" is omitted the exporter auto-detects the first high-energy point.
 
+import { getStart } from './musicStarts';
+
 export type MusicGender = 'male' | 'female';
 
 // A track is either a bare filename/URL or an object with an explicit start.
@@ -62,6 +64,35 @@ export async function hasMusic(gender: MusicGender): Promise<boolean> {
   return !!m[gender]?.length;
 }
 
+// A track a caller can display and audition. `file` is the stable id used to
+// save a start point; `url` is loadable; `start` is the effective start point
+// (user-saved override, else the manifest's pinned start).
+export interface MusicListItem {
+  gender: MusicGender;
+  file: string;
+  url: string;
+  start?: number;
+}
+
+// Every configured track across both pools, for the Brain "Video music" editor.
+export async function listAllTracks(): Promise<MusicListItem[]> {
+  const m = await loadManifest();
+  const out: MusicListItem[] = [];
+  for (const gender of ['male', 'female'] as const) {
+    for (const entry of m[gender] ?? []) {
+      const file = typeof entry === 'string' ? entry : entry.file;
+      const manifestStart = typeof entry === 'string' ? undefined : entry.start;
+      out.push({ gender, file, url: trackUrl(m, gender, file), start: getStart(file) ?? manifestStart });
+    }
+  }
+  return out;
+}
+
+// The effective start for a file: user-saved override wins, else manifest start.
+function effectiveStart(file: string, manifestStart?: number): number | undefined {
+  return getStart(file) ?? manifestStart;
+}
+
 // A random track from the pool, or null if the pool is empty/unconfigured.
 export async function pickMusicTrack(gender: MusicGender): Promise<MusicTrack | null> {
   const m = await loadManifest();
@@ -69,6 +100,6 @@ export async function pickMusicTrack(gender: MusicGender): Promise<MusicTrack | 
   if (!list.length) return null;
   const entry = list[Math.floor(Math.random() * list.length)];
   const file = typeof entry === 'string' ? entry : entry.file;
-  const start = typeof entry === 'string' ? undefined : entry.start;
-  return { url: trackUrl(m, gender, file), start };
+  const manifestStart = typeof entry === 'string' ? undefined : entry.start;
+  return { url: trackUrl(m, gender, file), start: effectiveStart(file, manifestStart) };
 }
