@@ -21,6 +21,21 @@ const SLOTS = [
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
 
+// Cover hook shapes — must stay in sync with HOOK_TEMPLATES in server/photopack.js.
+// `varied` rotates the shapes across a batch so covers aren't identical. All keep
+// "5" because the carousel always has 5 numbered rules.
+const HOOK_OPTIONS = [
+  { key: 'varied', label: 'Mix it up (varied)' },
+  { key: 'rules', label: '5 rules i follow for X' },
+  { key: 'tips', label: '5 tips to get BIGGER at the gym' },
+  { key: 'things', label: '5 things i do every day for X' },
+  { key: 'habits', label: '5 habits that built my X' },
+  { key: 'mistakes', label: '5 mistakes that killed my X' },
+  { key: 'secrets', label: '5 things nobody tells you about X' },
+  { key: 'nonnegotiables', label: '5 non-negotiables for X' },
+  { key: 'lies', label: '5 lies i had to unlearn about X' },
+] as const;
+
 interface Manifest {
   base: string;
   categories: Record<string, string[]>;
@@ -41,6 +56,7 @@ export function PhotoPackView({ generating, canGenerate, onGenerate }: PhotoPack
   const [preview, setPreview] = useState<(string | undefined)[]>([]);
   const [count, setCount] = useState(1);
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>('app');
+  const [hookStyle, setHookStyle] = useState<string>('varied');
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The user's own library packs, and optional overrides for the two swappable
@@ -115,7 +131,7 @@ export function PhotoPackView({ generating, canGenerate, onGenerate }: PhotoPack
     setError(null);
     setDone(false);
     try {
-      await onGenerate({ count, captionStyle, coverPack: coverPack || undefined, appPack: appPack || undefined });
+      await onGenerate({ count, captionStyle, coverPack: coverPack || undefined, appPack: appPack || undefined, hookStyle });
       setDone(true);
       if (manifest) shuffle(manifest);
     } catch (e) {
@@ -216,6 +232,27 @@ export function PhotoPackView({ generating, canGenerate, onGenerate }: PhotoPack
                 />
               </div>
               <p className="text-[11px] text-ink-6 mt-1">1–30. Each pack re-rolls its own random photos.</p>
+            </div>
+
+            {/* Cover hook — the shape of the slide-1 title. "Mix it up" varies it
+                across the batch; the rest lock every cover to one shape. */}
+            <div>
+              <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Cover hook</label>
+              <select
+                value={hookStyle}
+                disabled={generating}
+                onChange={(e) => setHookStyle(e.target.value)}
+                className="w-full h-9 bg-card border border-line rounded-lg px-2.5 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
+              >
+                {HOOK_OPTIONS.map((o) => (
+                  <option key={o.key} value={o.key}>{o.label}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-ink-6 mt-1">
+                {hookStyle === 'varied'
+                  ? 'Each pack gets a different hook shape. Always 5 rules underneath.'
+                  : 'Every cover uses this shape. The theme word still changes per pack.'}
+              </p>
             </div>
 
             {/* Caption font — same look options as the main generator */}

@@ -45,9 +45,50 @@ function pickImages(exclude) {
   })
 }
 
-function buildPrompt(brain, count) {
+// Cover hook shapes. The carousel ALWAYS has 5 numbered lines, so every hook
+// keeps the "5" and a ONE-word CAPS <THEME> — only the phrasing varies. `title`
+// is the cover shape; `frame` is how the FIVE body lines should read so they
+// match the hook (a "tips" cover wants tactical advice, a "rules" cover wants
+// first-person "i ..." lines). Keyed by the value the UI sends; `varied` (the
+// default) rotates the shapes across a batch so covers aren't all identical. Add
+// an entry here + an option in PhotoPackView to expose a new hook.
+const HOOK_TEMPLATES = {
+  rules:          { title: '5 rules i follow for <THEME>',            frame: 'first-person rules you personally follow ("i never...", "i always...")' },
+  tips:           { title: '5 tips to get <THEME> at the gym',        frame: 'direct, tactical advice to the viewer ("stop doing 3x12, switch to 4x6", "eat a full meal 90 mins before you train")' },
+  things:         { title: '5 things i do every day for <THEME>',     frame: 'first-person daily habits ("i ...")' },
+  habits:         { title: '5 habits that built my <THEME>',          frame: 'first-person habits you built ("i started...", "i stopped...")' },
+  mistakes:       { title: '5 mistakes that killed my <THEME>',       frame: 'mistakes to avoid, phrased as a warning ("stop...", "quit...", "don\'t...")' },
+  secrets:        { title: '5 things nobody tells you about <THEME>', frame: 'insider truths revealed to the viewer' },
+  nonnegotiables: { title: '5 non-negotiables for <THEME>',           frame: 'firm first-person non-negotiables' },
+  lies:           { title: '5 lies i had to unlearn about <THEME>',   frame: 'a myth then the truth, short ("the lie: carbs are bad. the truth: ...")' },
+}
+
+const THEME_NOTE = `<THEME> is ONE word in CAPS that fits the niche AND these gym/discipline photos — a noun like STREAKS, DISCIPLINE, GAINS, FOCUS, or an adjective like BIGGER, STRONGER, LEANER when the shape ("get <THEME> at the gym") calls for it. Lowercase everything except <THEME>.`
+
+// The cover-title instruction for slide 1, given the chosen hook style. Any
+// unknown/empty style falls back to "varied": pick a different shape per pack.
+function hookInstruction(style) {
+  if (style && HOOK_TEMPLATES[style]) {
+    return `write the cover TITLE only, in the EXACT shape "${HOOK_TEMPLATES[style].title}" — copy this shape word-for-word, only swapping <THEME>. Do NOT fall back to "5 rules i follow for X"; the required shape is "${HOOK_TEMPLATES[style].title}". ${THEME_NOTE}`
+  }
+  const list = Object.values(HOOK_TEMPLATES).map((t) => `   - "${t.title}"`).join('\n')
+  return `write the cover TITLE only. Pick ONE of these proven shapes and use a DIFFERENT shape for each pack in the batch so the covers don't all look the same:\n${list}\n${THEME_NOTE}`
+}
+
+// How the five body lines should be phrased so they match the cover hook. For
+// "varied" the model matches whatever cover shape it picked for that pack.
+function lineFrame(style) {
+  if (style && HOOK_TEMPLATES[style]) return HOOK_TEMPLATES[style].frame
+  return 'match the phrasing to the cover shape you picked for this pack — a "rules"/"habits" cover wants first-person "i ..." lines, a "tips" cover wants direct tactical advice to the viewer, a "mistakes" cover wants "stop ..." warnings'
+}
+
+function buildPrompt(brain, count, hookStyle) {
   const appName = brain.appName || 'Upshift'
-  return `You write the words for a 6-slide TikTok photo carousel in the "5 rules i follow for X" format. The photos are ALREADY chosen — you only write the text. Each slide's photo has a theme, and your line for that slide MUST relate to its photo.
+  // The cover shape to use as the JSON example, so the model copies THIS shape
+  // rather than defaulting to "5 rules i follow". `varied` shows a neutral one.
+  const exampleTitle = (HOOK_TEMPLATES[hookStyle]?.title || '5 things i do every day for <THEME>')
+    .replace('<THEME>', /at the gym/.test(HOOK_TEMPLATES[hookStyle]?.title || '') ? 'BIGGER' : 'DISCIPLINE')
+  return `You write the words for a 6-slide TikTok photo carousel — the "5 rules / 5 tips / 5 things i do for X" family of hooks. The photos are ALREADY chosen — you only write the text. Each slide's photo has a LOCKED theme, and your line for that slide MUST match its photo. The order never changes: slide 2 = GYM, slide 3 = FOOD, slide 4 = TRACKING THE WORK.
 
 Account context:
 - Niche: ${brain.niche || '(discipline / self-improvement)'}
@@ -58,10 +99,14 @@ What's working for this account (style memory — respect it):
 ${brain.styleMemory || '(none yet — use proven short-form patterns)'}
 
 The carousel is ONE real person sharing the rules that keep them disciplined. It reads top to bottom as one story. The six photos, in order:
-1. COVER (gym mirror / physique check): write the cover TITLE only, in the exact shape "5 rules i follow for <THEME>" where <THEME> is ONE word in CAPS that fits the niche AND these gym/discipline photos (e.g. STREAKS, DISCIPLINE, MORNINGS, FOCUS, CONSISTENCY). Lowercase everything except <THEME>, like "5 rules i follow for STREAKS".
-2. RULE 1 (first-person gym shot — chalk, grip, showing up): one concrete rule about training consistency / never skipping.
-3. RULE 2 (food / nutrition shot — protein, same breakfast): one concrete rule about eating / a fixed food routine.
-4. RULE 3 (lifting-in-action shot): one concrete rule about doing the actual work / logging or tracking the effort.
+1. COVER (gym mirror / physique check): ${hookInstruction(hookStyle)}
+2. RULE 1 (first-person gym shot — chalk, grip, showing up): ONE concrete GYM / TRAINING rule — showing up, never skipping a session, the daily lift, training even when tired. It MUST be about training. Do NOT write about food, sleep, reading, journaling, phones, or mindset here — this slide is the GYM.
+3. RULE 2 (food / nutrition shot — protein, the same breakfast): ONE concrete FOOD / NUTRITION rule — what you eat, hitting your protein, the fixed breakfast, cooking at home, cutting the junk. It MUST be about eating so it matches the food photo. Do NOT write about the gym, reading a book, sleep, or mindset here — this slide is FOOD.
+4. RULE 3 (lifting-in-action shot): ONE concrete rule about DOING THE WORK and TRACKING it — logging every set, tracking your lifts, progressive overload, counting the reps, beating last week's numbers. It MUST be about the training effort / tracking. Do NOT write about food, reading, or generic mindset here.
+
+CRITICAL — each rule MUST match its slide's photo. The order is locked: slide 2 = GYM, slide 3 = FOOD, slide 4 = TRACKING THE WORK. A food line on the gym slide, a gym line on the food slide, or a generic self-improvement line like "read a book", "journal every morning", "wake up at 5am", or "meditate" on ANY of these three slides is WRONG. If a line doesn't obviously match its photo's theme, rewrite it before you answer.
+
+PHRASING — write the five body lines in the voice of the cover hook: ${lineFrame(hookStyle)}. The SUBJECT of each line is still locked (slide 2 gym, slide 3 food, slide 4 tracking) and slides 5–6 keep their own rules below — only the wording flexes to fit the hook. Keep every line concrete and specific like a real creator (numbers, sets, reps, foods, times), never vague.
 5. RULE 4 (phone-on-lap shot — the app slide): softly name ${appName}, first person, as the tool that keeps you consistent. Mirror the showcased line "Stay consistent with ${appName}: #1 productivity app" but write your own. One line, never salesy.
 6. RULE 5 (quiet closing photo — dead roses thrown out on the street): the emotional gut-punch closer. It MUST be about the HEARTBREAK that started all of this — the night SHE left, walked out, stopped texting back, or looked at you like you weren't enough. That specific pain is what the dead roses mean and what still fuels the discipline. Second or first person, raw, short, a little vulnerable — it should sting.
 GOOD (this is the target — write your OWN in this vein): "never forget how you felt the night she walked out." / "do it for the guy she left crying at 2am." / "remember how small you felt when she stopped texting back." / "she left, and you swore you'd never feel that small again."
@@ -78,7 +123,7 @@ Respond with a JSON object of this exact shape:
 {
   "packs": [
     {
-      "coverTitle": "5 rules i follow for STREAKS",
+      "coverTitle": "${exampleTitle}",
       "rule1": "the training-consistency rule, one line",
       "rule2": "the nutrition/routine rule, one line",
       "rule3": "the do-the-work rule, one line",
@@ -104,7 +149,7 @@ export async function generatePhotoPacks({ apiKey, model, brain, count = 1, excl
     safety++
     const n = Math.min(BATCH, count - raw.length)
     log.step(`asking model for ${n} more (${raw.length}/${count} so far)…`)
-    const parsed = await chatJSON({ apiKey, model, prompt: buildPrompt(brain, n) })
+    const parsed = await chatJSON({ apiKey, model, prompt: buildPrompt(brain, n, hookStyle) })
     const batch = parsed.packs || []
     if (!batch.length) {
       log.warn('model returned no packs — stopping early')
