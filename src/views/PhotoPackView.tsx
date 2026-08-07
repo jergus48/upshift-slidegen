@@ -48,7 +48,7 @@ function pick<T>(arr: T[]): T | undefined {
 interface PhotoPackViewProps {
   generating: boolean;
   canGenerate: boolean;
-  onGenerate: (opts: { count: number; captionStyle: CaptionStyle; coverPack?: string; appPack?: string }) => Promise<void>;
+  onGenerate: (opts: { count: number; captionStyle: CaptionStyle; coverPack?: string; appPack?: string; hookStyle?: string }) => Promise<void>;
 }
 
 export function PhotoPackView({ generating, canGenerate, onGenerate }: PhotoPackViewProps) {
