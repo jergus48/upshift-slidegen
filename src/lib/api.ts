@@ -67,7 +67,7 @@ export const generate = (opts: { count: number; slidesPerShow: number; length: '
 // per slot, fixed category order) and writes the per-slide rules. Returns whole
 // slideshows with `imageUrl` already set on every slide (R2 URLs), so unlike
 // generate() there's no client-side background assignment step.
-export const photoPack = (opts: { count: number; model: string; brain: BrainState }) =>
+export const photoPack = (opts: { count: number; model: string; brain: BrainState; exclude?: string[]; hookStyle?: string }) =>
   req<Slideshow[]>('/photopack', { method: 'POST', body: JSON.stringify(opts) });
 
 // ── Image library ─────────────────────────────────────────────────────────────

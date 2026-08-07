@@ -23,6 +23,7 @@ import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
 import { loadQueue, saveQueue, recoverOrphanQueues } from './lib/localQueue';
 import { getMergedLibrary } from './lib/mergedLibrary';
+import { getHiddenPhotos } from './lib/hiddenPhotos';
 import { assignBackgrounds, assignAppSlidePov } from './lib/backgrounds';
 import { libraryRef } from './lib/imageSrc';
 import type { Gender } from './lib/quitPresets';
@@ -176,13 +177,16 @@ export default function App() {
   // Photo packs: the server returns whole slideshows with real R2 photos already
   // on every slide (no client-side background step). We only stamp the chosen
   // caption look, push them onto the queue, and jump to the Queue to review.
-  const generatePhotoPacks = async (opts: { count: number; captionStyle: CaptionStyle; coverPack?: string; appPack?: string }) => {
+  const generatePhotoPacks = async (opts: { count: number; captionStyle: CaptionStyle; coverPack?: string; appPack?: string; hookStyle?: string }) => {
     if (!activeProject) return;
     setError(null);
     setGenerating(true);
     try {
       const brain: BrainState = { ...activeProject.brain };
-      const packs = await api.photoPack({ count: opts.count, model: workspace!.model, brain });
+      // Photos the user hid in the Photo Packs curation grid — the server picker
+      // skips these so a bad shot never lands in a pack.
+      const exclude = [...getHiddenPhotos()];
+      const packs = await api.photoPack({ count: opts.count, model: workspace!.model, brain, exclude, hookStyle: opts.hookStyle });
       // The cover (slide 0) and app slide (slide 4) can be overridden with the
       // user's own library packs. Those images live in this browser, so we swap
       // them in here — a fresh random image per pack — after the server has

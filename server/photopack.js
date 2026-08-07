@@ -31,11 +31,16 @@ function pick(arr) {
 }
 
 // One random image URL per slot, in slot order. Categories don't overlap
-// between slots, so there's nothing to de-dupe within a single pack.
-function pickImages() {
+// between slots, so there's nothing to de-dupe within a single pack. `exclude`
+// is a Set of full image URLs the user has hidden in the Photo Packs curation
+// grid — those are filtered out per slot. If every photo in a category is
+// hidden we fall back to the full set rather than fail the whole pack.
+function pickImages(exclude) {
   return SLOTS.map((s) => {
-    const files = CATS[s.category] || []
-    if (!files.length) throw new Error(`Photo library has no images for "${s.category}".`)
+    const all = CATS[s.category] || []
+    if (!all.length) throw new Error(`Photo library has no images for "${s.category}".`)
+    const kept = all.filter((f) => !exclude.has(`${BASE}${s.category}/${f}`))
+    const files = kept.length ? kept : all
     return `${BASE}${s.category}/${pick(files)}`
   })
 }
@@ -90,7 +95,8 @@ Return EXACTLY ${count} pack${count === 1 ? '' : 's'}, each with a DIFFERENT <TH
 
 const BATCH = 6
 
-export async function generatePhotoPacks({ apiKey, model, brain, count = 1 }) {
+export async function generatePhotoPacks({ apiKey, model, brain, count = 1, exclude = [], hookStyle = 'varied' }) {
+  const hidden = new Set(exclude)
   log.start(`Generating ${count} photo pack${count === 1 ? '' : 's'} with ${model}`)
   const raw = []
   let safety = 0
@@ -111,7 +117,7 @@ export async function generatePhotoPacks({ apiKey, model, brain, count = 1 }) {
 
   const stamp = Date.now()
   return raw.slice(0, count).map((p, i) => {
-    const images = pickImages()
+    const images = pickImages(hidden)
     // Assemble the six slide texts. The cover keeps its title unnumbered; the
     // five rules are numbered 1–5 across the remaining slides (rule 4 is the
     // app slide, rule 5 is the closer) — exactly like the showcased pack.

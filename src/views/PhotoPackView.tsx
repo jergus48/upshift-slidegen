@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, LayoutTemplate, Shuffle, Sparkles, Check } from 'lucide-react';
+import { Loader2, LayoutTemplate, Shuffle, Sparkles, Check, EyeOff, Eye, SlidersHorizontal } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { getMergedPacks } from '../lib/mergedLibrary';
+import { getHiddenPhotos, setPhotoHidden } from '../lib/hiddenPhotos';
 import type { CaptionStyle } from '../lib/captionStyle';
 import type { LibraryPack } from '../types';
 
@@ -47,12 +48,17 @@ export function PhotoPackView({ generating, canGenerate, onGenerate }: PhotoPack
   const [userPacks, setUserPacks] = useState<LibraryPack[]>([]);
   const [coverPack, setCoverPack] = useState('');
   const [appPack, setAppPack] = useState('');
+  // Individual library photos the user has hidden (by full URL). Hidden photos
+  // are greyed out in the curation grid, skipped by the preview, and shipped to
+  // the server on generate so the picker never chooses them. See lib/hiddenPhotos.
+  const [hidden, setHidden] = useState<Set<string>>(() => getHiddenPhotos());
+  const [curating, setCurating] = useState(false);
 
   // Re-roll one random image per slot, in slot order — the same pick the server
   // makes, so the preview is a faithful sample of what "Generate" produces. When
   // the cover or app slot has an override pack, preview a random cover from it
   // instead of the default library category.
-  const shuffle = useCallback((m: Manifest, cover = coverPack, app = appPack, packs = userPacks) => {
+  const shuffle = useCallback((m: Manifest, cover = coverPack, app = appPack, packs = userPacks, hide = hidden) => {
     const overrides: Record<number, string> = { 0: cover, 4: app };
     setPreview(SLOTS.map((s, i) => {
       const packName = overrides[i];
@@ -60,10 +66,15 @@ export function PhotoPackView({ generating, canGenerate, onGenerate }: PhotoPack
         const p = packs.find((up) => up.name === packName);
         return p?.covers.length ? pick(p.covers) : undefined;
       }
-      const file = pick(m.categories[s.category] || []);
-      return file ? `${m.base}${s.category}/${file}` : undefined;
+      // Preview only from photos the user hasn't hidden, exactly like the server
+      // picker — but fall back to the full set if every photo in the slot is hidden.
+      const toUrl = (file: string) => `${m.base}${s.category}/${file}`;
+      const all = m.categories[s.category] || [];
+      const kept = all.filter((f) => !hide.has(toUrl(f)));
+      const file = pick(kept.length ? kept : all);
+      return file ? toUrl(file) : undefined;
     }));
-  }, [coverPack, appPack, userPacks]);
+  }, [coverPack, appPack, userPacks, hidden]);
 
   useEffect(() => {
     let alive = true;
@@ -85,9 +96,20 @@ export function PhotoPackView({ generating, canGenerate, onGenerate }: PhotoPack
     }
   };
 
+  // Hide/show one photo, persist it, and re-roll the preview so a just-hidden
+  // photo can't linger in the sample.
+  const togglePhoto = (url: string) => {
+    const next = !hidden.has(url);
+    setPhotoHidden(url, next);
+    const updated = getHiddenPhotos();
+    setHidden(updated);
+    if (manifest) shuffle(manifest, coverPack, appPack, userPacks, updated);
+  };
+
   const total = manifest
     ? Object.values(manifest.categories).reduce((n, a) => n + a.length, 0)
     : 0;
+  const hiddenCount = hidden.size;
 
   const submit = async () => {
     setError(null);
@@ -287,6 +309,72 @@ export function PhotoPackView({ generating, canGenerate, onGenerate }: PhotoPack
                 {generating ? 'Generating…' : `Generate ${count} pack${count === 1 ? '' : 's'}`}
               </Button>
             </div>
+          </div>
+
+          {/* Curate the library — browse every photo per slot and hide the bad
+              ones. Hidden photos are skipped by the preview and never picked by
+              the server when generating. */}
+          <div className="bg-card border border-line rounded-xl">
+            <button
+              onClick={() => setCurating((c) => !c)}
+              className="w-full flex items-center gap-2 p-4 text-left"
+            >
+              <SlidersHorizontal size={14} className="text-ink-5" />
+              <span className="text-[13px] font-medium text-ink">Curate photos</span>
+              <span className="text-[11px] text-ink-6">
+                {hiddenCount ? `${hiddenCount} hidden` : 'hide the bad shots'}
+              </span>
+              <span className="ml-auto text-[11px] text-ink-5">{curating ? 'Hide' : 'Show'}</span>
+            </button>
+
+            {curating && (
+              <div className="px-4 pb-4 space-y-6">
+                <p className="text-[11px] text-ink-6">
+                  Click a photo to hide it. Hidden photos are greyed out and never picked into a pack.
+                  Kept per browser; the choice is applied on your next Generate.
+                </p>
+                {SLOTS.map((s) => {
+                  const files = manifest?.categories[s.category] || [];
+                  return (
+                    <div key={s.slot}>
+                      <div className="flex items-baseline gap-2 mb-2">
+                        <h3 className="text-[12px] font-semibold text-ink uppercase tracking-widest">{s.slot}</h3>
+                        <span className="text-[11px] text-ink-6">{s.category}</span>
+                        <span className="text-[10px] text-ink-6">· {files.length} photos</span>
+                      </div>
+                      <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+                        {files.map((file) => {
+                          const url = `${manifest!.base}${s.category}/${file}`;
+                          const isHidden = hidden.has(url);
+                          return (
+                            <button
+                              key={file}
+                              onClick={() => togglePhoto(url)}
+                              title={isHidden ? 'Hidden — click to show' : 'Click to hide'}
+                              className="group relative aspect-[9/16] rounded-lg overflow-hidden bg-raised"
+                            >
+                              <img
+                                src={url}
+                                alt=""
+                                loading="lazy"
+                                className={`w-full h-full object-cover transition-opacity ${isHidden ? 'opacity-25' : ''}`}
+                              />
+                              <span
+                                className={`absolute top-1 right-1 w-6 h-6 rounded-md flex items-center justify-center text-white transition-opacity ${
+                                  isHidden ? 'bg-black/70 opacity-100' : 'bg-black/60 opacity-0 group-hover:opacity-100'
+                                }`}
+                              >
+                                {isHidden ? <Eye size={12} /> : <EyeOff size={12} />}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

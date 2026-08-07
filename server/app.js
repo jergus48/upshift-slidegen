@@ -133,7 +133,12 @@ app.post('/api/photopack', h(async (req, res) => {
     ...(req.body?.brain || {}),
   }
 
-  const packs = await generatePhotoPacks({ apiKey: keys.openrouter, model, brain, count })
+  // Full image URLs the user hid in the Photo Packs curation grid — the picker
+  // skips these per slot (server/photopack.js).
+  const exclude = Array.isArray(req.body?.exclude) ? req.body.exclude.map(String) : []
+  // Cover hook shape; 'varied' (default) rotates shapes across the batch.
+  const hookStyle = String(req.body?.hookStyle || 'varied').trim() || 'varied'
+  const packs = await generatePhotoPacks({ apiKey: keys.openrouter, model, brain, count, exclude, hookStyle })
   res.json(packs)
 }))
 
