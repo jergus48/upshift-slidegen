@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Check, X, Loader2, KeyRound, Trash2, Info } from 'lucide-react';
-import type { AppConfig, KeysPatch, Project, SocialAccount, ModelOption } from '../types';
+import { Check, X, Loader2, KeyRound, Trash2, Info, Eye, EyeOff } from 'lucide-react';
+import type { AppConfig, KeysPatch, Project, SocialAccount, ModelOption, ViewKey } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
+import { SIDEBAR_TOOLS } from '../lib/sidebarNav';
 import { testKeys, getModels } from '../lib/api';
 import { PackPicker } from '../components/PackPicker';
 
@@ -15,6 +16,7 @@ interface SettingsViewProps {
     keys?: KeysPatch;
     model?: string;
     pinterestActor?: string;
+    hiddenViews?: ViewKey[];
     name?: string;
     defaults?: Project['defaults'];
     imagePacks?: string[];
@@ -124,6 +126,15 @@ export function SettingsView({
   const toggleAccount = (id: number) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
+  // Sidebar visibility applies instantly (persisted straight away) — a hidden
+  // tool should disappear the moment you toggle it, not wait for "Save settings".
+  const toggleTool = (key: ViewKey) => {
+    const next = config.hiddenViews.includes(key)
+      ? config.hiddenViews.filter((k) => k !== key)
+      : [...config.hiddenViews, key];
+    void onSave({ hiddenViews: next });
+  };
+
   const filtered = modelFilter
     ? models.filter(
         (m) =>
@@ -154,6 +165,40 @@ export function SettingsView({
                 Delete this project
               </Button>
             )}
+          </Section>
+
+          {/* Sidebar visibility (global) */}
+          <Section
+            title="Sidebar"
+            description="Hide tools you don't use from the sidebar. Changes apply instantly — toggle any back on here whenever you need them."
+          >
+            <div className="grid grid-cols-2 gap-1.5">
+              {SIDEBAR_TOOLS.map((tool) => {
+                const isHidden = config.hiddenViews.includes(tool.key);
+                return (
+                  <button
+                    key={tool.key}
+                    onClick={() => toggleTool(tool.key)}
+                    aria-pressed={!isHidden}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-left transition-colors ${
+                      isHidden
+                        ? 'border-line bg-surface text-ink-6'
+                        : 'border-line bg-card text-ink hover:border-line-2'
+                    }`}
+                  >
+                    {isHidden ? (
+                      <EyeOff size={14} className="shrink-0 text-ink-6" />
+                    ) : (
+                      <Eye size={14} className="shrink-0 text-ink-4" />
+                    )}
+                    <span className="text-[13px] font-medium flex-1 truncate">{tool.label}</span>
+                    <span className="text-[10px] uppercase tracking-wide text-ink-6">
+                      {isHidden ? 'Hidden' : 'Shown'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </Section>
 
           {/* Keys (global) */}

@@ -4,7 +4,7 @@
 // that doesn't survive cold starts on a serverless deployment, so it moved
 // here alongside the queue and image library. API keys are the one thing that
 // stays server-side (see server/store.js).
-import type { Workspace, Project, BrainState, ProjectDefaults } from '../types';
+import type { Workspace, Project, BrainState, ProjectDefaults, ViewKey } from '../types';
 
 const KEY = 'slidesmith:workspace';
 
@@ -61,6 +61,7 @@ function normalize(raw: Partial<Workspace> | null, defaultPacks: string[]): Work
     pinterestActor: raw?.pinterestActor || DEFAULT_ACTOR,
     projects,
     activeProjectId,
+    hiddenViews: Array.isArray(raw?.hiddenViews) ? raw!.hiddenViews! : [],
   };
 }
 
@@ -88,11 +89,15 @@ export function saveWorkspace(ws: Workspace): Workspace {
 }
 
 // ── Mutations — each returns the new workspace (persisted) ───────────────────
-export function updateGlobal(ws: Workspace, patch: { model?: string; pinterestActor?: string }): Workspace {
+export function updateGlobal(
+  ws: Workspace,
+  patch: { model?: string; pinterestActor?: string; hiddenViews?: ViewKey[] }
+): Workspace {
   return saveWorkspace({
     ...ws,
     model: patch.model ?? ws.model,
     pinterestActor: patch.pinterestActor ?? ws.pinterestActor,
+    hiddenViews: patch.hiddenViews ?? ws.hiddenViews,
   });
 }
 

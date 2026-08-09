@@ -90,6 +90,9 @@ export interface Workspace {
   pinterestActor: string;
   projects: Project[];
   activeProjectId: string;
+  // Sidebar tools the user has hidden. Global (not per-project); Settings toggles
+  // them and the Sidebar filters them out. Empty = everything visible.
+  hiddenViews: ViewKey[];
 }
 
 // What the app works with internally: server key-status merged with the local

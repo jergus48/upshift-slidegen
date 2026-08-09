@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images, MessageSquare, MessagesSquare, Eraser, PenLine, Wand2, Target, LayoutTemplate, MonitorPlay } from 'lucide-react';
+import { Settings, ChevronsUpDown, Plus, Check } from 'lucide-react';
 import type { ViewKey, Project } from '../types';
+import { NAV } from '../lib/sidebarNav';
 
 interface SidebarProps {
   activeView: ViewKey;
@@ -11,26 +12,12 @@ interface SidebarProps {
   activeProjectId: string;
   onSwitchProject: (id: string) => void;
   onNewProject: () => void;
+  // Tools the user has hidden (Settings → Sidebar). Filtered out of the nav.
+  hiddenViews?: ViewKey[];
   // On phones the sidebar is an off-canvas drawer toggled from the top bar.
   mobileOpen?: boolean;
   onClose?: () => void;
 }
-
-const nav: { key: ViewKey; label: string; icon: typeof LayoutGrid; badge?: 'queue' | 'scheduled' }[] = [
-  { key: 'queue', label: 'Queue', icon: LayoutGrid, badge: 'queue' },
-  { key: 'photopack', label: 'Photo Packs', icon: LayoutTemplate },
-  { key: 'library', label: 'Library', icon: Images },
-  { key: 'reddit', label: 'Reddit', icon: MessagesSquare },
-  { key: 'reply', label: 'Reply', icon: MessageSquare },
-  { key: 'write', label: 'Write', icon: PenLine },
-  { key: 'subreddit', label: 'Subreddit', icon: Target },
-  { key: 'prompt', label: 'Prompt', icon: Wand2 },
-  { key: 'clean', label: 'Clean', icon: Eraser },
-  { key: 'schedule', label: 'Schedule', icon: CalendarClock, badge: 'scheduled' },
-  { key: 'results', label: 'Results', icon: LineChart },
-  { key: 'channels', label: 'Channels', icon: MonitorPlay },
-  { key: 'brain', label: 'Brain', icon: Brain },
-];
 
 function initials(name: string) {
   return (name || 'P').slice(0, 2).toUpperCase();
@@ -45,11 +32,13 @@ export function Sidebar({
   activeProjectId,
   onSwitchProject,
   onNewProject,
+  hiddenViews = [],
   mobileOpen = false,
   onClose,
 }: SidebarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const active = projects.find((p) => p.id === activeProjectId) ?? projects[0];
+  const visibleNav = NAV.filter((item) => !hiddenViews.includes(item.key));
 
   return (
     <>
@@ -124,7 +113,7 @@ export function Sidebar({
       {/* Nav */}
       <div className="flex-1 overflow-y-auto py-3 px-2">
         <div className="flex flex-col gap-0.5">
-          {nav.map(({ key, label, icon: Icon, badge }) => {
+          {visibleNav.map(({ key, label, icon: Icon, badge }) => {
             const isActive = activeView === key;
             const count = badge === 'queue' ? queueCount : badge === 'scheduled' ? scheduledCount : undefined;
             return (

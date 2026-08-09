@@ -295,6 +295,7 @@ export default function App() {
     keys?: KeysPatch;
     model?: string;
     pinterestActor?: string;
+    hiddenViews?: ViewKey[];
     name?: string;
     defaults?: Project['defaults'];
     imagePacks?: string[];
@@ -304,8 +305,12 @@ export default function App() {
     }
     if (!workspace) return;
     let next = workspace;
-    if (patch.model !== undefined || patch.pinterestActor !== undefined) {
-      next = ws.updateGlobal(next, { model: patch.model, pinterestActor: patch.pinterestActor });
+    if (patch.model !== undefined || patch.pinterestActor !== undefined || patch.hiddenViews !== undefined) {
+      next = ws.updateGlobal(next, {
+        model: patch.model,
+        pinterestActor: patch.pinterestActor,
+        hiddenViews: patch.hiddenViews,
+      });
     }
     if (activeProject && (patch.name !== undefined || patch.defaults || patch.imagePacks)) {
       next = ws.updateProject(next, activeProject.id, {
@@ -394,6 +399,7 @@ export default function App() {
         activeProjectId={config.activeProjectId}
         onSwitchProject={switchProject}
         onNewProject={newProject}
+        hiddenViews={config.hiddenViews}
         mobileOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
