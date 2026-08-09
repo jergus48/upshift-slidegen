@@ -11,6 +11,7 @@ import { FONT_SIZE_PCT, LINE_HEIGHT, SIDE_PAD_PCT, pct, captionStyleSpec, primar
 import { resolveImageSrc } from './imageSrc';
 import { createZip, dataUrlToBytes, type ZipEntry } from './zip';
 import { pickMusicTrack, type MusicGender, type MusicTrack } from './music';
+import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 
 const W = 1080;
 const H = 1920;
@@ -266,11 +267,26 @@ export async function downloadSlideshowsZip(shows: Slideshow[]): Promise<void> {
 // ── Video export ────────────────────────────────────────────────────────────
 // Turn a slideshow into a vertical (9:16) video that holds each slide on screen
 // long enough to read, then slides horizontally to the next — a "YouTube
-// slideshow". The video is recorded in REAL TIME from a canvas via
-// canvas.captureStream + MediaRecorder, so exporting takes about as long as the
-// clip itself.
+// slideshow".
+//
+// Two encoders, picked at runtime:
+//  • WebCodecs (VideoEncoder/AudioEncoder + mp4-muxer) — the DEFAULT where the
+//    browser supports it (modern Chrome, Edge, Safari 17+). Frames are encoded
+//    as fast as the CPU can go, NOT in real time, so a 20s clip exports in a
+//    second or two and can never freeze/drop frames mid-transition. This is the
+//    fix for the "laggy / few slides / frozen animation" exports.
+//  • MediaRecorder (canvas.captureStream) — the FALLBACK for browsers without
+//    WebCodecs. It records in real time, so export takes as long as the clip.
+//
+// Both share the same scene builder (prepareVideoScene) so the picture is
+// identical whichever encoder runs.
 
 const VIDEO_FPS = 30;
+// H.264 bitrate. 8 Mbps is plenty for 1080×1920 slideshow content (mostly still
+// frames with brief slides) and, crucially, light enough that the real-time
+// fallback encoder can sustain it without dropping frames — the old 12 Mbps was
+// what made MediaRecorder hitch and freeze on transitions.
+const VIDEO_BITRATE = 8_000_000;
 const TRANSITION_MS = 240; // quick horizontal slide from one slide to the next
 // Reading pace tuned for Shorts: punchy, not lingering. Trimmed a notch tighter
 // so decks feel snappier. A typical ~8-word slide lands near ~2s, so a 10-slide
@@ -372,14 +388,16 @@ function detectDropOffset(buf: AudioBuffer): number {
   return 0;
 }
 
-// Render one slideshow to a video Blob (MP4 when the browser supports it).
-// `music`, when given, is mixed in as a background track (looped/trimmed to the
-// clip length) starting at its pinned `start` or an auto-detected drop; a missing
-// or unreadable track falls back to a silent video.
-export async function renderSlideshowVideo(show: Slideshow, music?: MusicTrack | null): Promise<Blob> {
-  if (typeof MediaRecorder === 'undefined') {
-    throw new Error('Video export needs a browser with MediaRecorder support.');
-  }
+// The drawn slideshow, independent of how it's encoded: a canvas, its total
+// duration in ms, and a `drawAt(t)` that paints the exact frame for time `t`.
+// Shared by both encoders so the picture is identical whichever one runs.
+interface VideoScene {
+  canvas: HTMLCanvasElement;
+  drawAt: (t: number) => void;
+  total: number;
+}
+
+async function prepareVideoScene(show: Slideshow): Promise<VideoScene> {
   const imgs = await Promise.all((await renderSlideshow(show)).map(loadImage));
   if (!imgs.length) throw new Error('This slideshow has no slides to turn into a video.');
 
@@ -413,6 +431,204 @@ export async function renderSlideshowVideo(show: Slideshow, music?: MusicTrack |
     }
     ctx.drawImage(imgs[imgs.length - 1], 0, 0, W, H); // past the end — hold the last frame
   };
+
+  return { canvas, drawAt, total };
+}
+
+// Decode + resolve a music track down to what an encoder needs: the raw buffer
+// and the offset (seconds) where playback should start (the drop). Returns null
+// when there's no track or it can't be read, so the video just comes out silent.
+async function resolveMusic(
+  ctx: BaseAudioContext,
+  music: MusicTrack,
+): Promise<{ buffer: AudioBuffer; offset: number } | null> {
+  const buffer = await loadAudioBuffer(ctx as AudioContext, music.url);
+  if (!buffer) return null;
+  // Start on the drop: pinned `start` if given, else auto-detect the first
+  // high-energy point. Clamp so we never start past the end (≥2s of runway).
+  const wanted = music.start ?? detectDropOffset(buffer);
+  const offset = Math.max(0, Math.min(wanted, Math.max(0, buffer.duration - 2)));
+  return { buffer, offset };
+}
+
+// ── WebCodecs encoder (default, non-real-time) ───────────────────────────────
+// Encodes the scene frame-by-frame with VideoEncoder as fast as the CPU allows,
+// muxing to MP4. Because it doesn't record off a live clock, frames can't be
+// dropped and transitions can't freeze — every frame is encoded exactly once.
+
+function hasWebCodecs(): boolean {
+  return (
+    typeof VideoEncoder !== 'undefined' &&
+    typeof VideoFrame !== 'undefined' &&
+    typeof (globalThis as { OfflineAudioContext?: unknown }).OfflineAudioContext !== 'undefined'
+  );
+}
+
+// Probe H.264 configs in order of preference and return the first the browser's
+// VideoEncoder actually supports for our resolution, or null if none do.
+async function pickAvcConfig(): Promise<VideoEncoderConfig | null> {
+  // High → Main → Baseline, level 4.2 (headroom over 1080×1920@30) then 5.1.
+  const codecs = ['avc1.64002A', 'avc1.4D402A', 'avc1.42002A', 'avc1.640033', 'avc1.420033'];
+  for (const codec of codecs) {
+    const cfg: VideoEncoderConfig = {
+      codec,
+      width: W,
+      height: H,
+      bitrate: VIDEO_BITRATE,
+      framerate: VIDEO_FPS,
+      // Ask for length-prefixed AVCC so mp4-muxer gets a proper avcC box.
+      avc: { format: 'avc' },
+    };
+    try {
+      const res = await VideoEncoder.isConfigSupported(cfg);
+      if (res.supported) return cfg;
+    } catch { /* try the next candidate */ }
+  }
+  return null;
+}
+
+async function renderSlideshowVideoWebCodecs(
+  show: Slideshow,
+  music?: MusicTrack | null,
+): Promise<Blob> {
+  const videoConfig = await pickAvcConfig();
+  if (!videoConfig) throw new Error('No supported H.264 config for WebCodecs.');
+
+  const { canvas, drawAt, total } = await prepareVideoScene(show);
+  const frameDurUs = Math.round(1_000_000 / VIDEO_FPS);
+  const frameCount = Math.max(1, Math.round((total / 1000) * VIDEO_FPS));
+
+  // Resolve music up front so the muxer can declare an audio track (if any)
+  // before we start feeding chunks. We render it offline to a single buffer,
+  // looping from the drop, so a short song still covers a long clip. If audio
+  // can't be encoded (AudioEncoder missing/unsupported) but music was asked for,
+  // bail so the caller falls back to the real-time recorder, which keeps sound.
+  const OfflineCtx: typeof OfflineAudioContext | undefined = (
+    globalThis as { OfflineAudioContext?: typeof OfflineAudioContext }
+  ).OfflineAudioContext;
+  const AudioCtxCtor: typeof AudioContext | undefined =
+    (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+  let renderedAudio: AudioBuffer | null = null;
+  if (music?.url && OfflineCtx && AudioCtxCtor) {
+    if (typeof AudioEncoder === 'undefined') {
+      throw new Error('AudioEncoder unavailable — fall back for music.');
+    }
+    const decodeCtx = new AudioCtxCtor();
+    const resolved = await resolveMusic(decodeCtx, music);
+    await decodeCtx.close();
+    if (resolved) {
+      const { buffer, offset } = resolved;
+      const channels = Math.min(2, buffer.numberOfChannels);
+      const sampleRate = buffer.sampleRate;
+      const aacCfg: AudioEncoderConfig = {
+        codec: 'mp4a.40.2', // AAC-LC
+        numberOfChannels: channels,
+        sampleRate,
+        bitrate: 128_000,
+      };
+      const aacOk = await AudioEncoder.isConfigSupported(aacCfg)
+        .then((r) => r.supported === true)
+        .catch(() => false);
+      if (!aacOk) throw new Error('AAC encoding unsupported — fall back for music.');
+
+      const frames = Math.max(1, Math.ceil((sampleRate * total) / 1000));
+      const oac = new OfflineCtx(channels, frames, sampleRate);
+      const src = oac.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      src.loopStart = offset; // loop back to the drop, not the quiet intro
+      src.loopEnd = buffer.duration;
+      const gain = oac.createGain();
+      gain.gain.value = 0.85;
+      src.connect(gain).connect(oac.destination);
+      src.start(0, offset);
+      renderedAudio = await oac.startRendering();
+    }
+  }
+
+  const muxer = new Muxer({
+    target: new ArrayBufferTarget(),
+    video: { codec: 'avc', width: W, height: H, frameRate: VIDEO_FPS },
+    audio: renderedAudio
+      ? { codec: 'aac', numberOfChannels: renderedAudio.numberOfChannels, sampleRate: renderedAudio.sampleRate }
+      : undefined,
+    fastStart: 'in-memory',
+  });
+
+  let encodeError: unknown = null;
+  const videoEncoder = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: (e) => { encodeError = e; },
+  });
+  videoEncoder.configure(videoConfig);
+
+  for (let f = 0; f < frameCount; f++) {
+    if (encodeError) throw encodeError;
+    drawAt(Math.min((f / VIDEO_FPS) * 1000, total));
+    const frame = new VideoFrame(canvas, { timestamp: f * frameDurUs, duration: frameDurUs });
+    videoEncoder.encode(frame, { keyFrame: f % (VIDEO_FPS * 2) === 0 });
+    frame.close();
+    // Backpressure: don't queue frames faster than the encoder drains them, or
+    // memory balloons on a long deck. Wait for the queue to shrink before more.
+    if (videoEncoder.encodeQueueSize > 30) {
+      await new Promise<void>((resolve) => {
+        const check = () => (videoEncoder.encodeQueueSize <= 15 ? resolve() : setTimeout(check, 4));
+        check();
+      });
+    }
+  }
+  await videoEncoder.flush();
+  videoEncoder.close();
+
+  if (renderedAudio) {
+    const channels = renderedAudio.numberOfChannels;
+    const sampleRate = renderedAudio.sampleRate;
+    const audioEncoder = new AudioEncoder({
+      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+      error: (e) => { encodeError = e; },
+    });
+    audioEncoder.configure({ codec: 'mp4a.40.2', numberOfChannels: channels, sampleRate, bitrate: 128_000 });
+
+    const chanData: Float32Array[] = [];
+    for (let c = 0; c < channels; c++) chanData.push(renderedAudio.getChannelData(c));
+    const totalSamples = renderedAudio.length;
+    const block = 4096;
+    for (let i = 0; i < totalSamples; i += block) {
+      if (encodeError) throw encodeError;
+      const n = Math.min(block, totalSamples - i);
+      // f32-planar wants each channel's samples laid end-to-end.
+      const data = new Float32Array(n * channels);
+      for (let c = 0; c < channels; c++) data.set(chanData[c].subarray(i, i + n), c * n);
+      const audioData = new AudioData({
+        format: 'f32-planar',
+        sampleRate,
+        numberOfFrames: n,
+        numberOfChannels: channels,
+        timestamp: Math.round((i / sampleRate) * 1_000_000),
+        data,
+      });
+      audioEncoder.encode(audioData);
+      audioData.close();
+    }
+    await audioEncoder.flush();
+    audioEncoder.close();
+  }
+
+  if (encodeError) throw encodeError;
+  muxer.finalize();
+  return new Blob([muxer.target.buffer], { type: 'video/mp4' });
+}
+
+// ── MediaRecorder encoder (real-time fallback) ───────────────────────────────
+// Used only when WebCodecs isn't available. Records the canvas in real time, so
+// export takes about as long as the clip itself.
+async function renderSlideshowVideoRealtime(show: Slideshow, music?: MusicTrack | null): Promise<Blob> {
+  if (typeof MediaRecorder === 'undefined') {
+    throw new Error('Video export needs a browser with MediaRecorder support.');
+  }
+  const { canvas, drawAt, total } = await prepareVideoScene(show);
 
   // Capture in MANUAL mode: captureStream(0) means the browser emits a frame ONLY
   // when we call requestFrame(). This is deliberate — passing a frame rate instead
@@ -479,7 +695,7 @@ export async function renderSlideshowVideo(show: Slideshow, music?: MusicTrack |
   }
 
   const mimeType = pickVideoMime();
-  const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
+  const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: VIDEO_BITRATE });
   const chunks: BlobPart[] = [];
   rec.ondataavailable = (e) => {
     if (e.data.size) chunks.push(e.data);
@@ -489,7 +705,10 @@ export async function renderSlideshowVideo(show: Slideshow, music?: MusicTrack |
   });
 
   drawAt(0); // seed the first frame before recording starts
-  rec.start();
+  // Flush a chunk every second (timeslice) so a long or briefly-backgrounded
+  // recording streams its data out instead of buffering the whole clip until
+  // stop() — which on some browsers can drop the tail.
+  rec.start(1000);
   pushFrame();
   if (musicSource && audioCtx) {
     // Begin on the drop and stop exactly when the video ends, so the audio can
@@ -545,6 +764,26 @@ export async function renderSlideshowVideo(show: Slideshow, music?: MusicTrack |
   if (audioCtx) await audioCtx.close();
 
   return new Blob(chunks, { type: mimeType });
+}
+
+// Render one slideshow to a video Blob (MP4). Uses the fast WebCodecs encoder
+// where the browser supports it — encoding runs far quicker than the clip and
+// can't drop frames — and transparently falls back to the real-time
+// MediaRecorder path otherwise (or if WebCodecs errors, e.g. no AAC encoder for
+// a music track). `music`, when given, is mixed in as a background track
+// (looped/trimmed to the clip, starting on its pinned `start` or an auto-detected
+// drop); a missing or unreadable track just yields a silent video.
+export async function renderSlideshowVideo(show: Slideshow, music?: MusicTrack | null): Promise<Blob> {
+  if (hasWebCodecs()) {
+    try {
+      return await renderSlideshowVideoWebCodecs(show, music);
+    } catch (err) {
+      // Any WebCodecs failure (unsupported config, no AAC encoder, runtime
+      // error) drops us to the real-time recorder so the export still succeeds.
+      console.warn('WebCodecs video export failed; using real-time recorder.', err);
+    }
+  }
+  return renderSlideshowVideoRealtime(show, music);
 }
 
 // Download selected slideshows as video(s). A single selection saves one file
