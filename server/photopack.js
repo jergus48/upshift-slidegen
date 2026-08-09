@@ -108,8 +108,9 @@ CRITICAL — each rule MUST match its slide's photo. The order is locked: slide 
 
 PHRASING — write the five body lines in the voice of the cover hook: ${lineFrame(hookStyle)}. The SUBJECT of each line is still locked (slide 2 gym, slide 3 food, slide 4 tracking) and slides 5–6 keep their own rules below — only the wording flexes to fit the hook. Keep every line concrete and specific like a real creator (numbers, sets, reps, foods, times), never vague.
 5. RULE 4 (phone-on-lap shot — the app slide): softly name ${appName}, first person, as the tool that keeps you consistent. Mirror the showcased line "Stay consistent with ${appName}: #1 productivity app" but write your own. One line, never salesy.
-6. RULE 5 (quiet closing photo — dead roses thrown out on the street): the emotional gut-punch closer. It MUST be about the HEARTBREAK that started all of this — the night SHE left, walked out, stopped texting back, or looked at you like you weren't enough. That specific pain is what the dead roses mean and what still fuels the discipline. Second or first person, raw, short, a little vulnerable — it should sting.
-GOOD (this is the target — write your OWN in this vein): "never forget how you felt the night she walked out." / "do it for the guy she left crying at 2am." / "remember how small you felt when she stopped texting back." / "she left, and you swore you'd never feel that small again."
+6. RULE 5 (quiet closing photo — dead roses thrown out on the street): the emotional gut-punch closer. It MUST be about the HEARTBREAK that started all of this — the night SHE left, walked out, stopped texting back, or looked at you like you weren't enough. That specific pain is what the dead roses mean and what still fuels the discipline. Raw, short, a little vulnerable — it should sting.
+CRITICAL — this closer MUST be phrased in the SAME hook voice as the other five lines (${lineFrame(hookStyle)}), NOT as a detached standalone line. It reads as the last item in the same list. Only the SUBJECT is fixed to HER / that night / the breakup; the wording still fits the hook. So for a "5 things i do" / "i ..." hook it becomes a first-person habit about her ("i never forget why i got up the night she walked out"); for a "rules i follow" hook it's a rule about her ("i never let myself forget how small i felt when she stopped texting back"); for a "tips" hook it's aimed at the viewer ("remember the night she walked out — let it fuel every rep").
+GOOD (adapt the SHAPE to the hook, write your OWN in this vein): things/habits → "i never forget why i got up the night she walked out." / rules → "i never let a day slip, not after the night she left." / tips → "do it for the guy she left crying at 2am." / plain → "she left, and you swore you'd never feel that small again."
 BANNED — do NOT write a generic motivation line. If your closer doesn't clearly reference HER / the breakup / that night, it is wrong and you must rewrite it. Never write anything like: "remember why you started", "I always remember why I started", "remember how it felt to realize I was treading water", "never give up", "keep pushing yourself", or anything about "your goals" / "your why". Those are banned.
 
 Voice & rules for every line:
@@ -128,7 +129,7 @@ Respond with a JSON object of this exact shape:
       "rule2": "the nutrition/routine rule, one line",
       "rule3": "the do-the-work rule, one line",
       "appLine": "Stay consistent with ${appName}: ...",
-      "closer": "never forget how you felt the night she walked out (one raw line about HER, not a generic motivation line)",
+      "closer": "the raw line about HER, phrased in the SAME hook voice as the rules above (e.g. for a 'things i do'/'rules' hook: 'i never forget why i got up the night she walked out') — never a generic motivation line",
       "caption": "the post caption with 1-2 emoji",
       "hashtags": ["three", "relevant", "hashtags"]
     }
