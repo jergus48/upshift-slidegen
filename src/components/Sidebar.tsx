@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images, MessageSquare, MessagesSquare, Eraser, PenLine, Wand2, Target, LayoutTemplate } from 'lucide-react';
+import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images, MessageSquare, MessagesSquare, Eraser, PenLine, Wand2, Target, LayoutTemplate, MonitorPlay } from 'lucide-react';
 import type { ViewKey, Project } from '../types';
 
 interface SidebarProps {
@@ -28,6 +28,7 @@ const nav: { key: ViewKey; label: string; icon: typeof LayoutGrid; badge?: 'queu
   { key: 'clean', label: 'Clean', icon: Eraser },
   { key: 'schedule', label: 'Schedule', icon: CalendarClock, badge: 'scheduled' },
   { key: 'results', label: 'Results', icon: LineChart },
+  { key: 'channels', label: 'Channels', icon: MonitorPlay },
   { key: 'brain', label: 'Brain', icon: Brain },
 ];
 

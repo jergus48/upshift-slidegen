@@ -13,6 +13,7 @@ import { generatePhotoPacks } from './photopack.js'
 import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.js'
 import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
+import { fetchChannels } from './youtube.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
 
@@ -20,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const schedLog = logger('schedule')
 
 export const app = express()
-app.use(express.json({ limit: '50mb' })) // base64 slide images can be large
+app.use(express.json({ limit: '200mb' })) // base64 slide images — and full MP4 videos — can be large
 
 // DNS-rebinding guard: a malicious website can point its own domain at
 // 127.0.0.1 and read API responses from the visitor's browser, bypassing
@@ -272,6 +273,17 @@ app.post('/api/flow/generate', h(async (req, res) => {
   res.json({ prompts })
 }))
 
+// ── YouTube channel dashboard (public data, no API key) ─────────────────────
+// Resolve a batch of channel links to their public profile + latest uploads
+// (views/likes/thumbnails) via the channel page + RSS feed. `noCache` forces a
+// fresh fetch (the Refresh button). Per-channel errors are captured, not thrown,
+// so one bad link doesn't blank the whole dashboard.
+app.post('/api/youtube/channels', h(async (req, res) => {
+  const channels = Array.isArray(req.body?.channels) ? req.body.channels : []
+  const noCache = !!req.body?.noCache
+  res.json(await fetchChannels(channels, { limit: 5, noCache }))
+}))
+
 // ── post-bridge ───────────────────────────────────────────────────────────────
 app.get('/api/accounts', h(async (_req, res) => {
   const keys = await getKeys()
@@ -297,33 +309,50 @@ app.post('/api/results/sync', h(async (_req, res) => {
   res.json(await listAnalytics(keys.postbridge))
 }))
 
-// Schedule a slideshow: upload each rendered slide image to post-bridge, then
-// create the post. `slides` are data URLs (PNG) rendered in the browser.
+// Schedule a slideshow: upload its media to post-bridge, then create the post.
+// Two shapes of media, mutually exclusive:
+//   • `slides` — data URLs (PNG) rendered in the browser → a carousel post.
+//   • `video`  — a single data URL (MP4) rendered in the browser → a video post
+//     (YouTube Short / Reel / TikTok). Prefer this for a channel-per-character
+//     video pipeline.
 app.post('/api/schedule', h(async (req, res) => {
   const keys = await getKeys()
-  const { id, caption, slides, socialAccounts, scheduledAt, mode } = req.body || {}
+  const { id, caption, slides, video, socialAccounts, scheduledAt, mode } = req.body || {}
   if (!socialAccounts?.length) throw new Error('Pick at least one social account.')
-  if (!slides?.length) throw new Error('No slide images to upload.')
+  if (!video && !slides?.length) throw new Error('No media to upload (need slides or a video).')
 
   const when = mode === 'schedule' ? (scheduledAt ? `scheduled for ${scheduledAt}` : 'scheduled') : 'draft'
   schedLog.start(`Posting ${id || 'slideshow'} → ${when} · ${socialAccounts.length} account${socialAccounts.length === 1 ? '' : 's'}`)
 
-  // Upload all slides concurrently — post-bridge handles them independently, so
-  // there's no reason to wait for each. Results stay in slide order (the index
-  // into the array) so the carousel keeps its sequence.
-  let done = 0
-  const mediaIds = await Promise.all(
-    slides.map(async (slide, i) => {
-      const buffer = Buffer.from(String(slide).replace(/^data:image\/\w+;base64,/, ''), 'base64')
-      const mediaId = await uploadMedia(keys.postbridge, {
-        buffer,
-        mimeType: 'image/png',
-        name: `${id || 'slide'}-${i + 1}.png`,
+  let mediaIds
+  if (video) {
+    // Single video → one media upload. The data URL's mime (e.g. video/mp4 or
+    // video/webm) is carried through so post-bridge stores the right type.
+    const m = /^data:(video\/[\w.+-]+);base64,/.exec(String(video))
+    const mimeType = m ? m[1] : 'video/mp4'
+    const ext = mimeType.includes('webm') ? 'webm' : 'mp4'
+    const buffer = Buffer.from(String(video).replace(/^data:video\/[\w.+-]+;base64,/, ''), 'base64')
+    schedLog.step(`uploading video (${(buffer.length / 1e6).toFixed(1)} MB)…`)
+    const mediaId = await uploadMedia(keys.postbridge, { buffer, mimeType, name: `${id || 'video'}.${ext}` })
+    mediaIds = [mediaId]
+  } else {
+    // Upload all slides concurrently — post-bridge handles them independently, so
+    // there's no reason to wait for each. Results stay in slide order (the index
+    // into the array) so the carousel keeps its sequence.
+    let done = 0
+    mediaIds = await Promise.all(
+      slides.map(async (slide, i) => {
+        const buffer = Buffer.from(String(slide).replace(/^data:image\/\w+;base64,/, ''), 'base64')
+        const mediaId = await uploadMedia(keys.postbridge, {
+          buffer,
+          mimeType: 'image/png',
+          name: `${id || 'slide'}-${i + 1}.png`,
+        })
+        schedLog.progress(++done, slides.length, 'slides uploaded')
+        return mediaId
       })
-      schedLog.progress(++done, slides.length, 'slides uploaded')
-      return mediaId
-    })
-  )
+    )
+  }
 
   schedLog.step(`creating post on post-bridge…`)
   const post = await createPost(keys.postbridge, {

@@ -18,6 +18,7 @@ import { PromptView } from './views/PromptView';
 import { ScrubView } from './views/ScrubView';
 import { ScheduleView } from './views/ScheduleView';
 import { ResultsView } from './views/ResultsView';
+import { ChannelsView } from './views/ChannelsView';
 import { BrainView } from './views/BrainView';
 import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
@@ -453,6 +454,7 @@ export default function App() {
         {activeView === 'clean' && <ScrubView />}
         {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
         {activeView === 'results' && <ResultsView configured={hasPostbridge} />}
+        {activeView === 'channels' && <ChannelsView />}
         {activeView === 'brain' && (
           <BrainView
             brain={activeProject.brain}

@@ -12,6 +12,7 @@ import type {
   ModelOption,
   LibraryImage,
   LibraryPack,
+  YtChannel,
 } from '../types';
 
 // Thrown for 401s specifically, so App.tsx can tell "wrong/missing password"
@@ -137,6 +138,15 @@ export const generateFlowPrompts = (opts: {
   req<{ prompts: Record<string, unknown>[] }>('/flow/generate', {
     method: 'POST',
     body: JSON.stringify(opts),
+  });
+
+// ── YouTube channel dashboard (public data, no API key) ──────────────────────
+// Resolve a batch of channel links to their public profile + latest 5 uploads
+// (views/likes/thumbnails). `noCache` (the Refresh button) forces a fresh pull.
+export const getYoutubeChannels = (channels: string[], noCache = false) =>
+  req<YtChannel[]>('/youtube/channels', {
+    method: 'POST',
+    body: JSON.stringify({ channels, noCache }),
   });
 
 export const getAccounts = () => req<SocialAccount[]>('/accounts');

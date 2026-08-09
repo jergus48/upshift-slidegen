@@ -1,4 +1,28 @@
-export type ViewKey = 'queue' | 'create' | 'photopack' | 'library' | 'reddit' | 'reply' | 'write' | 'subreddit' | 'prompt' | 'clean' | 'schedule' | 'results' | 'brain' | 'settings';
+export type ViewKey = 'queue' | 'create' | 'photopack' | 'library' | 'reddit' | 'reply' | 'write' | 'subreddit' | 'prompt' | 'clean' | 'schedule' | 'results' | 'channels' | 'brain' | 'settings';
+
+// ── YouTube channel dashboard (public data, no API key) ──────────────────────
+export interface YtVideo {
+  id: string;
+  title: string;
+  url: string;
+  thumbnail: string;
+  views: number;
+  likes: number;
+  publishedAt: string;
+}
+
+// One tracked channel's result. `ok: false` carries an `error` instead of data,
+// so a single bad link renders as an error card rather than failing the page.
+export interface YtChannel {
+  input: string; // the link the user pasted (stable key for add/remove)
+  ok: boolean;
+  error?: string;
+  id?: string;
+  title?: string;
+  avatar?: string;
+  url?: string;
+  videos?: YtVideo[];
+}
 
 export interface Slide {
   id: string;
