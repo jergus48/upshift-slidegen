@@ -28,7 +28,27 @@ function timeAgo(iso: string) {
   return `${Math.floor(d / 365)}y`;
 }
 
-const recentViews = (c: YtChannel) => (c.videos ?? []).reduce((s, v) => s + v.views, 0);
+const sumViews = (vids: YtVideo[]) => vids.reduce((s, v) => s + v.views, 0);
+
+// Time-window filter for the dashboard. 'all' = no filter (latest 5 uploads).
+type TimeFilter = 'all' | '24h' | 'week';
+const WINDOW_MS: Record<TimeFilter, number> = {
+  all: 0,
+  '24h': 24 * 60 * 60 * 1000,
+  week: 7 * 24 * 60 * 60 * 1000,
+};
+const FILTER_LABELS: Record<TimeFilter, string> = { all: 'All', '24h': '24h', week: 'Week' };
+const WINDOW_NOUN: Record<TimeFilter, string> = { all: '', '24h': 'the last 24 hours', week: 'the last week' };
+
+// Videos to show for a channel under `filter`: 'all' → latest 5; otherwise every
+// upload published within the window, measured from `now` (the last-fetch time,
+// so the result is stable across re-renders — pure, unlike calling Date.now()).
+function shownVideos(c: YtChannel, filter: TimeFilter, now: number): YtVideo[] {
+  const vids = c.videos ?? [];
+  if (filter === 'all') return vids.slice(0, 5);
+  const cutoff = now - WINDOW_MS[filter];
+  return vids.filter((v) => new Date(v.publishedAt).getTime() >= cutoff);
+}
 
 export function ChannelsView() {
   const [links, setLinks] = useState<string[]>(() => loadChannels());
@@ -37,6 +57,7 @@ export function ChannelsView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [filter, setFilter] = useState<TimeFilter>('all');
 
   const fetchAll = useCallback(async (targets: string[], noCache = false) => {
     if (!targets.length) {
@@ -90,15 +111,22 @@ export function ChannelsView() {
     setData((d) => (d ? d.filter((c) => c.input !== link) : d));
   };
 
-  // Sort channels so the best-performing (most recent views) float to the top.
-  const sorted = data ? [...data].sort((a, b) => recentViews(b) - recentViews(a)) : null;
-  const okChannels = sorted?.filter((c) => c.ok) ?? [];
-  const totalViews = okChannels.reduce((s, c) => s + recentViews(c), 0);
+  // Reference "now" for windowing = when the data was last fetched (stable, so
+  // filtering stays pure across re-renders).
+  const now = updatedAt ?? 0;
+  const shownFor = (c: YtChannel): YtVideo[] => shownVideos(c, filter, now);
 
-  // The single best-performing recent Short across every channel.
+  // Sort channels so the best-performing (most views in the window) float to the top.
+  const sorted = data
+    ? [...data].sort((a, b) => sumViews(shownFor(b)) - sumViews(shownFor(a)))
+    : null;
+  const okChannels = sorted?.filter((c) => c.ok) ?? [];
+  const totalViews = okChannels.reduce((s, c) => s + sumViews(shownFor(c)), 0);
+
+  // The single best-performing Short in the window across every channel.
   let top: { video: YtVideo; channel: YtChannel } | null = null;
   for (const c of okChannels) {
-    for (const v of c.videos ?? []) {
+    for (const v of shownFor(c)) {
       if (!top || v.views > top.video.views) top = { video: v, channel: c };
     }
   }
@@ -111,6 +139,20 @@ export function ChannelsView() {
         right={
           links.length > 0 && (
             <>
+              {/* Time-window filter — default is All (no filter). */}
+              <div className="flex items-center rounded-lg border border-line p-0.5 bg-card">
+                {(['all', '24h', 'week'] as TimeFilter[]).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`h-7 px-2.5 rounded-md text-[12px] font-medium transition-colors ${
+                      filter === f ? 'bg-raised text-ink' : 'text-ink-5 hover:text-ink'
+                    }`}
+                  >
+                    {FILTER_LABELS[f]}
+                  </button>
+                ))}
+              </div>
               {updatedAt && !loading && (
                 <span className="text-[11px] text-ink-6 mr-1">updated {timeAgo(new Date(updatedAt).toISOString())} ago</span>
               )}
@@ -152,7 +194,10 @@ export function ChannelsView() {
           <div className="px-4 sm:px-8 py-4 border-b border-line bg-surface">
             <div className="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-6">
               <Stat label="Channels" value={String(okChannels.length)} />
-              <Stat label="Recent views" value={formatNumber(totalViews)} />
+              <Stat
+                label={filter === 'all' ? 'Recent views' : `Views · ${FILTER_LABELS[filter]}`}
+                value={formatNumber(totalViews)}
+              />
               {top && (
                 <div className="min-w-0">
                   <div className="text-[11px] text-ink-6 uppercase tracking-widest flex items-center gap-1">
@@ -178,7 +223,13 @@ export function ChannelsView() {
               <Loading />
             ) : (
               sorted!.map((c) => (
-                <ChannelCard key={c.input} channel={c} onRemove={() => removeChannel(c.input)} />
+                <ChannelCard
+                  key={c.input}
+                  channel={c}
+                  videos={shownFor(c)}
+                  emptyNote={filter === 'all' ? '' : `No uploads in ${WINDOW_NOUN[filter]}.`}
+                  onRemove={() => removeChannel(c.input)}
+                />
               ))
             )}
           </div>
@@ -197,7 +248,17 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ChannelCard({ channel, onRemove }: { channel: YtChannel; onRemove: () => void }) {
+function ChannelCard({
+  channel,
+  videos,
+  emptyNote,
+  onRemove,
+}: {
+  channel: YtChannel;
+  videos: YtVideo[];
+  emptyNote: string;
+  onRemove: () => void;
+}) {
   return (
     <div className="bg-card border border-line rounded-xl p-4">
       <div className="flex items-center gap-3 mb-3">
@@ -224,7 +285,9 @@ function ChannelCard({ channel, onRemove }: { channel: YtChannel; onRemove: () =
             <span className="text-[14px] font-semibold text-ink truncate block">{channel.input}</span>
           )}
           <span className="text-[11px] text-ink-6 truncate block">
-            {channel.ok ? `${formatNumber(recentViews(channel))} views across last ${channel.videos?.length ?? 0}` : channel.error}
+            {channel.ok
+              ? `${formatNumber(sumViews(videos))} views · ${videos.length} ${videos.length === 1 ? 'upload' : 'uploads'}`
+              : channel.error}
           </span>
         </div>
         <button
@@ -236,13 +299,16 @@ function ChannelCard({ channel, onRemove }: { channel: YtChannel; onRemove: () =
         </button>
       </div>
 
-      {channel.ok && (channel.videos?.length ?? 0) > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-          {channel.videos!.map((v) => (
-            <VideoCard key={v.id} video={v} />
-          ))}
-        </div>
-      )}
+      {channel.ok &&
+        (videos.length > 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+            {videos.map((v) => (
+              <VideoCard key={v.id} video={v} />
+            ))}
+          </div>
+        ) : (
+          emptyNote && <div className="text-[12px] text-ink-6 py-2">{emptyNote}</div>
+        ))}
     </div>
   );
 }

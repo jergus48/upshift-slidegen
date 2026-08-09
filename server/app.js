@@ -281,7 +281,9 @@ app.post('/api/flow/generate', h(async (req, res) => {
 app.post('/api/youtube/channels', h(async (req, res) => {
   const channels = Array.isArray(req.body?.channels) ? req.body.channels : []
   const noCache = !!req.body?.noCache
-  res.json(await fetchChannels(channels, { limit: 5, noCache }))
+  // Return the full feed (~15) so the client can filter by time window (24h /
+  // week) without a refetch; the default "no filter" view shows the latest 5.
+  res.json(await fetchChannels(channels, { limit: 15, noCache }))
 }))
 
 // ── post-bridge ───────────────────────────────────────────────────────────────
