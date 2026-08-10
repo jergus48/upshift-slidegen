@@ -14,6 +14,7 @@ import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.
 import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { fetchChannels } from './youtube.js'
+import { fetchQuotes, analyzeSymbol, fetchNews, searchSymbols, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
 
@@ -63,6 +64,7 @@ const maskKeys = (keys) => ({
   postbridge: !!keys.postbridge,
   openrouter: !!keys.openrouter,
   apify: !!keys.apify,
+  fmp: !!keys.fmp,
 })
 
 // ── Keys ──────────────────────────────────────────────────────────────────
@@ -72,7 +74,7 @@ app.put('/api/config', h(async (req, res) => res.json({ keys: maskKeys(await sav
 // Validate that the saved keys actually work, so Settings can show a green check.
 app.post('/api/config/test', h(async (_req, res) => {
   const keys = await getKeys()
-  const result = { postbridge: false, openrouter: false, apify: false, errors: {} }
+  const result = { postbridge: false, openrouter: false, apify: false, fmp: false, errors: {} }
   if (keys.postbridge) {
     try { await listAccounts(keys.postbridge); result.postbridge = true }
     catch (e) { result.errors.postbridge = e.message }
@@ -87,6 +89,10 @@ app.post('/api/config/test', h(async (_req, res) => {
       if (!r.ok) throw new Error(`invalid key (${r.status})`)
       result.apify = true
     } catch (e) { result.errors.apify = e.message }
+  }
+  if (keys.fmp) {
+    try { await fetchQuotes(['AAPL'], keys.fmp); result.fmp = true }
+    catch (e) { result.errors.fmp = e.message }
   }
   res.json(result)
 }))
@@ -284,6 +290,101 @@ app.post('/api/youtube/channels', h(async (req, res) => {
   // Return the full feed (~15) so the client can filter by time window (24h /
   // week) without a refetch; the default "no filter" view shows the latest 5.
   res.json(await fetchChannels(channels, { limit: 15, noCache }))
+}))
+
+// ── Stock analyzer (Financial Modeling Prep + AI summaries) ─────────────────
+// Live quotes for a batch of tickers — the cheap call the dashboard runs on
+// load/refresh (today's move + price per holding). Bad tickers drop out.
+app.post('/api/stocks/quotes', h(async (req, res) => {
+  const keys = await getKeys()
+  const symbols = Array.isArray(req.body?.symbols) ? req.body.symbols : []
+  res.json(await fetchQuotes(symbols, keys.fmp))
+}))
+
+// Symbol search for the "add holding" flow, so the user picks a ticker FMP has.
+app.get('/api/stocks/search', h(async (req, res) => {
+  const keys = await getKeys()
+  res.json(await searchSymbols(String(req.query.q || ''), keys.fmp))
+}))
+
+// Full enrichment for one symbol (detail panel): profile, analyst target &
+// rating consensus, earnings, news. Expensive-ish → the client calls it on
+// demand (opening a holding), not for the whole list at once.
+app.post('/api/stocks/analyze', h(async (req, res) => {
+  const keys = await getKeys()
+  const symbol = String(req.body?.symbol || '').trim()
+  if (!symbol) throw new Error('No symbol.')
+  res.json(await analyzeSymbol(symbol, keys.fmp))
+}))
+
+// News for one symbol (the "why did it move" feed / news tab).
+app.post('/api/stocks/news', h(async (req, res) => {
+  const keys = await getKeys()
+  const symbol = String(req.body?.symbol || '').trim()
+  if (!symbol) throw new Error('No symbol.')
+  res.json(await fetchNews(symbol, keys.fmp))
+}))
+
+// AI: explain today's move from the stock's own headlines. Fetches fresh news
+// server-side so the client just sends the symbol + today's %.
+app.post('/api/stocks/why', h(async (req, res) => {
+  const keys = await getKeys()
+  const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
+  const symbol = String(req.body?.symbol || '').trim()
+  if (!symbol) throw new Error('No symbol.')
+  const news = await fetchNews(symbol, keys.fmp)
+  const out = await chatJSON({
+    apiKey: keys.openrouter,
+    model,
+    prompt: buildWhyPrompt({ symbol, name: req.body?.name, changePct: req.body?.changePct, news }),
+    sampling: { temperature: 0.3 },
+  })
+  res.json({
+    explanation: String(out.explanation || ''),
+    drivers: Array.isArray(out.drivers) ? out.drivers.map(String).slice(0, 6) : [],
+    disclaimer: String(out.disclaimer || ''),
+    news,
+  })
+}))
+
+// AI: whole-portfolio summary + a stance per holding. The client sends holdings
+// already enriched with quote/target/rating/gain so the model reasons over real
+// numbers (and we don't re-fetch everything here).
+app.post('/api/stocks/summary', h(async (req, res) => {
+  const keys = await getKeys()
+  const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
+  const holdings = Array.isArray(req.body?.holdings) ? req.body.holdings : []
+  if (!holdings.length) throw new Error('No holdings to summarize.')
+  const out = await chatJSON({
+    apiKey: keys.openrouter,
+    model,
+    prompt: buildPortfolioPrompt(holdings),
+    sampling: { temperature: 0.3, max_tokens: 3000 },
+  })
+  res.json({
+    overview: String(out.overview || ''),
+    positions: Array.isArray(out.positions) ? out.positions : [],
+    watch: Array.isArray(out.watch) ? out.watch.map(String) : [],
+    disclaimer: String(out.disclaimer || ''),
+  })
+}))
+
+// AI: new-stock ideas that complement the current holdings (research, not a buy
+// directive — see buildIdeasPrompt).
+app.post('/api/stocks/ideas', h(async (req, res) => {
+  const keys = await getKeys()
+  const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
+  const holdings = Array.isArray(req.body?.holdings) ? req.body.holdings : []
+  const out = await chatJSON({
+    apiKey: keys.openrouter,
+    model,
+    prompt: buildIdeasPrompt(holdings),
+    sampling: { temperature: 0.5 },
+  })
+  res.json({
+    ideas: Array.isArray(out.ideas) ? out.ideas : [],
+    disclaimer: String(out.disclaimer || ''),
+  })
 }))
 
 // ── post-bridge ───────────────────────────────────────────────────────────────

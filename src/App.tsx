@@ -19,6 +19,7 @@ import { ScrubView } from './views/ScrubView';
 import { ScheduleView } from './views/ScheduleView';
 import { ResultsView } from './views/ResultsView';
 import { ChannelsView } from './views/ChannelsView';
+import { StocksView } from './views/StocksView';
 import { BrainView } from './views/BrainView';
 import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
@@ -68,6 +69,7 @@ export default function App() {
   const hasOpenrouter = !!keys?.openrouter;
   const hasPostbridge = !!keys?.postbridge;
   const hasApify = !!keys?.apify;
+  const hasFmp = !!keys?.fmp;
   const activeProject: Project | undefined = workspace?.projects.find(
     (p) => p.id === workspace.activeProjectId
   ) ?? workspace?.projects[0];
@@ -259,6 +261,11 @@ export default function App() {
 
   const reject = (id: string) => {
     setQueue((q) => q.filter((s) => s.id !== id));
+  };
+
+  const bulkReject = (ids: string[]) => {
+    setQueue((q) => q.filter((s) => !ids.includes(s.id)));
+    setSelectedIds([]);
   };
 
   // Builds the same Slideshow shape /api/generate produces, entirely
@@ -464,6 +471,7 @@ export default function App() {
             selectedIds={selectedIds}
             onApprove={(id) => setScheduling(queue.find((s) => s.id === id) || null)}
             onReject={reject}
+            onBulkReject={bulkReject}
             onEdit={(id) => setEditing(queue.find((s) => s.id === id) || null)}
             onToggleSelect={toggleSelect}
             onSelectAll={() => setSelectedIds(queue.map((s) => s.id))}
@@ -498,6 +506,7 @@ export default function App() {
         {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
         {activeView === 'results' && <ResultsView configured={hasPostbridge} />}
         {activeView === 'channels' && <ChannelsView />}
+        {activeView === 'stocks' && <StocksView hasFmp={hasFmp} canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'brain' && (
           <BrainView
             brain={activeProject.brain}

@@ -52,6 +52,7 @@ export function SettingsView({
   const [postbridge, setPostbridge] = useState('');
   const [openrouter, setOpenrouter] = useState('');
   const [apify, setApify] = useState('');
+  const [fmp, setFmp] = useState('');
   const [pinterestActor, setPinterestActor] = useState(config.pinterestActor);
   const [model, setModel] = useState(config.model);
   const [name, setName] = useState(project.name);
@@ -64,7 +65,7 @@ export function SettingsView({
   const [testing, setTesting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [test, setTest] = useState<{ postbridge: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> } | null>(null);
+  const [test, setTest] = useState<{ postbridge: boolean; openrouter: boolean; apify: boolean; fmp: boolean; errors: Record<string, string> } | null>(null);
 
   // Re-sync editable fields when the active project changes (switching projects).
   useEffect(() => {
@@ -88,6 +89,7 @@ export function SettingsView({
     if (postbridge.trim()) keys.postbridge = postbridge.trim();
     if (openrouter.trim()) keys.openrouter = openrouter.trim();
     if (apify.trim()) keys.apify = apify.trim();
+    if (fmp.trim()) keys.fmp = fmp.trim();
     try {
       await onSave({
         keys: Object.keys(keys).length ? keys : undefined,
@@ -102,6 +104,7 @@ export function SettingsView({
       setPostbridge('');
       setOpenrouter('');
       setApify('');
+      setFmp('');
       onReloadAccounts();
       setSaved(true);
     } catch (e) {
@@ -235,6 +238,15 @@ export function SettingsView({
                 className={`${inputClass} font-mono`}
               />
               <TestBadge ok={test?.apify} error={test?.errors?.apify} />
+            </Field>
+            <Field label="Financial Modeling Prep API key (optional)" hint="Powers the Stocks analyzer — live prices, analyst targets, earnings & news. Free key at financialmodelingprep.com/developer.">
+              <input
+                value={fmp}
+                onChange={(e) => setFmp(e.target.value)}
+                placeholder={config.keys.fmp ? '•••• already set — leave blank to keep' : 'your FMP key'}
+                className={`${inputClass} font-mono`}
+              />
+              <TestBadge ok={test?.fmp} error={test?.errors?.fmp} />
             </Field>
             <Field label="Pinterest Apify actor" hint="The Apify actor used for scraping. Change only if you prefer a different one.">
               <input

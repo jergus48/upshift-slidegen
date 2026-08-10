@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { Settings, ChevronsUpDown, Plus, Check } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Settings, ChevronsUpDown, Plus, Check, ChevronDown } from 'lucide-react';
 import type { ViewKey, Project } from '../types';
-import { NAV } from '../lib/sidebarNav';
+import { NAV, NAV_GROUPS } from '../lib/sidebarNav';
 
 interface SidebarProps {
   activeView: ViewKey;
@@ -37,8 +37,33 @@ export function Sidebar({
   onClose,
 }: SidebarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // Collapsible nav groups (e.g. the Reddit pack). Collapsed by default so the
+  // sidebar stays compact; the group expands when it holds the active view.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const active = projects.find((p) => p.id === activeProjectId) ?? projects[0];
   const visibleNav = NAV.filter((item) => !hiddenViews.includes(item.key));
+
+  const renderNavButton = ({ key, label, icon: Icon, badge }: (typeof NAV)[number], nested = false) => {
+    const isActive = activeView === key;
+    const count = badge === 'queue' ? queueCount : badge === 'scheduled' ? scheduledCount : undefined;
+    return (
+      <button
+        key={key}
+        onClick={() => onSelectView(key)}
+        className={`w-full h-9 flex items-center gap-2.5 rounded-lg ${nested ? 'pl-8 pr-2' : 'px-2'} text-left border border-transparent transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink/10 ${isActive ? 'bg-raised text-ink' : 'text-ink-4 hover:bg-raised hover:text-ink-3'
+          }`}
+      >
+        <Icon size={14} className="shrink-0" />
+        <span className="text-[13px] font-medium flex-1 truncate">{label}</span>
+        {count !== undefined && count > 0 && (
+          <span className={`text-[10px] font-medium leading-none px-1.5 h-[18px] inline-flex items-center rounded-md border ${isActive ? 'bg-ink text-bg border-ink' : 'bg-raised text-ink-5 border-line'
+            }`}>
+            {count}
+          </span>
+        )}
+      </button>
+    );
+  };
 
   return (
     <>
@@ -113,27 +138,41 @@ export function Sidebar({
       {/* Nav */}
       <div className="flex-1 overflow-y-auto py-3 px-2">
         <div className="flex flex-col gap-0.5">
-          {visibleNav.map(({ key, label, icon: Icon, badge }) => {
-            const isActive = activeView === key;
-            const count = badge === 'queue' ? queueCount : badge === 'scheduled' ? scheduledCount : undefined;
-            return (
-              <button
-                key={key}
-                onClick={() => onSelectView(key)}
-                className={`w-full h-9 flex items-center gap-2.5 rounded-lg px-2 text-left border border-transparent transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink/10 ${isActive ? 'bg-raised text-ink' : 'text-ink-4 hover:bg-raised hover:text-ink-3'
-                  }`}
-              >
-                <Icon size={14} className="shrink-0" />
-                <span className="text-[13px] font-medium flex-1 truncate">{label}</span>
-                {count !== undefined && count > 0 && (
-                  <span className={`text-[10px] font-medium leading-none px-1.5 h-[18px] inline-flex items-center rounded-md border ${isActive ? 'bg-ink text-bg border-ink' : 'bg-raised text-ink-5 border-line'
-                    }`}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {(() => {
+            const rendered: ReactNode[] = [];
+            const seenGroups = new Set<string>();
+            visibleNav.forEach((item) => {
+              if (!item.group) {
+                rendered.push(renderNavButton(item));
+                return;
+              }
+              // Render the whole group once, at the position of its first item.
+              if (seenGroups.has(item.group)) return;
+              seenGroups.add(item.group);
+              const groupId = item.group;
+              const children = visibleNav.filter((n) => n.group === groupId);
+              const meta = NAV_GROUPS[groupId] ?? { label: groupId, icon: children[0].icon };
+              const GroupIcon = meta.icon;
+              const hasActive = children.some((c) => c.key === activeView);
+              const isOpen = openGroups[groupId] ?? hasActive;
+              rendered.push(
+                <div key={`group-${groupId}`} className="flex flex-col gap-0.5">
+                  <button
+                    onClick={() => setOpenGroups((s) => ({ ...s, [groupId]: !(s[groupId] ?? hasActive) }))}
+                    aria-expanded={isOpen}
+                    className={`w-full h-9 flex items-center gap-2.5 rounded-lg px-2 text-left border border-transparent transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink/10 ${!isOpen && hasActive ? 'bg-raised text-ink' : 'text-ink-4 hover:bg-raised hover:text-ink-3'
+                      }`}
+                  >
+                    <GroupIcon size={14} className="shrink-0" />
+                    <span className="text-[13px] font-medium flex-1 truncate">{meta.label}</span>
+                    <ChevronDown size={13} className={`text-ink-5 shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                  </button>
+                  {isOpen && children.map((c) => renderNavButton(c, true))}
+                </div>
+              );
+            });
+            return rendered;
+          })()}
         </div>
       </div>
 

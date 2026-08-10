@@ -13,6 +13,14 @@ import type {
   LibraryImage,
   LibraryPack,
   YtChannel,
+  StockQuote,
+  StockAnalysis,
+  StockNews,
+  SymbolSearchResult,
+  PortfolioSummary,
+  StockIdeas,
+  WhyMoved,
+  Holding,
 } from '../types';
 
 // Thrown for 401s specifically, so App.tsx can tell "wrong/missing password"
@@ -47,7 +55,7 @@ export const saveKeys = (keys: KeysPatch) =>
   req<{ keys: KeyStatus }>('/config', { method: 'PUT', body: JSON.stringify({ keys }) }).then((r) => r.keys);
 
 export const testKeys = () =>
-  req<{ postbridge: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> }>(
+  req<{ postbridge: boolean; openrouter: boolean; apify: boolean; fmp: boolean; errors: Record<string, string> }>(
     '/config/test',
     { method: 'POST' }
   );
@@ -148,6 +156,38 @@ export const getYoutubeChannels = (channels: string[], noCache = false) =>
     method: 'POST',
     body: JSON.stringify({ channels, noCache }),
   });
+
+// ── Stock analyzer (Financial Modeling Prep + AI summaries) ─────────────────
+// Live quotes for a batch of tickers — the cheap call the dashboard runs on
+// load/refresh. Unknown tickers are silently dropped server-side.
+export const getStockQuotes = (symbols: string[]) =>
+  req<StockQuote[]>('/stocks/quotes', { method: 'POST', body: JSON.stringify({ symbols }) });
+
+// Symbol search for the add-holding flow (query → matching FMP tickers).
+export const searchStockSymbols = (q: string) =>
+  req<SymbolSearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}`);
+
+// Full per-symbol enrichment (profile, analyst target & rating, earnings, news)
+// — called on demand when a holding is opened.
+export const analyzeStock = (symbol: string) =>
+  req<StockAnalysis>('/stocks/analyze', { method: 'POST', body: JSON.stringify({ symbol }) });
+
+export const getStockNews = (symbol: string) =>
+  req<StockNews[]>('/stocks/news', { method: 'POST', body: JSON.stringify({ symbol }) });
+
+// AI: explain today's move from the stock's own headlines.
+export const whyStockMoved = (opts: { symbol: string; name?: string; changePct?: number | null; model: string }) =>
+  req<WhyMoved>('/stocks/why', { method: 'POST', body: JSON.stringify(opts) });
+
+// AI: whole-portfolio summary + a stance per holding. `holdings` is sent
+// already enriched (quote/target/rating/gain) so the model reasons over real
+// numbers — see StocksView.
+export const summarizePortfolio = (holdings: Record<string, unknown>[], model: string) =>
+  req<PortfolioSummary>('/stocks/summary', { method: 'POST', body: JSON.stringify({ holdings, model }) });
+
+// AI: new-stock ideas that complement current holdings (research, not advice).
+export const getStockIdeas = (holdings: Pick<Holding, 'symbol'>[] & Record<string, unknown>[] | Record<string, unknown>[], model: string) =>
+  req<StockIdeas>('/stocks/ideas', { method: 'POST', body: JSON.stringify({ holdings, model }) });
 
 export const getAccounts = () => req<SocialAccount[]>('/accounts');
 

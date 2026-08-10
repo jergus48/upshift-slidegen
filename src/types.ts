@@ -1,4 +1,4 @@
-export type ViewKey = 'queue' | 'create' | 'photopack' | 'library' | 'reddit' | 'reply' | 'write' | 'subreddit' | 'prompt' | 'clean' | 'schedule' | 'results' | 'channels' | 'brain' | 'settings';
+export type ViewKey = 'queue' | 'create' | 'photopack' | 'library' | 'reddit' | 'reply' | 'write' | 'subreddit' | 'prompt' | 'clean' | 'schedule' | 'results' | 'channels' | 'stocks' | 'brain' | 'settings';
 
 // ── YouTube channel dashboard (public data, no API key) ──────────────────────
 export interface YtVideo {
@@ -80,6 +80,7 @@ export interface KeyStatus {
   postbridge: boolean;
   openrouter: boolean;
   apify: boolean;
+  fmp: boolean;
 }
 
 // The rest of the app's configuration — projects, Brain, model choice — lives
@@ -103,7 +104,102 @@ export interface AppConfig extends Workspace {
 
 // Write-only: real secret values, sent up to replace a key. Settings only
 // includes a field here if the user actually typed something new.
-export type KeysPatch = Partial<{ postbridge: string; openrouter: string; apify: string }>;
+export type KeysPatch = Partial<{ postbridge: string; openrouter: string; apify: string; fmp: string }>;
+
+// ── Stock analyzer ───────────────────────────────────────────────────────────
+// A holding the user entered by hand (persisted in localStorage; see
+// lib/localPortfolio.ts). `symbol` is the FMP ticker (US-listed), chosen via
+// symbol search so market data resolves.
+export interface Holding {
+  symbol: string;
+  name: string;
+  shares: number;
+  avgPrice: number; // average cost per share, in the quote's currency
+}
+
+// Live quote as normalized by the server (server/stocks.js). Numeric fields can
+// be null when FMP omits them.
+export interface StockQuote {
+  symbol: string;
+  name: string;
+  price: number | null;
+  change: number | null;
+  changePct: number | null;
+  dayLow: number | null;
+  dayHigh: number | null;
+  yearLow: number | null;
+  yearHigh: number | null;
+  open: number | null;
+  previousClose: number | null;
+  marketCap: number | null;
+  volume: number | null;
+  exchange: string;
+  timestamp: number | null;
+}
+
+export interface StockNews {
+  title: string;
+  site: string;
+  url: string;
+  image: string;
+  publishedDate: string;
+  snippet: string;
+}
+
+export interface StockAnalysis {
+  symbol: string;
+  quote: StockQuote | null;
+  profile: {
+    companyName: string;
+    sector: string;
+    industry: string;
+    image: string;
+    description: string;
+    website: string;
+    beta: number | null;
+    range: string;
+  } | null;
+  target: { high: number | null; low: number | null; consensus: number | null; median: number | null } | null;
+  ratings: {
+    consensus: string;
+    strongBuy: number;
+    buy: number;
+    hold: number;
+    sell: number;
+    strongSell: number;
+  } | null;
+  earnings: {
+    upcoming: { date: string; epsActual: number | null; epsEstimated: number | null; revenueActual: number | null; revenueEstimated: number | null } | null;
+    lastReported: { date: string; epsActual: number | null; epsEstimated: number | null; revenueActual: number | null; revenueEstimated: number | null } | null;
+  };
+  news: StockNews[];
+}
+
+export interface SymbolSearchResult {
+  symbol: string;
+  name: string;
+  exchange: string;
+  currency: string;
+}
+
+export interface PortfolioSummary {
+  overview: string;
+  positions: { symbol: string; stance: string; reason: string; confidence: string }[];
+  watch: string[];
+  disclaimer: string;
+}
+
+export interface StockIdeas {
+  ideas: { symbol: string; name: string; thesis: string; category: string }[];
+  disclaimer: string;
+}
+
+export interface WhyMoved {
+  explanation: string;
+  drivers: string[];
+  disclaimer: string;
+  news: StockNews[];
+}
 
 export interface LibraryImage {
   id: string;

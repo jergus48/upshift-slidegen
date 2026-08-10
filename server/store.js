@@ -17,6 +17,7 @@ const ENV_KEYS = {
   postbridge: process.env.POSTBRIDGE_API_KEY || '',
   openrouter: process.env.OPENROUTER_API_KEY || '',
   apify: process.env.APIFY_API_KEY || '',
+  fmp: process.env.FMP_API_KEY || '',
 }
 
 // Resolved real key values, for server-side use (generation, scraping,
@@ -27,6 +28,7 @@ export async function getKeys() {
     postbridge: ENV_KEYS.postbridge || s.keys?.postbridge || '',
     openrouter: ENV_KEYS.openrouter || s.keys?.openrouter || '',
     apify: ENV_KEYS.apify || s.keys?.apify || '',
+    fmp: ENV_KEYS.fmp || s.keys?.fmp || '',
   }
 }
 
@@ -36,7 +38,7 @@ export async function getKeys() {
 export async function saveKeys(patch) {
   const s = await readData(KEYS_KEY, {})
   const keys = { ...s.keys }
-  for (const k of ['postbridge', 'openrouter', 'apify']) {
+  for (const k of ['postbridge', 'openrouter', 'apify', 'fmp']) {
     if (patch?.[k]) keys[k] = patch[k]
   }
   await writeData(KEYS_KEY, { ...s, keys })

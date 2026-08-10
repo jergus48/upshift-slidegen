@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Download, Film, Folder } from 'lucide-react';
+import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Download, Film, Folder, Trash2 } from 'lucide-react';
 import type { Slideshow } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { SlidePreview } from '../components/SlidePreview';
@@ -26,6 +26,7 @@ interface QueueViewProps {
   onGenerate: () => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onBulkReject: (ids: string[]) => void;
   onEdit: (id: string) => void;
   onToggleSelect: (id: string) => void;
   onSelectAll: () => void;
@@ -42,6 +43,7 @@ export function QueueView({
   onGenerate,
   onApprove,
   onReject,
+  onBulkReject,
   onEdit,
   onToggleSelect,
   onSelectAll,
@@ -69,6 +71,14 @@ export function QueueView({
   };
 
   const selectedShows = () => slideshows.filter((s) => selectedIds.includes(s.id));
+
+  const removeSelected = () => {
+    // Native Chrome confirm dialog before a destructive bulk removal.
+    const ok = window.confirm(
+      `Remove ${selectedCount} slideshow${selectedCount === 1 ? '' : 's'} from the queue? This can't be undone.`,
+    );
+    if (ok) onBulkReject(selectedIds);
+  };
 
   const downloadSelected = async () => {
     setDownloadingBulk(true);
@@ -140,6 +150,14 @@ export function QueueView({
                 </Button>
                 <Button variant="primary" icon={<Check size={13} />} onClick={onBulkSchedule}>
                   Schedule {selectedCount}
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={<Trash2 size={13} />}
+                  onClick={removeSelected}
+                  disabled={downloadingBulk || videoProgress !== null}
+                >
+                  Remove {selectedCount}
                 </Button>
                 <Button variant="ghost" onClick={onClearSelection}>Clear</Button>
               </>
