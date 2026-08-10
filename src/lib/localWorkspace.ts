@@ -20,6 +20,10 @@ const DEFAULT_BRAIN: BrainState = {
 };
 const DEFAULT_DEFAULTS: ProjectDefaults = { socialAccountIds: [], mode: 'draft' };
 
+// Tools hidden from the sidebar by default (on a fresh install). Users can
+// toggle any of these back on in Settings → Sidebar.
+const DEFAULT_HIDDEN_VIEWS: ViewKey[] = ['prompt', 'schedule', 'results', 'stocks'];
+
 function newId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
 }
@@ -61,7 +65,7 @@ function normalize(raw: Partial<Workspace> | null, defaultPacks: string[]): Work
     pinterestActor: raw?.pinterestActor || DEFAULT_ACTOR,
     projects,
     activeProjectId,
-    hiddenViews: Array.isArray(raw?.hiddenViews) ? raw!.hiddenViews! : [],
+    hiddenViews: Array.isArray(raw?.hiddenViews) ? raw!.hiddenViews! : DEFAULT_HIDDEN_VIEWS,
   };
 }
 
