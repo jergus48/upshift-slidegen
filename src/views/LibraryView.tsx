@@ -7,6 +7,25 @@ import { scrapePinterest } from '../lib/api';
 import { getMergedLibrary } from '../lib/mergedLibrary';
 import { addLocalImages, removeLocalImage } from '../lib/localLibrary';
 import { getHiddenPacks, setPackHidden } from '../lib/hiddenPacks';
+import { createZip, type ZipEntry } from '../lib/zip';
+
+// File extension for a downloaded image, from its blob MIME type.
+function extForImage(type: string): string {
+  const map: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/avif': 'avif',
+  };
+  return map[type] || 'jpg';
+}
+
+// Filesystem-safe slug for a pack name, used as the zip filename.
+function packSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'library';
+}
 
 // Read a File as a base64 data URL for shipping to the server as JSON.
 function fileToDataUrl(file: File): Promise<string> {
@@ -37,6 +56,7 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
   const [uploadPack, setUploadPack] = useState('My Uploads');
   const [uploading, setUploading] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(() => getHiddenPacks());
+  const [downloading, setDownloading] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Show every pack here (including hidden ones) so they can be un-hidden.
@@ -70,6 +90,39 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
   const remove = async (id: string) => {
     await removeLocalImage(id);
     await load();
+  };
+
+  // Zip every image in a pack (fetched as bytes — works for bundled paths,
+  // scraped/uploaded blob URLs and inline data URLs alike) and save it.
+  const downloadPack = async (pack: string, imgs: LibraryImage[]) => {
+    if (!imgs.length || downloading) return;
+    setError(null);
+    setNote(null);
+    setDownloading(pack);
+    try {
+      const pad = String(imgs.length).length;
+      const entries: ZipEntry[] = [];
+      for (let i = 0; i < imgs.length; i++) {
+        const res = await fetch(imgs[i].url);
+        if (!res.ok) throw new Error(`Could not fetch image ${i + 1} of ${imgs.length}`);
+        const blob = await res.blob();
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const name = `${String(i + 1).padStart(pad, '0')}.${extForImage(blob.type)}`;
+        entries.push({ name, data: bytes });
+      }
+      const url = URL.createObjectURL(createZip(entries));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${packSlug(pack)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDownloading(null);
+    }
   };
 
   const upload = async (files: FileList | null) => {
@@ -226,6 +279,17 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
                   <div className="flex items-baseline gap-3 mb-3">
                     <h2 className="text-[13px] font-semibold text-ink uppercase tracking-widest">{pack}</h2>
                     <span className="text-[11px] text-ink-6">{imgs.length}</span>
+                    <button
+                      onClick={() => downloadPack(pack, imgs)}
+                      disabled={downloading !== null || !imgs.length}
+                      className="flex items-center gap-1 text-[11px] text-ink-5 hover:text-ink transition-colors disabled:opacity-50"
+                      title="Download this photo library as a zip"
+                    >
+                      {downloading === pack
+                        ? <Loader2 size={13} className="animate-spin" />
+                        : <Download size={13} />}
+                      {downloading === pack ? 'Zipping…' : 'Download'}
+                    </button>
                     {isHidden && <span className="text-[10px] text-ink-6 uppercase tracking-wider">Hidden</span>}
                     <button
                       onClick={() => toggleHidden(pack)}
