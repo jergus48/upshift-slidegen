@@ -11,6 +11,7 @@ interface GenerateModalProps {
   generating: boolean;
   onClose: () => void;
   onGenerate: (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string; captionStyle: CaptionStyle; gender: Gender }) => void;
+  onGenerateAll: (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender }) => void;
 }
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
@@ -27,6 +28,7 @@ export function GenerateModal({
   generating,
   onClose,
   onGenerate,
+  onGenerateAll,
 }: GenerateModalProps) {
   const [count, setCount] = useState(1);
   const [slidesPerShow, setSlidesPerShow] = useState(6);
@@ -36,9 +38,16 @@ export function GenerateModal({
   const [audience, setAudience] = useState('');
   const [styleMemory, setStyleMemory] = useState('');
   const [gender, setGender] = useState<Gender>('men');
+  // When on, we ignore the single Audience/Style memory below and instead run
+  // one batch per preset in this gender pack, each with its own settings.
+  const [allPresets, setAllPresets] = useState(false);
   const presets = getQuitPresets(gender);
 
-  const submit = () =>
+  const submit = () => {
+    if (allPresets) {
+      onGenerateAll({ count, length, packs, captionStyle, gender });
+      return;
+    }
     onGenerate({
       count,
       slidesPerShow,
@@ -49,6 +58,7 @@ export function GenerateModal({
       captionStyle,
       gender,
     });
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={generating ? undefined : onClose}>
@@ -98,7 +108,7 @@ export function GenerateModal({
                 <button
                   key={n}
                   onClick={() => setSlidesPerShow(n)}
-                  disabled={generating}
+                  disabled={generating || allPresets}
                   className={`w-12 h-9 rounded-lg border text-[13px] font-medium transition-colors disabled:opacity-50 ${
                     slidesPerShow === n ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
                   }`}
@@ -111,7 +121,7 @@ export function GenerateModal({
                 min={2}
                 max={12}
                 value={slidesPerShow}
-                disabled={generating}
+                disabled={generating || allPresets}
                 onChange={(e) => setSlidesPerShow(Math.max(2, Math.min(12, Math.round(Number(e.target.value) || 6))))}
                 className="flex-1 h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink text-center tabular-nums outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
               />
@@ -186,9 +196,22 @@ export function GenerateModal({
 
           {/* Quick presets */}
           <div>
-            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
-              Quick presets <span className="normal-case font-normal text-ink-6">(optional)</span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold block">
+                Quick presets <span className="normal-case font-normal text-ink-6">(optional)</span>
+              </label>
+              {/* Virtually selects every preset — one batch per preset on generate. */}
+              <button
+                type="button"
+                disabled={generating}
+                onClick={() => setAllPresets((v) => !v)}
+                className={`text-[11px] px-2.5 h-6 rounded-md border transition-colors disabled:opacity-50 ${
+                  allPresets ? 'border-ink bg-ink text-bg' : 'border-line text-ink-4 hover:text-ink hover:border-line-2'
+                }`}
+              >
+                {allPresets ? `All ${presets.length} selected` : 'Select all'}
+              </button>
+            </div>
             {/* Men / Women pack — gender-matched persona, hooks and hobbies */}
             <div className="inline-flex p-0.5 rounded-lg border border-line bg-card mb-1.5">
               {GENDERS.map((gnd) => (
@@ -205,24 +228,32 @@ export function GenerateModal({
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className={`flex flex-wrap gap-1.5 ${allPresets ? 'opacity-60' : ''}`}>
               {presets.map((p) => (
                 <button
                   key={p.key}
                   type="button"
-                  disabled={generating}
+                  disabled={generating || allPresets}
                   onClick={() => {
                     setAudience(p.audience);
                     setStyleMemory(p.styleMemory);
                     setSlidesPerShow(p.slides);
                   }}
-                  className="text-[12px] px-3 h-8 rounded-lg border border-line text-ink-3 hover:text-ink hover:border-line-2 hover:bg-raised transition-colors disabled:opacity-50"
+                  className={`text-[12px] px-3 h-8 rounded-lg border transition-colors disabled:opacity-50 ${
+                    allPresets
+                      ? 'border-ink text-ink bg-raised'
+                      : 'border-line text-ink-3 hover:text-ink hover:border-line-2 hover:bg-raised'
+                  }`}
                 >
-                  {p.label} <span className="text-ink-6">({p.slides} slides)</span>
+                  {p.label} <span className={allPresets ? 'text-ink-5' : 'text-ink-6'}>({p.slides} slides)</span>
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-ink-6 mt-1">One click fills Audience and Style memory below.</p>
+            <p className="text-[11px] text-ink-6 mt-1">
+              {allPresets
+                ? `Generates ${count === 1 ? 'one slideshow' : `${count} slideshows`} for every preset — ${presets.length} batches, each with its own slide count.`
+                : 'One click fills Audience and Style memory below.'}
+            </p>
           </div>
 
           {/* Audience override */}
@@ -231,10 +262,10 @@ export function GenerateModal({
               Audience <span className="normal-case font-normal text-ink-6">(optional)</span>
             </label>
             <input
-              value={audience}
+              value={allPresets ? '' : audience}
               onChange={(e) => setAudience(e.target.value)}
-              placeholder={defaultAudience || 'e.g. busy parents in their 30s'}
-              disabled={generating}
+              placeholder={allPresets ? 'Set per preset when generating all' : defaultAudience || 'e.g. busy parents in their 30s'}
+              disabled={generating || allPresets}
               className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink placeholder:text-ink-6 outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
             />
             <p className="text-[11px] text-ink-6 mt-1">Leave blank to use the Brain default for this project.</p>
@@ -250,11 +281,11 @@ export function GenerateModal({
               follows this closely.
             </p>
             <textarea
-              value={styleMemory}
+              value={allPresets ? '' : styleMemory}
               onChange={(e) => setStyleMemory(e.target.value)}
-              placeholder={defaultStyleMemory || 'Leave blank to use your saved Style memory from Brain.'}
+              placeholder={allPresets ? 'Set per preset when generating all' : defaultStyleMemory || 'Leave blank to use your saved Style memory from Brain.'}
               rows={5}
-              disabled={generating}
+              disabled={generating || allPresets}
               className={`${textareaClass} font-mono text-[12px] leading-relaxed`}
             />
             <p className="text-[11px] text-ink-6 mt-1">Leave blank to use the Brain default for this project.</p>
@@ -269,7 +300,11 @@ export function GenerateModal({
             onClick={submit}
             disabled={generating}
           >
-            {generating ? 'Generating…' : `Generate ${count}`}
+            {generating
+              ? 'Generating…'
+              : allPresets
+                ? `Generate all ${presets.length}`
+                : `Generate ${count}`}
           </Button>
         </div>
       </div>
