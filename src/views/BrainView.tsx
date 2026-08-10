@@ -4,6 +4,8 @@ import { ViewHeader } from '../components/ViewHeader';
 import { GENDERS, getQuitPresets, type Gender } from '../lib/quitPresets';
 import { getMergedPacks } from '../lib/mergedLibrary';
 import { MusicStartsEditor } from '../components/MusicStartsEditor';
+import { DownloadFoldersEditor } from '../components/DownloadFoldersEditor';
+import { supportsFolderPresets } from '../lib/downloadFolders';
 
 interface BrainViewProps {
   brain: BrainState;
@@ -145,6 +147,16 @@ export function BrainView({ brain, onChange, povPackMen, povPackWomen, onChangeP
               className={`${textareaClass} font-mono text-[12px] leading-relaxed`}
             />
           </Section>
+
+          {/* Download folders — only on browsers that can write to a folder (Chromium) */}
+          {supportsFolderPresets() && (
+            <Section
+              title="Download folders"
+              description="Save exported videos and slides straight into a folder you pick, instead of your browser's Downloads. Add the folders you use, set one as the default, and downloads land there — no moving files by hand. Chrome/Edge only; saved in this browser."
+            >
+              <DownloadFoldersEditor />
+            </Section>
+          )}
 
           {/* Video music start points */}
           <Section

@@ -10,6 +10,7 @@ import type { Slide, Slideshow } from '../types';
 import { FONT_SIZE_PCT, LINE_HEIGHT, SIDE_PAD_PCT, pct, captionStyleSpec, primaryFontFamily, cleanCaption } from './captionStyle';
 import { resolveImageSrc } from './imageSrc';
 import { createZip, dataUrlToBytes, type ZipEntry } from './zip';
+import { writeFileToDir } from './downloadFolders';
 import { pickMusicTrack, type MusicGender, type MusicTrack } from './music';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 
@@ -161,12 +162,23 @@ function slugify(text: string): string {
   );
 }
 
-// Render every slide to a PNG and save each to disk via a temporary <a download>
-// link. Browsers throttle back-to-back programmatic downloads, so we space them
-// out a little rather than firing all of them in the same tick.
-export async function downloadSlideshow(show: Slideshow): Promise<void> {
+// Render every slide to a PNG and save it. With a `dir` (a folder preset chosen
+// on a Chromium browser — see lib/downloadFolders.ts) the PNGs are written
+// straight into a per-post subfolder there. Without one we fall back to the
+// classic <a download> link per slide; browsers throttle back-to-back
+// programmatic downloads, so we space those out rather than firing all at once.
+export async function downloadSlideshow(
+  show: Slideshow,
+  dir?: FileSystemDirectoryHandle | null,
+): Promise<void> {
   const slides = await renderSlideshow(show);
   const base = slugify(show.hook || show.caption || show.id);
+  if (dir) {
+    for (let i = 0; i < slides.length; i++) {
+      await writeFileToDir(dir, `${base}/${base}-${i + 1}.png`, dataUrlToBytes(slides[i]));
+    }
+    return;
+  }
   for (let i = 0; i < slides.length; i++) {
     const a = document.createElement('a');
     a.href = slides[i];
@@ -211,11 +223,15 @@ function videoMetaJson(show: Slideshow): string {
   return JSON.stringify(videoMeta(show), null, 2);
 }
 
-// Bundle several slideshows into ONE zip. Each post gets its own folder
-// containing its images (named with the slide's order number at the end) and a
-// text file with the title, body, hashtags and folder name. Triggers a single
-// browser download.
-export async function downloadSlideshowsZip(shows: Slideshow[]): Promise<void> {
+// Bundle several slideshows into ONE zip — or, with a `dir` (a folder preset on
+// a Chromium browser), write each post's folder straight into it, no zip to
+// unpack. Each post gets its own folder containing its images (named with the
+// slide's order number at the end) and a text file with the title, body and
+// hashtags. Without a `dir` a single browser download of the zip is triggered.
+export async function downloadSlideshowsZip(
+  shows: Slideshow[],
+  dir?: FileSystemDirectoryHandle | null,
+): Promise<void> {
   const entries: ZipEntry[] = [];
   const usedFolders = new Set<string>();
 
@@ -250,6 +266,12 @@ export async function downloadSlideshowsZip(shows: Slideshow[]): Promise<void> {
       data: new TextEncoder().encode(captionFile(show)),
       date: nextDate(),
     });
+  }
+
+  // Straight to the chosen folder — write every entry (subfolders and all).
+  if (dir) {
+    for (const entry of entries) await writeFileToDir(dir, entry.name, entry.data);
+    return;
   }
 
   const blob = createZip(entries);
@@ -794,6 +816,7 @@ export async function downloadSlideshowsVideo(
   shows: Slideshow[],
   onProgress?: (done: number, total: number) => void,
   music?: MusicGender | null,
+  dir?: FileSystemDirectoryHandle | null,
 ): Promise<void> {
   if (!shows.length) return;
 
@@ -807,6 +830,14 @@ export async function downloadSlideshowsVideo(
     const blob = await renderSlideshowVideo(shows[0], await trackFor());
     onProgress?.(1, 1);
     const base = slugify(shows[0].hook || shows[0].caption || shows[0].id);
+    const videoName = `${base}.${extForMime(blob.type)}`;
+    const metaJson = videoMetaJson(shows[0]);
+    // Straight into the chosen folder — video + sidecar, no zip, no move.
+    if (dir) {
+      await writeFileToDir(dir, videoName, new Uint8Array(await blob.arrayBuffer()));
+      await writeFileToDir(dir, `${base}.json`, new TextEncoder().encode(metaJson));
+      return;
+    }
     const saveFile = (href: string, name: string) => {
       const a = document.createElement('a');
       a.href = href;
@@ -816,18 +847,19 @@ export async function downloadSlideshowsVideo(
       a.remove();
     };
     const url = URL.createObjectURL(blob);
-    saveFile(url, `${base}.${extForMime(blob.type)}`);
+    saveFile(url, videoName);
     URL.revokeObjectURL(url);
     // Space the second download out — browsers throttle back-to-back saves.
     await new Promise((r) => setTimeout(r, 200));
-    const metaUrl = URL.createObjectURL(new Blob([videoMetaJson(shows[0])], { type: 'application/json' }));
+    const metaUrl = URL.createObjectURL(new Blob([metaJson], { type: 'application/json' }));
     saveFile(metaUrl, `${base}.json`);
     URL.revokeObjectURL(metaUrl);
     return;
   }
 
   // Several → render each and bundle into one zip (stored, since the video is
-  // already compressed), stamped in order so they sort by "date modified".
+  // already compressed), stamped in order so they sort by "date modified". With
+  // a chosen folder, write each video + sidecar straight in instead of zipping.
   const entries: ZipEntry[] = [];
   const usedNames = new Set<string>();
   const base = Date.now();
@@ -843,19 +875,21 @@ export async function downloadSlideshowsVideo(
     usedNames.add(name);
 
     const blob = await renderSlideshowVideo(show, await trackFor());
-    entries.push({
-      name: `${name}.${extForMime(blob.type)}`,
-      data: new Uint8Array(await blob.arrayBuffer()),
-      date: new Date(base + i * 60_000),
-    });
-    // A metadata sidecar next to each video so the whole zip is upload-ready.
-    entries.push({
-      name: `${name}.json`,
-      data: new TextEncoder().encode(videoMetaJson(show)),
-      date: new Date(base + i * 60_000),
-    });
+    const videoName = `${name}.${extForMime(blob.type)}`;
+    const videoBytes = new Uint8Array(await blob.arrayBuffer());
+    const metaBytes = new TextEncoder().encode(videoMetaJson(show));
+    if (dir) {
+      await writeFileToDir(dir, videoName, videoBytes);
+      await writeFileToDir(dir, `${name}.json`, metaBytes);
+    } else {
+      entries.push({ name: videoName, data: videoBytes, date: new Date(base + i * 60_000) });
+      // A metadata sidecar next to each video so the whole zip is upload-ready.
+      entries.push({ name: `${name}.json`, data: metaBytes, date: new Date(base + i * 60_000) });
+    }
     onProgress?.(i + 1, shows.length);
   }
+
+  if (dir) return; // already written straight into the folder
 
   const zip = createZip(entries);
   const url = URL.createObjectURL(zip);
