@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Download, Film } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Download, Film, Folder } from 'lucide-react';
 import type { Slideshow } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { SlidePreview } from '../components/SlidePreview';
@@ -9,6 +9,14 @@ import { IconButton } from '../components/IconButton';
 import { MusicChoiceModal } from '../components/MusicChoiceModal';
 import { downloadSlideshow, downloadSlideshowsZip, downloadSlideshowsVideo } from '../lib/render';
 import type { MusicGender } from '../lib/music';
+import {
+  supportsFolderPresets,
+  listFolderPresets,
+  getDefaultFolderId,
+  setDefaultFolderId,
+  resolveWritableFolder,
+  type FolderPreset,
+} from '../lib/downloadFolders';
 
 interface QueueViewProps {
   slideshows: Slideshow[];
@@ -45,13 +53,30 @@ export function QueueView({
   const [downloadingBulk, setDownloadingBulk] = useState(false);
   const [videoProgress, setVideoProgress] = useState<{ done: number; total: number } | null>(null);
   const [askMusic, setAskMusic] = useState(false);
+  // Download destination (Chromium only). `destId` is the folder preset downloads
+  // save into; null → the browser's Downloads folder. Loaded from the saved
+  // default; changing it here also updates that default so it sticks.
+  const [folderPresets, setFolderPresets] = useState<FolderPreset[]>([]);
+  const [destId, setDestId] = useState<string | null>(getDefaultFolderId());
+
+  useEffect(() => {
+    if (supportsFolderPresets()) listFolderPresets().then(setFolderPresets).catch(() => undefined);
+  }, []);
+
+  const chooseDest = (id: string | null) => {
+    setDestId(id);
+    setDefaultFolderId(id);
+  };
 
   const selectedShows = () => slideshows.filter((s) => selectedIds.includes(s.id));
 
   const downloadSelected = async () => {
     setDownloadingBulk(true);
     try {
-      await downloadSlideshowsZip(selectedShows());
+      // Resolve the folder inside this click (a user gesture) so the permission
+      // prompt is allowed; null falls back to a normal browser download.
+      const dir = await resolveWritableFolder(destId);
+      await downloadSlideshowsZip(selectedShows(), dir);
     } finally {
       setDownloadingBulk(false);
     }
@@ -61,10 +86,12 @@ export function QueueView({
     setAskMusic(false);
     setVideoProgress({ done: 0, total: selectedCount });
     try {
+      const dir = await resolveWritableFolder(destId);
       await downloadSlideshowsVideo(
         selectedShows(),
         (done, total) => setVideoProgress({ done, total }),
         music,
+        dir,
       );
     } finally {
       setVideoProgress(null);
@@ -78,6 +105,9 @@ export function QueueView({
         subtitle={`${slideshows.length} slideshows waiting for your review. Approve to send to the scheduler.`}
         right={
           <>
+            {folderPresets.length > 0 && (
+              <FolderDestSelect presets={folderPresets} value={destId} onChange={chooseDest} />
+            )}
             {selectedCount > 0 ? (
               <>
                 <span className="text-[12px] text-ink-5">{selectedCount} selected</span>
@@ -166,6 +196,7 @@ export function QueueView({
                 key={s.id}
                 slideshow={s}
                 selected={selectedIds.includes(s.id)}
+                destId={destId}
                 onToggleSelect={() => onToggleSelect(s.id)}
                 onApprove={() => onApprove(s.id)}
                 onReject={() => onReject(s.id)}
@@ -190,13 +221,14 @@ export function QueueView({
 interface CardProps {
   slideshow: Slideshow;
   selected: boolean;
+  destId: string | null;
   onToggleSelect: () => void;
   onApprove: () => void;
   onReject: () => void;
   onEdit: () => void;
 }
 
-function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onReject, onEdit }: CardProps) {
+function SlideshowCard({ slideshow, selected, destId, onToggleSelect, onApprove, onReject, onEdit }: CardProps) {
   const [downloading, setDownloading] = useState(false);
   const [renderingVideo, setRenderingVideo] = useState(false);
   const [askMusic, setAskMusic] = useState(false);
@@ -204,7 +236,8 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
   const download = async () => {
     setDownloading(true);
     try {
-      await downloadSlideshow(slideshow);
+      const dir = await resolveWritableFolder(destId);
+      await downloadSlideshow(slideshow, dir);
     } finally {
       setDownloading(false);
     }
@@ -214,7 +247,8 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
     setAskMusic(false);
     setRenderingVideo(true);
     try {
-      await downloadSlideshowsVideo([slideshow], undefined, music);
+      const dir = await resolveWritableFolder(destId);
+      await downloadSlideshowsVideo([slideshow], undefined, music, dir);
     } finally {
       setRenderingVideo(false);
     }
@@ -302,5 +336,39 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
         />
       )}
     </div>
+  );
+}
+
+// Where downloads are saved: a folder preset, or the browser's Downloads folder.
+// Only shown when the browser supports folder presets and at least one exists.
+// Manage the list of folders in Brain → Download folders.
+function FolderDestSelect({
+  presets,
+  value,
+  onChange,
+}: {
+  presets: FolderPreset[];
+  value: string | null;
+  onChange: (id: string | null) => void;
+}) {
+  return (
+    <label
+      className="flex items-center gap-1.5 h-8 pl-2 pr-1 rounded-lg border border-line bg-card text-ink-4"
+      title="Where downloads are saved. Manage folders in Brain."
+    >
+      <Folder size={13} className="shrink-0 text-ink-5" />
+      <select
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value || null)}
+        className="bg-transparent text-[12px] text-ink outline-none max-w-[140px] cursor-pointer"
+      >
+        <option value="">Downloads folder</option>
+        {presets.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
