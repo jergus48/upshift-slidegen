@@ -41,33 +41,67 @@ function extractJson(text) {
 // One chat completion that must return a JSON object. `sampling` can carry
 // temperature / frequency_penalty / presence_penalty — the human-voice tools
 // crank these up to escape the model's safe, generic, AI-sounding default.
+// Smallest output we'll ever ask for after a credit-driven downshift — below
+// this the JSON can't hold even a tiny slideshow, so failing loudly is better.
+const MIN_AFFORDABLE_TOKENS = 800
+
 export async function chatJSON({ apiKey, model, prompt, sampling = {} }) {
   if (!apiKey) throw new Error('Missing OpenRouter API key. Add it in Settings.')
   if (!model) throw new Error('No model selected. Pick one in Settings.')
 
-  const res = await fetch(`${BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'content-type': 'application/json',
-      ...ATTRIBUTION,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 6000,
-      response_format: { type: 'json_object' },
-      ...sampling,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  })
+  // Caller may size max_tokens to the request (see generate.js); default 6000.
+  const wantTokens = Number(sampling.max_tokens) || 6000
+  const { max_tokens: _ignore, ...restSampling } = sampling
 
-  const body = await res.json().catch(() => null)
+  const call = async (maxTokens) => {
+    const res = await fetch(`${BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+        ...ATTRIBUTION,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        response_format: { type: 'json_object' },
+        ...restSampling,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
+    const body = await res.json().catch(() => null)
+    return { res, body }
+  }
+
+  let { res, body } = await call(wantTokens)
+
+  // Low-balance safety net: OpenRouter 402s with "can only afford N" when the
+  // requested max_tokens exceeds the account's remaining credits. Retry once
+  // with a limit that fits, so a nearly-empty account still generates instead
+  // of hard-failing mid-batch. See buildPrompt's adaptive sizing in generate.js.
+  if (res.status === 402) {
+    const afford = affordableTokens(body?.error?.message)
+    if (afford && afford >= MIN_AFFORDABLE_TOKENS && afford < wantTokens) {
+      ;({ res, body } = await call(afford))
+    }
+  }
+
   if (!res.ok) {
     throw new Error(`OpenRouter ${res.status}: ${body?.error?.message || res.statusText}`)
   }
   const content = body?.choices?.[0]?.message?.content
   if (!content) throw new Error('OpenRouter returned no content.')
   return extractJson(content)
+}
+
+// Pull the affordable token budget out of a 402 message, e.g.
+// "...you can only afford 5514." → 5514. A small margin is shaved so the retry
+// lands safely under the limit (prompt-token accounting can shift slightly).
+function affordableTokens(message) {
+  if (typeof message !== 'string') return null
+  const m = message.match(/can only afford (\d+)/i)
+  if (!m) return null
+  return Math.max(0, Number(m[1]) - 64)
 }
 
 // Like chatJSON but supports images (vision). `images` are data URLs or http

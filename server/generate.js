@@ -99,6 +99,16 @@ Each slideshow's "slides" array MUST contain exactly ${slidesPerShow} strings �
 // truncate the JSON. Each call asks for a handful; we loop until we hit `count`.
 const BATCH = 6
 
+// Size the output budget to what this batch actually needs instead of a flat
+// 6000, so a single deck reserves ~2k not 6k. That keeps requests affordable on
+// low-credit accounts (OpenRouter checks max_tokens against your balance and
+// 402s if it exceeds it). Generous per-slide budget (long "Title + body" slides)
+// plus per-show JSON overhead; capped at 6000 and floored so JSON never truncates.
+function estimateMaxTokens(n, slidesPerShow) {
+  const perShow = slidesPerShow * 130 + 400 // slides + hook/caption/hashtags/rationale
+  return Math.min(6000, Math.max(1500, n * perShow + 200))
+}
+
 export async function generateSlideshows({ apiKey, model, brain, count = 4, slidesPerShow = 6, length = 'short' }) {
   log.start(`Generating ${count} slideshow${count === 1 ? '' : 's'} (${slidesPerShow} slides each) with ${model}`)
   if (brain?.niche) log.info(`niche: ${brain.niche}${brain.appName ? ` · ${brain.appName}` : ''}`)
@@ -108,7 +118,12 @@ export async function generateSlideshows({ apiKey, model, brain, count = 4, slid
     safety++
     const n = Math.min(BATCH, count - raw.length)
     log.step(`asking model for ${n} more (${raw.length}/${count} so far)…`)
-    const parsed = await chatJSON({ apiKey, model, prompt: buildPrompt(brain, n, slidesPerShow, length) })
+    const parsed = await chatJSON({
+      apiKey,
+      model,
+      prompt: buildPrompt(brain, n, slidesPerShow, length),
+      sampling: { max_tokens: estimateMaxTokens(n, slidesPerShow) },
+    })
     const batch = parsed.slideshows || []
     if (!batch.length) {
       log.warn('model returned no slideshows — stopping early')
