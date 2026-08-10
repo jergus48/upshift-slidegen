@@ -392,23 +392,47 @@ Write a JSON object with this exact shape:
 Rules: base every claim on the data given — do NOT invent prices, targets or ratings. If analyst data is missing for a name, say so rather than guessing. Do not promise returns or use hype. Keep it concise and specific. Include one position object for every holding. Return only the JSON.`
 }
 
-// A universe of large, liquid US names across sectors that FMP's free plan
-// covers with analyst data. Ideas are screened from these on real signals — not
-// invented by the model. Held names are filtered out at request time.
-const IDEA_UNIVERSE = [
-  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'AVGO', 'JPM', 'V', 'MA',
-  'UNH', 'JNJ', 'LLY', 'PG', 'KO', 'PEP', 'HD', 'COST', 'WMT', 'DIS',
-  'NFLX', 'CRM', 'AMD', 'XOM', 'CVX', 'BAC', 'MRK', 'ABBV', 'TMO', 'ADBE',
-  'NKE', 'MCD', 'CAT', 'GE', 'QCOM', 'TXN',
-]
+// The screening universe, grouped by theme. Deliberately mixes megacaps with
+// higher-beta mid-caps and less-obvious "niche" names (specialty consumer,
+// cybersecurity, fintech, semis, GLP-1/medtech, nuclear/power, growth SaaS) —
+// the kind of names that can move a lot, not just the mega-cap defaults. Ideas
+// are still screened from these on REAL signals (analyst upside, rating, 52-week
+// position, earnings, momentum), never invented. Held names are filtered out at
+// request time, and picks are diversified across themes so the list isn't all
+// one sector. All US-listed so FMP's free plan can supply analyst data.
+const IDEA_THEMES = {
+  megacap: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'AVGO', 'NFLX'],
+  semis: ['AMD', 'QCOM', 'TXN', 'MU', 'MRVL', 'ARM', 'SMCI', 'ANET', 'MPWR', 'ON', 'LRCX', 'KLAC'],
+  software: ['CRM', 'ADBE', 'NOW', 'PLTR', 'CRWD', 'PANW', 'ZS', 'NET', 'DDOG', 'SNOW', 'MDB', 'TEAM', 'HUBS'],
+  fintech: ['V', 'MA', 'JPM', 'HOOD', 'COIN', 'SOFI', 'AFRM', 'NU', 'TOST'],
+  consumer: ['ELF', 'CELH', 'ONON', 'DECK', 'CROX', 'ANF', 'WING', 'CAVA', 'DKNG', 'RCL', 'CMG', 'LULU'],
+  ecommerce: ['SHOP', 'MELI', 'SE', 'DASH', 'ABNB', 'UBER'],
+  health: ['LLY', 'UNH', 'ISRG', 'VRTX', 'REGN', 'DXCM', 'PODD', 'HIMS', 'NVO'],
+  energy: ['XOM', 'CVX', 'LNG', 'VST', 'CEG', 'GEV', 'FSLR', 'ENPH'],
+  staples: ['COST', 'WMT', 'PG', 'KO', 'PEP', 'MCD'],
+  industrial: ['CAT', 'GE', 'DE', 'ETN', 'PWR'],
+}
+const IDEA_UNIVERSE = [...new Set(Object.values(IDEA_THEMES).flat())]
+const THEME_OF = new Map(Object.entries(IDEA_THEMES).flatMap(([theme, syms]) => syms.map((s) => [s, theme])))
 
-// Score a candidate: reward analyst upside, a bullish rating, and being cheap
-// within its 52-week range (a rough "not chasing the top" signal). Deterministic
-// — the ranking is facts, the model only phrases the thesis afterwards.
+// How many ideas to surface (up from the original 6 — the user asked for more).
+const IDEA_COUNT = 12
+// Cap per theme so the list stays diverse (no all-semis wall).
+const MAX_PER_THEME = 3
+
+// Score a candidate: reward analyst upside and a bullish rating, plus EITHER of
+// two paths to a move — being cheap within its 52-week range (mean-reversion) OR
+// showing strong momentum with an earnings beat (trend). Small extra nudge for
+// smaller-cap "niche" names, which have more room to run. Deterministic — the
+// ranking is facts; the model only phrases the thesis afterwards.
 function ideaScore(c) {
   const ratingBonus = { 'Strong Buy': 12, Buy: 8, Outperform: 8, Hold: 0, Sell: -15, 'Strong Sell': -20 }[c.rating] ?? 0
-  const cheapBonus = c.pos52 != null ? (1 - c.pos52) * 15 : 0 // near 52w low → up to +15
-  return (c.upsidePct ?? 0) + ratingBonus + cheapBonus
+  const cheapBonus = c.pos52 != null ? (1 - c.pos52) * 12 : 0 // near 52w low → up to +12
+  // Momentum: high in the range AND a positive earnings beat = a working trend.
+  const momoBonus = c.pos52 != null && c.pos52 >= 0.6 && (c.epsBeat ?? -1) > 0 ? c.pos52 * 10 : 0
+  // "Niche" nudge: sub-$50B caps have more torque than the megacaps.
+  const nicheBonus = c.marketCap != null && c.marketCap > 0 && c.marketCap < 50e9 ? 6 : 0
+  return (c.upsidePct ?? 0) + ratingBonus + Math.max(cheapBonus, momoBonus) + nicheBonus
 }
 
 // Screen the universe for buy ideas grounded in real data: analyst target upside
@@ -420,7 +444,9 @@ export async function rankIdeaCandidates(held, apiKey) {
   const quotes = await fetchQuotes(universe, apiKey)
   const qBy = new Map(quotes.map((q) => [q.symbol.toUpperCase(), q]))
 
-  // Ranking pass: quote (have it) + analyst target (1 cached call each).
+  // Ranking pass: quote (have it, incl. marketCap) + analyst target (1 cached
+  // call each). epsBeat isn't known yet, so this prelim score uses upside +
+  // cheapness + the niche cap nudge to pick a shortlist to enrich.
   const scored = (
     await Promise.all(
       universe.map(async (sym) => {
@@ -436,16 +462,30 @@ export async function rankIdeaCandidates(held, apiKey) {
           q.yearHigh != null && q.yearLow != null && q.yearHigh > q.yearLow
             ? (q.price - q.yearLow) / (q.yearHigh - q.yearLow)
             : null
-        return { symbol: sym, name: q.name, price: q.price, currency: q.currency, consensus, upsidePct, pos52 }
+        return {
+          symbol: sym,
+          name: q.name,
+          price: q.price,
+          currency: q.currency,
+          marketCap: q.marketCap,
+          theme: THEME_OF.get(sym) || 'other',
+          consensus,
+          upsidePct,
+          pos52,
+        }
       })
     )
   ).filter(Boolean)
 
-  const top = scored.sort((a, b) => ideaScore({ ...b, rating: '' }) - ideaScore({ ...a, rating: '' })).slice(0, 6)
+  // Shortlist by prelim score — wider than the final count so the momentum
+  // re-rank (which needs earnings) and theme diversification have room to work.
+  const shortlist = scored
+    .sort((a, b) => ideaScore({ ...b, rating: '' }) - ideaScore({ ...a, rating: '' }))
+    .slice(0, IDEA_COUNT * 2)
 
-  // Enrichment pass for the finalists only: rating, last earnings, a headline.
-  return Promise.all(
-    top.map(async (c) => {
+  // Enrichment pass for the shortlist: rating, last earnings, a headline.
+  const enriched = await Promise.all(
+    shortlist.map(async (c) => {
       const [grades, earnings, news] = await Promise.all([
         best(() => fmpGet('grades-consensus', apiKey, { symbol: c.symbol })).then(firstOf),
         best(() => fmpGet('earnings', apiKey, { symbol: c.symbol, limit: 5 })),
@@ -465,6 +505,28 @@ export async function rankIdeaCandidates(held, apiKey) {
       }
     })
   )
+
+  // Final re-rank with the full signal set (now incl. epsBeat momentum), then
+  // diversify across themes so the list isn't dominated by one sector.
+  const ranked = enriched.sort((a, b) => ideaScore(b) - ideaScore(a))
+  const perTheme = new Map()
+  const picks = []
+  for (const c of ranked) {
+    const n = perTheme.get(c.theme) || 0
+    if (n >= MAX_PER_THEME) continue
+    perTheme.set(c.theme, n + 1)
+    picks.push(c)
+    if (picks.length >= IDEA_COUNT) break
+  }
+  // If theme caps left us short (small shortlist), backfill by pure score.
+  if (picks.length < IDEA_COUNT) {
+    for (const c of ranked) {
+      if (picks.includes(c)) continue
+      picks.push(c)
+      if (picks.length >= IDEA_COUNT) break
+    }
+  }
+  return picks
 }
 
 // Turn the screened candidates + their real numbers into short theses. The model
@@ -474,11 +536,13 @@ export function buildIdeasPrompt(candidates) {
     .map((c) => {
       const parts = [
         `${c.symbol} (${c.name})`,
+        c.theme ? `theme=${c.theme}` : null,
         `price=${round2(c.price)} ${c.currency}`,
+        c.marketCap != null ? `marketCap=${capLabel(c.marketCap)}` : null,
         c.consensus != null ? `analystTarget=${round2(c.consensus)} (upside ${round2(c.upsidePct)}%)` : null,
         c.rating ? `analystRating=${c.rating}` : null,
         c.pos52 != null
-          ? `positionIn52wkRange=${Math.round(c.pos52 * 100)}% (0%=at its 52-week low/cheap, 100%=at its 52-week high/expensive)`
+          ? `positionIn52wkRange=${Math.round(c.pos52 * 100)}% (0%=at its 52-week low/cheap, 100%=at its 52-week high/expensive; high+beating earnings = momentum)`
           : null,
         c.epsBeat != null ? `lastEPS=${c.epsBeat >= 0 ? 'beat' : 'missed'} by ${round2(Math.abs(c.epsBeat))}` : null,
         c.headline ? `headline="${c.headline}"` : null,
@@ -487,7 +551,7 @@ export function buildIdeasPrompt(candidates) {
     })
     .join('\n')
 
-  return `Below are stocks screened as potential long-term buys, each with real data. Write a concise, fact-based thesis for EACH one.
+  return `Below are stocks screened as potential buys across different themes/sectors, each with real data. They range from megacaps to smaller, higher-beta "niche" names. Write a punchy, fact-based thesis for EACH one that explains WHY it's interesting.
 
 Candidates:
 ${rows}
@@ -495,14 +559,22 @@ ${rows}
 Return JSON:
 {
   "ideas": [
-    { "symbol": "TICKER", "thesis": "1-2 sentences citing the SPECIFIC figures: analyst upside vs target, the rating, how cheap it is in its 52-week range, and the last earnings beat/miss and/or the headline. Attribute analyst views to 'analysts'." }
+    { "symbol": "TICKER", "thesis": "2-3 sentences citing MULTIPLE specific figures: the analyst upside vs target, the rating, where it sits in its 52-week range (frame it as value if low, momentum if high), the last earnings beat/miss, its size/theme (call out smaller-cap names as higher-torque), and how the headline fits. Attribute analyst views to 'analysts'." }
   ],
   "disclaimer": ${JSON.stringify(DISCLAIMER)}
 }
 
-Rules: use ONLY the numbers and headline given for each candidate — do not invent prices, targets, or facts. Every thesis must reference at least two concrete data points. No hype, no generic "market leader" filler. This is research to investigate, not a recommendation to buy. One idea object per candidate, same order. Return only the JSON.`
+Rules: use ONLY the numbers and headline given for each candidate — do not invent prices, targets, or facts. Every thesis must reference at least THREE concrete data points and give a clear reason the stock could move. Differentiate value plays (cheap in range) from momentum plays (high in range + earnings beat). No generic "market leader" filler. This is research to investigate, not a recommendation to buy. One idea object per candidate, same order. Return only the JSON.`
 }
 const round2 = (n) => (n == null ? null : Math.round(Number(n) * 100) / 100)
+// Human market-cap label for the ideas prompt (e.g. "$12.4B", "$1.2T").
+function capLabel(n) {
+  if (n == null || !(n > 0)) return null
+  if (n >= 1e12) return `$${round2(n / 1e12)}T`
+  if (n >= 1e9) return `$${round2(n / 1e9)}B`
+  if (n >= 1e6) return `$${round2(n / 1e6)}M`
+  return `$${Math.round(n)}`
+}
 
 // "Why did it move today?" — explain a stock's move strictly from the headlines
 // we hand the model, admitting uncertainty when the news doesn't explain it.

@@ -407,6 +407,8 @@ app.post('/api/stocks/ideas', h(async (req, res) => {
     rating: c.rating,
     pos52: c.pos52,
     epsBeat: c.epsBeat,
+    theme: c.theme,
+    marketCap: c.marketCap,
     headline: c.headline,
     headlineUrl: c.headlineUrl,
     headlineSite: c.headlineSite,

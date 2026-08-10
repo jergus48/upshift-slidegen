@@ -207,6 +207,8 @@ export interface StockIdea {
   rating: string;
   pos52: number | null; // 0 = at 52-week low, 1 = at 52-week high
   epsBeat: number | null; // last-quarter EPS actual − estimate (>0 = beat)
+  theme?: string; // screening theme/sector bucket (e.g. 'semis', 'consumer')
+  marketCap?: number | null; // used to flag smaller-cap "niche" names
   headline: string;
   headlineUrl: string;
   headlineSite: string;

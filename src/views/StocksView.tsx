@@ -855,7 +855,7 @@ function IdeasCard({ ideas, held, onClose }: { ideas: StockIdeas; held: string[]
         </button>
       </div>
       <p className="text-[11px] text-ink-6 mb-3">
-        Screened from liquid US stocks you don't hold, ranked on analyst upside, rating, 52-week position and last earnings.
+        Screened across sectors — megacaps to smaller, higher-torque "niche" names you don't hold — ranked on analyst upside, rating, 52-week position, earnings and momentum.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         {fresh.map((i) => (
@@ -880,6 +880,10 @@ function IdeasCard({ ideas, held, onClose }: { ideas: StockIdeas; held: string[]
               {i.epsBeat != null && (
                 <Chip color={i.epsBeat >= 0 ? 'emerald' : 'red'}>EPS {i.epsBeat >= 0 ? 'beat' : 'miss'}</Chip>
               )}
+              {i.marketCap != null && i.marketCap > 0 && i.marketCap < 50e9 && (
+                <Chip color="plain">small-cap</Chip>
+              )}
+              {i.theme && i.theme !== 'other' && <Chip color="plain">{i.theme}</Chip>}
             </div>
 
             {i.thesis && <p className="text-[12px] text-ink-4 mt-2 leading-snug">{i.thesis}</p>}
