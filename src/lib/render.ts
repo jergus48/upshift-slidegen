@@ -162,6 +162,14 @@ function slugify(text: string): string {
   );
 }
 
+// When saving into a chosen folder preset, split the two export kinds into their
+// own top-level subfolders so a folder never mixes image posts with videos:
+//   <chosen folder>/posts/<post>/…   and   <chosen folder>/videos/<video>.mp4
+// Only applies to the folder-preset path; plain browser-download zips are
+// unaffected. See lib/downloadFolders.ts.
+const POSTS_SUBDIR = 'posts';
+const VIDEOS_SUBDIR = 'videos';
+
 // Render every slide to a PNG and save it. With a `dir` (a folder preset chosen
 // on a Chromium browser — see lib/downloadFolders.ts) the PNGs are written
 // straight into a per-post subfolder there. Without one we fall back to the
@@ -175,7 +183,7 @@ export async function downloadSlideshow(
   const base = slugify(show.hook || show.caption || show.id);
   if (dir) {
     for (let i = 0; i < slides.length; i++) {
-      await writeFileToDir(dir, `${base}/${base}-${i + 1}.png`, dataUrlToBytes(slides[i]));
+      await writeFileToDir(dir, `${POSTS_SUBDIR}/${base}/${base}-${i + 1}.png`, dataUrlToBytes(slides[i]));
     }
     return;
   }
@@ -268,9 +276,9 @@ export async function downloadSlideshowsZip(
     });
   }
 
-  // Straight to the chosen folder — write every entry (subfolders and all).
+  // Straight to the chosen folder — write every entry under the posts/ subfolder.
   if (dir) {
-    for (const entry of entries) await writeFileToDir(dir, entry.name, entry.data);
+    for (const entry of entries) await writeFileToDir(dir, `${POSTS_SUBDIR}/${entry.name}`, entry.data);
     return;
   }
 
@@ -832,10 +840,10 @@ export async function downloadSlideshowsVideo(
     const base = slugify(shows[0].hook || shows[0].caption || shows[0].id);
     const videoName = `${base}.${extForMime(blob.type)}`;
     const metaJson = videoMetaJson(shows[0]);
-    // Straight into the chosen folder — video + sidecar, no zip, no move.
+    // Straight into the chosen folder — video + sidecar under videos/, no zip.
     if (dir) {
-      await writeFileToDir(dir, videoName, new Uint8Array(await blob.arrayBuffer()));
-      await writeFileToDir(dir, `${base}.json`, new TextEncoder().encode(metaJson));
+      await writeFileToDir(dir, `${VIDEOS_SUBDIR}/${videoName}`, new Uint8Array(await blob.arrayBuffer()));
+      await writeFileToDir(dir, `${VIDEOS_SUBDIR}/${base}.json`, new TextEncoder().encode(metaJson));
       return;
     }
     const saveFile = (href: string, name: string) => {
@@ -879,8 +887,8 @@ export async function downloadSlideshowsVideo(
     const videoBytes = new Uint8Array(await blob.arrayBuffer());
     const metaBytes = new TextEncoder().encode(videoMetaJson(show));
     if (dir) {
-      await writeFileToDir(dir, videoName, videoBytes);
-      await writeFileToDir(dir, `${name}.json`, metaBytes);
+      await writeFileToDir(dir, `${VIDEOS_SUBDIR}/${videoName}`, videoBytes);
+      await writeFileToDir(dir, `${VIDEOS_SUBDIR}/${name}.json`, metaBytes);
     } else {
       entries.push({ name: videoName, data: videoBytes, date: new Date(base + i * 60_000) });
       // A metadata sidecar next to each video so the whole zip is upload-ready.
