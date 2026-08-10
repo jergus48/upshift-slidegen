@@ -114,7 +114,11 @@ export interface Holding {
   symbol: string;
   name: string;
   shares: number;
-  avgPrice: number; // average cost per share, in the quote's currency
+  avgPrice: number; // average cost per share, in the listing's trading currency
+  // Trading currency of the picked ticker (e.g. EUR for OMV.VI, USD for AAPL).
+  // Captured from the search result so avg cost renders correctly before the
+  // live quote loads. Optional for backwards-compat with older saved holdings.
+  currency?: string;
 }
 
 // Live quote as normalized by the server (server/stocks.js). Numeric fields can
@@ -134,7 +138,9 @@ export interface StockQuote {
   marketCap: number | null;
   volume: number | null;
   exchange: string;
+  currency: string;
   timestamp: number | null;
+  source: 'fmp' | 'yahoo';
 }
 
 export interface StockNews {
@@ -189,8 +195,26 @@ export interface PortfolioSummary {
   disclaimer: string;
 }
 
+// Fact-screened buy ideas. The figures come from the data screener; `thesis` is
+// the model's phrasing of them.
+export interface StockIdea {
+  symbol: string;
+  name: string;
+  price: number | null;
+  currency: string;
+  targetConsensus: number | null;
+  upsidePct: number | null;
+  rating: string;
+  pos52: number | null; // 0 = at 52-week low, 1 = at 52-week high
+  epsBeat: number | null; // last-quarter EPS actual − estimate (>0 = beat)
+  headline: string;
+  headlineUrl: string;
+  headlineSite: string;
+  thesis: string;
+}
+
 export interface StockIdeas {
-  ideas: { symbol: string; name: string; thesis: string; category: string }[];
+  ideas: StockIdea[];
   disclaimer: string;
 }
 

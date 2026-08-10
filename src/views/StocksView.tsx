@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   RefreshCw,
   Loader2,
@@ -34,12 +34,16 @@ import {
 import { loadHoldings, saveHoldings } from '../lib/localPortfolio';
 
 // ── formatting helpers ───────────────────────────────────────────────────────
-const money = (n: number | null | undefined, dp = 2) =>
-  n == null || Number.isNaN(n) ? '—' : `$${n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+// Currency symbol for the common cases (holdings can be USD, EUR, GBP… since
+// prices may come from Yahoo for European listings). Falls back to the ISO code.
+const CUR: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', CHF: 'CHF ', JPY: '¥', CAD: 'C$', AUD: 'A$', GBp: 'p' };
+const curSym = (c?: string) => (c ? CUR[c] ?? `${c} ` : '$');
+const money = (n: number | null | undefined, cur?: string, dp = 2) =>
+  n == null || Number.isNaN(n) ? '—' : `${curSym(cur)}${n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
 const pct = (n: number | null | undefined) => (n == null || Number.isNaN(n) ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`);
 // A signed money value with an explicit + / − so a loss never reads as a gain.
-const signedMoney = (n: number | null | undefined, dp = 2) =>
-  n == null || Number.isNaN(n) ? '—' : `${n >= 0 ? '+' : '−'}${money(Math.abs(n), dp)}`;
+const signedMoney = (n: number | null | undefined, cur?: string, dp = 2) =>
+  n == null || Number.isNaN(n) ? '—' : `${n >= 0 ? '+' : '−'}${money(Math.abs(n), cur, dp)}`;
 function fmtDate(iso: string) {
   const t = new Date(iso).getTime();
   if (!t) return iso;
@@ -52,6 +56,7 @@ const upColor = (n: number | null | undefined) =>
 interface Row {
   h: Holding;
   quote: StockQuote | null;
+  cur: string; // display currency for this holding (from its quote)
   value: number | null; // shares × price
   cost: number; // shares × avgPrice
   gain: number | null; // value − cost
@@ -140,7 +145,7 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
         const cost = h.avgPrice * h.shares;
         const gain = value != null ? value - cost : null;
         const gainPct = price != null && h.avgPrice > 0 ? ((price - h.avgPrice) / h.avgPrice) * 100 : null;
-        return { h, quote, value, cost, gain, gainPct };
+        return { h, quote, cur: quote?.currency || h.currency || 'USD', value, cost, gain, gainPct };
       })
       .sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
   }, [holdings, quotes]);
@@ -162,7 +167,19 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
     const gain = haveValue ? value - cost : null;
     const gainPct = haveValue && cost > 0 ? (gain! / cost) * 100 : null;
     const dayPct = haveValue && value - dayChange > 0 ? (dayChange / (value - dayChange)) * 100 : null;
-    return { value: haveValue ? value : null, gain, gainPct, dayChange: haveValue ? dayChange : null, dayPct };
+    // Totals only make sense in one currency. Detect the set of currencies in
+    // use; if holdings mix (e.g. some EUR listings + some USD), flag it so the
+    // total isn't silently misleading.
+    const currencies = [...new Set(rows.filter((r) => r.value != null).map((r) => r.cur))];
+    return {
+      value: haveValue ? value : null,
+      gain,
+      gainPct,
+      dayChange: haveValue ? dayChange : null,
+      dayPct,
+      cur: currencies[0] || 'USD',
+      mixed: currencies.length > 1,
+    };
   }, [rows]);
 
   // Open a holding → lazily fetch its full analysis once.
@@ -288,16 +305,16 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
           <div className="px-4 sm:px-8 py-4 border-b border-line bg-surface">
             <div className="max-w-4xl mx-auto flex flex-wrap items-end gap-x-8 gap-y-4 justify-between">
               <div className="flex flex-wrap gap-x-8 gap-y-4">
-                <Stat label="Portfolio value" value={money(totals.value)} />
+                <Stat label="Portfolio value" value={money(totals.value, totals.cur)} />
                 <Stat
                   label="Today"
-                  value={signedMoney(totals.dayChange)}
+                  value={signedMoney(totals.dayChange, totals.cur)}
                   sub={pct(totals.dayPct)}
                   color={upColor(totals.dayChange)}
                 />
                 <Stat
                   label="Total unrealised"
-                  value={signedMoney(totals.gain)}
+                  value={signedMoney(totals.gain, totals.cur)}
                   sub={pct(totals.gainPct)}
                   color={upColor(totals.gain)}
                 />
@@ -413,7 +430,7 @@ function AddHolding({ existing, onAdd }: { existing: string[]; onAdd: (h: Holdin
     const n = Number(shares);
     const p = Number(avg);
     if (!(n > 0) || !(p > 0)) return;
-    onAdd({ symbol: picked.symbol.toUpperCase(), name: picked.name, shares: n, avgPrice: p });
+    onAdd({ symbol: picked.symbol.toUpperCase(), name: picked.name, shares: n, avgPrice: p, currency: picked.currency || 'USD' });
     reset();
   };
 
@@ -422,7 +439,8 @@ function AddHolding({ existing, onAdd }: { existing: string[]; onAdd: (h: Holdin
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2 h-9 px-3 rounded-lg bg-card border border-line">
           <span className="text-[13px] font-semibold text-ink">{picked.symbol}</span>
-          <span className="text-[12px] text-ink-6 truncate max-w-[180px]">{picked.name}</span>
+          <span className="text-[12px] text-ink-6 truncate max-w-[160px]">{picked.name}</span>
+          {picked.currency && <span className="text-[11px] text-ink-5 shrink-0">· {picked.currency}</span>}
         </div>
         <input
           value={shares}
@@ -440,8 +458,8 @@ function AddHolding({ existing, onAdd }: { existing: string[]; onAdd: (h: Holdin
           type="number"
           min="0"
           step="any"
-          placeholder="Avg cost / share"
-          className="h-9 w-40 px-3 rounded-lg bg-card border border-line text-[13px] text-ink placeholder:text-ink-6 outline-none focus-visible:ring-2 focus-visible:ring-ink/10"
+          placeholder={`Avg cost / share${picked.currency ? ` (${picked.currency})` : ''}`}
+          className="h-9 w-48 px-3 rounded-lg bg-card border border-line text-[13px] text-ink placeholder:text-ink-6 outline-none focus-visible:ring-2 focus-visible:ring-ink/10"
         />
         <button
           onClick={commit}
@@ -533,7 +551,7 @@ function HoldingCard({
   onRemove: () => void;
   onEdit: (shares: number, avgPrice: number) => void;
 }) {
-  const { h, quote, value, gain, gainPct } = row;
+  const { h, quote, cur, value, gain, gainPct } = row;
   const [editing, setEditing] = useState(false);
   const [shares, setShares] = useState(String(h.shares));
   const [avg, setAvg] = useState(String(h.avgPrice));
@@ -556,14 +574,14 @@ function HoldingCard({
               <span className="text-[11px] text-ink-6 shrink-0">{h.symbol}</span>
             </div>
             <div className="text-[12px] text-ink-5 mt-0.5">
-              {h.shares} sh · avg {money(h.avgPrice)}
+              {h.shares} sh · avg {money(h.avgPrice, cur)}
             </div>
           </div>
         </button>
 
         {/* Price + today's move */}
         <div className="text-right shrink-0">
-          <div className="text-[14px] font-semibold text-ink">{money(quote?.price)}</div>
+          <div className="text-[14px] font-semibold text-ink">{money(quote?.price, cur)}</div>
           <div className={`text-[12px] ${upColor(quote?.changePct)} flex items-center gap-1 justify-end`}>
             {quote?.changePct != null && (quote.changePct >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />)}
             {pct(quote?.changePct)}
@@ -572,9 +590,9 @@ function HoldingCard({
 
         {/* Value + unrealized */}
         <div className="text-right shrink-0 w-28 hidden sm:block">
-          <div className="text-[14px] font-semibold text-ink">{money(value)}</div>
+          <div className="text-[14px] font-semibold text-ink">{money(value, cur)}</div>
           <div className={`text-[12px] ${upColor(gain)}`}>
-            {signedMoney(gain, 0)} · {pct(gainPct)}
+            {signedMoney(gain, cur, 0)} · {pct(gainPct)}
           </div>
         </div>
 
@@ -654,7 +672,7 @@ function HoldingCard({
           ) : 'error' in analysis ? (
             <ErrorNote text={analysis.error} />
           ) : (
-            <AnalysisBody a={analysis} price={quote?.price ?? null} />
+            <AnalysisBody a={analysis} price={quote?.price ?? null} cur={cur} />
           )}
         </div>
       )}
@@ -662,7 +680,7 @@ function HoldingCard({
   );
 }
 
-function AnalysisBody({ a, price }: { a: StockAnalysis; price: number | null }) {
+function AnalysisBody({ a, price, cur }: { a: StockAnalysis; price: number | null; cur: string }) {
   const t = a.target;
   const upside = t?.consensus != null && price != null && price > 0 ? ((t.consensus - price) / price) * 100 : null;
   const r = a.ratings;
@@ -677,15 +695,15 @@ function AnalysisBody({ a, price }: { a: StockAnalysis; price: number | null }) 
           {t && t.consensus != null ? (
             <>
               <div className="flex items-baseline gap-2">
-                <span className="text-[20px] font-semibold text-ink">{money(t.consensus)}</span>
+                <span className="text-[20px] font-semibold text-ink">{money(t.consensus, cur)}</span>
                 {upside != null && <span className={`text-[13px] ${upColor(upside)}`}>{pct(upside)} vs price</span>}
               </div>
               <div className="text-[12px] text-ink-6 mt-1">
-                range {money(t.low)} – {money(t.high)}
+                range {money(t.low, cur)} – {money(t.high, cur)}
               </div>
             </>
           ) : (
-            <div className="text-[12px] text-ink-6">No analyst target available on this plan.</div>
+            <div className="text-[12px] text-ink-6">No analyst target — {a.symbol} isn't covered by the free FMP plan (common for non-US listings).</div>
           )}
         </div>
         <div className="rounded-lg border border-line bg-card p-3">
@@ -698,7 +716,7 @@ function AnalysisBody({ a, price }: { a: StockAnalysis; price: number | null }) 
               </div>
             </>
           ) : (
-            <div className="text-[12px] text-ink-6">No rating consensus available on this plan.</div>
+            <div className="text-[12px] text-ink-6">No rating consensus — {a.symbol} isn't covered by the free FMP plan.</div>
           )}
         </div>
       </div>
@@ -836,21 +854,62 @@ function IdeasCard({ ideas, held, onClose }: { ideas: StockIdeas; held: string[]
           <X size={15} />
         </button>
       </div>
+      <p className="text-[11px] text-ink-6 mb-3">
+        Screened from liquid US stocks you don't hold, ranked on analyst upside, rating, 52-week position and last earnings.
+      </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         {fresh.map((i) => (
-          <div key={i.symbol} className="rounded-lg border border-line bg-surface p-3">
+          <div key={i.symbol} className="rounded-lg border border-line bg-surface p-3 flex flex-col">
             <div className="flex items-center gap-2">
               <span className="text-[13px] font-semibold text-ink">{i.symbol}</span>
-              <span className="text-[12px] text-ink-6 truncate">{i.name}</span>
+              <span className="text-[12px] text-ink-6 truncate flex-1">{i.name}</span>
+              {i.price != null && <span className="text-[12px] text-ink-4 shrink-0">{money(i.price, i.currency)}</span>}
             </div>
-            {i.category && <div className="text-[11px] text-ink-6 mt-0.5">{i.category}</div>}
-            <p className="text-[12px] text-ink-5 mt-1.5 leading-snug">{i.thesis}</p>
+
+            {/* Fact chips */}
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {i.upsidePct != null && (
+                <Chip color={i.upsidePct >= 0 ? 'emerald' : 'red'}>
+                  {pct(i.upsidePct)} to target {i.targetConsensus != null ? money(i.targetConsensus, i.currency) : ''}
+                </Chip>
+              )}
+              {i.rating && <Chip color={/buy/i.test(i.rating) ? 'emerald' : /sell/i.test(i.rating) ? 'red' : 'plain'}>{i.rating}</Chip>}
+              {i.pos52 != null && (
+                <Chip color={i.pos52 <= 0.35 ? 'emerald' : 'plain'}>{Math.round(i.pos52 * 100)}% of 52-wk range</Chip>
+              )}
+              {i.epsBeat != null && (
+                <Chip color={i.epsBeat >= 0 ? 'emerald' : 'red'}>EPS {i.epsBeat >= 0 ? 'beat' : 'miss'}</Chip>
+              )}
+            </div>
+
+            {i.thesis && <p className="text-[12px] text-ink-4 mt-2 leading-snug">{i.thesis}</p>}
+
+            {i.headline && (
+              <a
+                href={i.headlineUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="group mt-2 flex items-start gap-1.5 text-[11px] text-ink-6 hover:text-ink-3"
+              >
+                <ExternalLink size={11} className="mt-0.5 shrink-0" />
+                <span className="leading-snug">{i.headline}</span>
+              </a>
+            )}
           </div>
         ))}
       </div>
       <Disclaimer text={ideas.disclaimer} />
     </div>
   );
+}
+
+function Chip({ children, color }: { children: ReactNode; color: 'emerald' | 'red' | 'plain' }) {
+  const cls = {
+    emerald: 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10',
+    red: 'text-red-500 border-red-500/30 bg-red-500/10',
+    plain: 'text-ink-4 border-line bg-raised',
+  }[color];
+  return <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${cls}`}>{children}</span>;
 }
 
 function Disclaimer({ text }: { text: string }) {

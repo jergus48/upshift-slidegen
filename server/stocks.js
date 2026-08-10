@@ -72,25 +72,69 @@ function normalizeQuote(q, symbol) {
     marketCap: num(q.marketCap),
     volume: num(q.volume),
     exchange: q.exchange || '',
+    currency: q.currency || 'USD', // FMP stable /quote omits currency; it's USD
     timestamp: q.timestamp || null,
+    source: 'fmp',
   }
 }
 const num = (v) => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? null : Number(v))
 
-// Batch quotes. One stable /quote call per symbol, run concurrently, each cached
-// 60s. Bad/unknown symbols resolve to null and are dropped — a Trade Republic
-// ticker FMP doesn't recognize won't blank the whole list.
+// Yahoo Finance quote via the keyless v8 chart endpoint. Works for ANY listing —
+// US, Xetra/Frankfurt (.DE/.F), Vienna (.VI), London (.L) etc. — which the FMP
+// free plan does not (it blocks non-US and a subset of US symbols). This is what
+// lets a European broker's portfolio (Trade Republic / Trading212) show prices.
+async function fetchYahooQuote(symbol) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`
+  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+  if (!res.ok) throw new Error(`Yahoo quote ${res.status}`)
+  const body = await res.json().catch(() => null)
+  const m = body?.chart?.result?.[0]?.meta
+  if (!m || m.regularMarketPrice == null) throw new Error('no Yahoo quote')
+  const price = num(m.regularMarketPrice)
+  const prev = num(m.previousClose ?? m.chartPreviousClose)
+  const change = price != null && prev != null ? price - prev : null
+  return {
+    symbol: m.symbol || symbol,
+    name: m.longName || m.shortName || '',
+    price,
+    change,
+    changePct: change != null && prev ? (change / prev) * 100 : null,
+    dayLow: num(m.regularMarketDayLow),
+    dayHigh: num(m.regularMarketDayHigh),
+    yearLow: num(m.fiftyTwoWeekLow),
+    yearHigh: num(m.fiftyTwoWeekHigh),
+    open: null,
+    previousClose: prev,
+    marketCap: null,
+    volume: num(m.regularMarketVolume),
+    exchange: m.fullExchangeName || m.exchangeName || '',
+    currency: m.currency || 'USD',
+    timestamp: m.regularMarketTime || null,
+    source: 'yahoo',
+  }
+}
+
+// Batch quotes. Per symbol: try FMP (richer fields for covered US names), then
+// fall back to Yahoo for anything FMP's plan blocks. Concurrent, cached 60s. A
+// symbol neither source can price resolves to null and is dropped.
 export async function fetchQuotes(symbols, apiKey) {
-  requireKey(apiKey)
   const uniq = [...new Set(symbols.map((s) => String(s).trim().toUpperCase()).filter(Boolean))]
   const results = await Promise.all(
     uniq.map((symbol) =>
       cached(`quote:${symbol}`, 60_000, async () => {
+        if (apiKey) {
+          try {
+            const arr = await fmpGet('quote', apiKey, { symbol })
+            const q = normalizeQuote(Array.isArray(arr) ? arr[0] : arr, symbol)
+            if (q && q.price != null) return q
+          } catch (e) {
+            log.step(`FMP quote ${symbol} unavailable (${e.message}); trying Yahoo`)
+          }
+        }
         try {
-          const arr = await fmpGet('quote', apiKey, { symbol })
-          return normalizeQuote(Array.isArray(arr) ? arr[0] : arr, symbol)
+          return await fetchYahooQuote(symbol)
         } catch (e) {
-          log.step(`quote ${symbol} failed: ${e.message}`)
+          log.step(`quote ${symbol} failed everywhere: ${e.message}`)
           return null
         }
       })
@@ -138,7 +182,9 @@ export async function searchSymbols(query, apiKey) {
 // yields null for that section. Cached 10 min (this data moves slowly, and it's
 // the expensive part of the request budget).
 export async function analyzeSymbol(symbol, apiKey) {
-  requireKey(apiKey)
+  // No requireKey: the quote + news come from Yahoo when FMP can't cover the
+  // symbol (or no key is set), so the panel still renders — just without the
+  // FMP-only analyst/earnings sections.
   const sym = String(symbol).trim().toUpperCase()
   return cached(`analyze:${sym}`, 10 * 60_000, async () => {
     const [quote, profile, target, ratings, earnings, news] = await Promise.all([
@@ -346,24 +392,117 @@ Write a JSON object with this exact shape:
 Rules: base every claim on the data given — do NOT invent prices, targets or ratings. If analyst data is missing for a name, say so rather than guessing. Do not promise returns or use hype. Keep it concise and specific. Include one position object for every holding. Return only the JSON.`
 }
 
-// New-idea suggestions that complement the current holdings (diversification /
-// gaps), framed as areas to research — not a directive to buy.
-export function buildIdeasPrompt(holdings) {
-  const held = holdings.map((h) => `${h.symbol} (${h.sector || '?'})`).join(', ')
-  return `A long-term investor currently holds: ${held || '(nothing yet)'}.
+// A universe of large, liquid US names across sectors that FMP's free plan
+// covers with analyst data. Ideas are screened from these on real signals — not
+// invented by the model. Held names are filtered out at request time.
+const IDEA_UNIVERSE = [
+  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'AVGO', 'JPM', 'V', 'MA',
+  'UNH', 'JNJ', 'LLY', 'PG', 'KO', 'PEP', 'HD', 'COST', 'WMT', 'DIS',
+  'NFLX', 'CRM', 'AMD', 'XOM', 'CVX', 'BAC', 'MRK', 'ABBV', 'TMO', 'ADBE',
+  'NKE', 'MCD', 'CAT', 'GE', 'QCOM', 'TXN',
+]
 
-Suggest up to 6 well-known, liquid stocks or ETFs they do NOT already hold that would broaden the portfolio — filling sector or geographic gaps, or adding quality/diversification for a long-term horizon.
+// Score a candidate: reward analyst upside, a bullish rating, and being cheap
+// within its 52-week range (a rough "not chasing the top" signal). Deterministic
+// — the ranking is facts, the model only phrases the thesis afterwards.
+function ideaScore(c) {
+  const ratingBonus = { 'Strong Buy': 12, Buy: 8, Outperform: 8, Hold: 0, Sell: -15, 'Strong Sell': -20 }[c.rating] ?? 0
+  const cheapBonus = c.pos52 != null ? (1 - c.pos52) * 15 : 0 // near 52w low → up to +15
+  return (c.upsidePct ?? 0) + ratingBonus + cheapBonus
+}
+
+// Screen the universe for buy ideas grounded in real data: analyst target upside
+// vs current price, rating consensus, position in the 52-week range, and the
+// last earnings beat/miss. Returns the top candidates enriched with a headline.
+export async function rankIdeaCandidates(held, apiKey) {
+  const heldSet = new Set((held || []).map((s) => String(s).trim().toUpperCase()))
+  const universe = IDEA_UNIVERSE.filter((s) => !heldSet.has(s))
+  const quotes = await fetchQuotes(universe, apiKey)
+  const qBy = new Map(quotes.map((q) => [q.symbol.toUpperCase(), q]))
+
+  // Ranking pass: quote (have it) + analyst target (1 cached call each).
+  const scored = (
+    await Promise.all(
+      universe.map(async (sym) => {
+        const q = qBy.get(sym)
+        if (!q || q.price == null) return null
+        const t = await cached(`ptc:${sym}`, 30 * 60_000, () =>
+          best(() => fmpGet('price-target-consensus', apiKey, { symbol: sym })).then(firstOf)
+        )
+        const consensus = num(t?.targetConsensus)
+        if (consensus == null) return null
+        const upsidePct = ((consensus - q.price) / q.price) * 100
+        const pos52 =
+          q.yearHigh != null && q.yearLow != null && q.yearHigh > q.yearLow
+            ? (q.price - q.yearLow) / (q.yearHigh - q.yearLow)
+            : null
+        return { symbol: sym, name: q.name, price: q.price, currency: q.currency, consensus, upsidePct, pos52 }
+      })
+    )
+  ).filter(Boolean)
+
+  const top = scored.sort((a, b) => ideaScore({ ...b, rating: '' }) - ideaScore({ ...a, rating: '' })).slice(0, 6)
+
+  // Enrichment pass for the finalists only: rating, last earnings, a headline.
+  return Promise.all(
+    top.map(async (c) => {
+      const [grades, earnings, news] = await Promise.all([
+        best(() => fmpGet('grades-consensus', apiKey, { symbol: c.symbol })).then(firstOf),
+        best(() => fmpGet('earnings', apiKey, { symbol: c.symbol, limit: 5 })),
+        getNews(c.symbol, apiKey),
+      ])
+      const last = normalizeEarnings(earnings).lastReported
+      const epsBeat =
+        last && last.epsActual != null && last.epsEstimated != null ? last.epsActual - last.epsEstimated : null
+      return {
+        ...c,
+        rating: grades?.consensus || '',
+        epsBeat,
+        epsDate: last?.date || '',
+        headline: news[0]?.title || '',
+        headlineUrl: news[0]?.url || '',
+        headlineSite: news[0]?.site || '',
+      }
+    })
+  )
+}
+
+// Turn the screened candidates + their real numbers into short theses. The model
+// must justify each pick strictly from the figures we pass — no invented facts.
+export function buildIdeasPrompt(candidates) {
+  const rows = candidates
+    .map((c) => {
+      const parts = [
+        `${c.symbol} (${c.name})`,
+        `price=${round2(c.price)} ${c.currency}`,
+        c.consensus != null ? `analystTarget=${round2(c.consensus)} (upside ${round2(c.upsidePct)}%)` : null,
+        c.rating ? `analystRating=${c.rating}` : null,
+        c.pos52 != null
+          ? `positionIn52wkRange=${Math.round(c.pos52 * 100)}% (0%=at its 52-week low/cheap, 100%=at its 52-week high/expensive)`
+          : null,
+        c.epsBeat != null ? `lastEPS=${c.epsBeat >= 0 ? 'beat' : 'missed'} by ${round2(Math.abs(c.epsBeat))}` : null,
+        c.headline ? `headline="${c.headline}"` : null,
+      ].filter(Boolean)
+      return `- ${parts.join(', ')}`
+    })
+    .join('\n')
+
+  return `Below are stocks screened as potential long-term buys, each with real data. Write a concise, fact-based thesis for EACH one.
+
+Candidates:
+${rows}
 
 Return JSON:
 {
   "ideas": [
-    { "symbol": "TICKER", "name": "Company", "thesis": "1-2 sentence long-term rationale and what gap it fills", "category": "e.g. sector / theme" }
+    { "symbol": "TICKER", "thesis": "1-2 sentences citing the SPECIFIC figures: analyst upside vs target, the rating, how cheap it is in its 52-week range, and the last earnings beat/miss and/or the headline. Attribute analyst views to 'analysts'." }
   ],
   "disclaimer": ${JSON.stringify(DISCLAIMER)}
 }
 
-Rules: only real, currently-listed US-traded tickers. Prefer diversification over chasing recent performance. This is research to investigate, not a recommendation to buy. Return only the JSON.`
+Rules: use ONLY the numbers and headline given for each candidate — do not invent prices, targets, or facts. Every thesis must reference at least two concrete data points. No hype, no generic "market leader" filler. This is research to investigate, not a recommendation to buy. One idea object per candidate, same order. Return only the JSON.`
 }
+const round2 = (n) => (n == null ? null : Math.round(Number(n) * 100) / 100)
 
 // "Why did it move today?" — explain a stock's move strictly from the headlines
 // we hand the model, admitting uncertainty when the news doesn't explain it.

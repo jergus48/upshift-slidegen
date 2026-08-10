@@ -19,6 +19,7 @@ export function loadHoldings(): Holding[] {
         name: String(h.name || ''),
         shares: Number(h.shares) || 0,
         avgPrice: Number(h.avgPrice) || 0,
+        currency: h.currency ? String(h.currency) : undefined,
       }))
       .filter((h) => h.symbol);
   } catch {

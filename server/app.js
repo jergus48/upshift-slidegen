@@ -14,7 +14,7 @@ import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.
 import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { fetchChannels } from './youtube.js'
-import { fetchQuotes, analyzeSymbol, fetchNews, searchSymbols, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
+import { fetchQuotes, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
 
@@ -369,22 +369,50 @@ app.post('/api/stocks/summary', h(async (req, res) => {
   })
 }))
 
-// AI: new-stock ideas that complement the current holdings (research, not a buy
-// directive — see buildIdeasPrompt).
+// New-stock ideas, screened on REAL data (analyst upside, rating, 52-week
+// position, last earnings) then given a fact-based thesis by the model. The
+// numbers come from FMP/the screener — the model only phrases them, so it can't
+// invent a rationale. Research, not a buy directive.
 app.post('/api/stocks/ideas', h(async (req, res) => {
   const keys = await getKeys()
   const model = String(req.body?.model || '').trim() || 'openai/gpt-4o-mini'
-  const holdings = Array.isArray(req.body?.holdings) ? req.body.holdings : []
+  const held = Array.isArray(req.body?.holdings)
+    ? req.body.holdings.map((x) => (typeof x === 'string' ? x : x?.symbol)).filter(Boolean)
+    : []
+
+  const candidates = await rankIdeaCandidates(held, keys.fmp)
+  if (!candidates.length) {
+    return res.json({ ideas: [], disclaimer: 'No candidates with analyst data were available to screen right now.' })
+  }
+
   const out = await chatJSON({
     apiKey: keys.openrouter,
     model,
-    prompt: buildIdeasPrompt(holdings),
-    sampling: { temperature: 0.5 },
+    prompt: buildIdeasPrompt(candidates),
+    sampling: { temperature: 0.3, max_tokens: 2000 },
   })
-  res.json({
-    ideas: Array.isArray(out.ideas) ? out.ideas : [],
-    disclaimer: String(out.disclaimer || ''),
-  })
+  const thesisBy = new Map(
+    (Array.isArray(out.ideas) ? out.ideas : []).map((i) => [String(i.symbol || '').toUpperCase(), String(i.thesis || '')])
+  )
+
+  // Merge the model's thesis back onto the hard facts, so the UI can show both
+  // the figures (as chips) and the rationale.
+  const ideas = candidates.map((c) => ({
+    symbol: c.symbol,
+    name: c.name,
+    price: c.price,
+    currency: c.currency,
+    targetConsensus: c.consensus,
+    upsidePct: c.upsidePct,
+    rating: c.rating,
+    pos52: c.pos52,
+    epsBeat: c.epsBeat,
+    headline: c.headline,
+    headlineUrl: c.headlineUrl,
+    headlineSite: c.headlineSite,
+    thesis: thesisBy.get(c.symbol.toUpperCase()) || '',
+  }))
+  res.json({ ideas, disclaimer: String(out.disclaimer || '') })
 }))
 
 // ── post-bridge ───────────────────────────────────────────────────────────────
