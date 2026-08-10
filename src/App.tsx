@@ -27,7 +27,7 @@ import { getMergedLibrary } from './lib/mergedLibrary';
 import { getHiddenPhotos } from './lib/hiddenPhotos';
 import { assignBackgrounds, assignAppSlidePov } from './lib/backgrounds';
 import { libraryRef } from './lib/imageSrc';
-import type { Gender } from './lib/quitPresets';
+import { getQuitPresets, type Gender } from './lib/quitPresets';
 import * as ws from './lib/localWorkspace';
 import * as api from './lib/api';
 import type {
@@ -151,22 +151,59 @@ export default function App() {
         styleMemory: opts.styleMemory?.trim() || activeProject.brain.styleMemory,
       };
       const slideshows = await api.generate({ count: opts.count, slidesPerShow: opts.slidesPerShow, length: opts.length, model: workspace!.model, brain });
-      // Backgrounds are assigned client-side now — the server no longer knows
-      // about scraped/uploaded images (they live in this browser's IndexedDB).
-      const library = await getMergedLibrary();
-      const pool = opts.packs.length ? library.filter((i) => opts.packs.includes(i.pack)) : [];
-      // POV pack for this batch's gender — set once in Brain — a random shot
-      // from it lands on the app ("Upshift") slide so it never has to be
-      // swapped in by hand.
-      const povPack = opts.gender === 'women' ? activeProject.povPackWomen : activeProject.povPackMen;
-      const povPool = povPack ? library.filter((i) => i.pack === povPack) : [];
-      const withBackgrounds = assignAppSlidePov(assignBackgrounds(slideshows, pool), povPool).map((show) => ({
-        ...show,
-        // Stamp the chosen caption look onto every slide so the preview and the
-        // baked PNG both render it.
-        slides: show.slides.map((sl) => ({ ...sl, captionStyle: opts.captionStyle })),
-      }));
+      const withBackgrounds = await decorateShows(slideshows, opts.packs, opts.gender, opts.captionStyle);
       setQueue((q) => [...withBackgrounds, ...q]);
+      setGenerateOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Assigns client-side backgrounds + the gendered POV shot on the app slide and
+  // stamps the chosen caption look — shared by single-batch and all-preset runs.
+  // Backgrounds are assigned client-side now — the server no longer knows about
+  // scraped/uploaded images (they live in this browser's IndexedDB).
+  const decorateShows = async (
+    slideshows: Slideshow[],
+    packs: string[],
+    gender: Gender,
+    captionStyle: CaptionStyle,
+  ) => {
+    const library = await getMergedLibrary();
+    const pool = packs.length ? library.filter((i) => packs.includes(i.pack)) : [];
+    // POV pack for this batch's gender — set once in Brain — a random shot from
+    // it lands on the app ("Upshift") slide so it never has to be swapped by hand.
+    const povPack = gender === 'women' ? activeProject!.povPackWomen : activeProject!.povPackMen;
+    const povPool = povPack ? library.filter((i) => i.pack === povPack) : [];
+    return assignAppSlidePov(assignBackgrounds(slideshows, pool), povPool).map((show) => ({
+      ...show,
+      // Stamp the chosen caption look onto every slide so the preview and the
+      // baked PNG both render it.
+      slides: show.slides.map((sl) => ({ ...sl, captionStyle })),
+    }));
+  };
+
+  // "Generate all presets": one run per preset in the chosen gender pack, each
+  // with that preset's own audience, style memory and slide count. Decks stream
+  // onto the queue as each preset finishes, so progress is visible.
+  const generateAll = async (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender }) => {
+    if (!activeProject) return;
+    setError(null);
+    setGenerating(true);
+    try {
+      const presets = getQuitPresets(opts.gender);
+      for (const p of presets) {
+        const brain: BrainState = {
+          ...activeProject.brain,
+          audience: p.audience,
+          styleMemory: p.styleMemory,
+        };
+        const slideshows = await api.generate({ count: opts.count, slidesPerShow: p.slides, length: opts.length, model: workspace!.model, brain });
+        const withBackgrounds = await decorateShows(slideshows, opts.packs, opts.gender, opts.captionStyle);
+        setQueue((q) => [...withBackgrounds, ...q]);
+      }
       setGenerateOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -521,6 +558,7 @@ export default function App() {
           generating={generating}
           onClose={() => setGenerateOpen(false)}
           onGenerate={generate}
+          onGenerateAll={generateAll}
         />
       )}
     </div>

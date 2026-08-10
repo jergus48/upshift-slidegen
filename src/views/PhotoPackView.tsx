@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader2, LayoutTemplate, Shuffle, Sparkles, Check, EyeOff, Eye, SlidersHorizontal } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { getMergedPacks } from '../lib/mergedLibrary';
 import { getHiddenPhotos, setPhotoHidden } from '../lib/hiddenPhotos';
+import { getPhotoPackPrefs, setPhotoPackPrefs } from '../lib/photoPackPrefs';
 import type { CaptionStyle } from '../lib/captionStyle';
 import type { LibraryPack } from '../types';
 
@@ -62,8 +63,11 @@ export function PhotoPackView({ generating, canGenerate, onGenerate }: PhotoPack
   // The user's own library packs, and optional overrides for the two swappable
   // slots. Empty string = keep the default library category.
   const [userPacks, setUserPacks] = useState<LibraryPack[]>([]);
-  const [coverPack, setCoverPack] = useState('');
-  const [appPack, setAppPack] = useState('');
+  // Restore the last-used override packs (persisted per browser) so the page
+  // comes back with the same picks. Validated against the loaded library below
+  // in case a saved pack was since deleted.
+  const [coverPack, setCoverPack] = useState(() => getPhotoPackPrefs().coverPack);
+  const [appPack, setAppPack] = useState(() => getPhotoPackPrefs().appPack);
   // Individual library photos the user has hidden (by full URL). Hidden photos
   // are greyed out in the curation grid, skipped by the preview, and shipped to
   // the server on generate so the picker never chooses them. See lib/hiddenPhotos.
@@ -92,24 +96,46 @@ export function PhotoPackView({ generating, canGenerate, onGenerate }: PhotoPack
     }));
   }, [coverPack, appPack, userPacks, hidden]);
 
+  // Holds the manifest for the async packs callback, so a restored override can
+  // re-roll its preview the moment packs land even if that happens after the
+  // manifest already loaded (the two fetches race).
+  const manifestRef = useRef<Manifest | null>(null);
+
   useEffect(() => {
     let alive = true;
     fetch('/photo-library/manifest.json')
       .then((r) => r.json())
-      .then((m: Manifest) => { if (alive) { setManifest(m); shuffle(m); } })
+      .then((m: Manifest) => { if (alive) { manifestRef.current = m; setManifest(m); shuffle(m); } })
       .catch(() => { if (alive) setError('Could not load the photo library manifest.'); });
-    getMergedPacks().then((p) => { if (alive) setUserPacks(p); }).catch(() => {});
+    getMergedPacks().then((p) => {
+      if (!alive) return;
+      setUserPacks(p);
+      // Drop any restored override whose pack no longer exists, and re-sync
+      // storage so a deleted pack doesn't keep coming back.
+      const names = new Set(p.map((up) => up.name));
+      const prefs = getPhotoPackPrefs();
+      const cover = prefs.coverPack && names.has(prefs.coverPack) ? prefs.coverPack : '';
+      const app = prefs.appPack && names.has(prefs.appPack) ? prefs.appPack : '';
+      setCoverPack(cover);
+      setAppPack(app);
+      if (cover !== prefs.coverPack || app !== prefs.appPack) setPhotoPackPrefs({ coverPack: cover, appPack: app });
+      // Re-roll now that the packs exist, so a restored override's photo shows in
+      // the preview even if the manifest loaded first (its shuffle ran with no packs).
+      if ((cover || app) && manifestRef.current) shuffle(manifestRef.current, cover, app, p);
+    }).catch(() => {});
     return () => { alive = false; };
     // Mount only — override changes re-preview from their select handlers instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Change an override pack and immediately re-roll its slot's preview.
+  // Change an override pack, persist the pick so it defaults back next time, and
+  // immediately re-roll its slot's preview.
   const setOverride = (slot: 'cover' | 'app', name: string) => {
+    const cover = slot === 'cover' ? name : coverPack;
+    const app = slot === 'app' ? name : appPack;
     if (slot === 'cover') setCoverPack(name); else setAppPack(name);
-    if (manifest) {
-      shuffle(manifest, slot === 'cover' ? name : coverPack, slot === 'app' ? name : appPack);
-    }
+    setPhotoPackPrefs({ coverPack: cover, appPack: app });
+    if (manifest) shuffle(manifest, cover, app);
   };
 
   // Hide/show one photo, persist it, and re-roll the preview so a just-hidden
