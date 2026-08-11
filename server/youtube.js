@@ -97,6 +97,121 @@ function parseFeed(xml, limit) {
   return out
 }
 
+// --- Channel-page fallback --------------------------------------------------
+// As of Aug 2026 YouTube's public RSS endpoint (feeds/videos.xml) started
+// serving a generic "Error 404/500" page for every channel — a YouTube-side
+// break, not a bad-handle problem (it fails for MrBeast too). When the feed is
+// unavailable we scrape the same uploads out of the channel's /videos page,
+// which still renders fine. That page embeds the uploads as `lockupViewModel`
+// objects inside `ytInitialData`. This surface has no like counts and only a
+// relative ("2d ago") date, so those are approximated.
+
+const YT_INITIAL_DATA_RE = /var ytInitialData = (\{.+?\});<\/script>/s
+
+// "51M" / "1.2M" / "934K" / "1,234" / "1.2 thousand" / "3 million" → number.
+function parseCompactCount(s) {
+  const t = String(s || '').trim().replace(/,/g, '')
+  const m = /([\d.]+)\s*(thousand|million|billion|[KMB])?/i.exec(t)
+  if (!m) return 0
+  const n = Number(m[1]) || 0
+  const mult =
+    { K: 1e3, THOUSAND: 1e3, M: 1e6, MILLION: 1e6, B: 1e9, BILLION: 1e9 }[(m[2] || '').toUpperCase()] || 1
+  return Math.round(n * mult)
+}
+
+// "2d ago" / "3 weeks ago" / "5 hours ago" / "1 year ago" → approximate ISO
+// timestamp, so the frontend's date math and "time ago" labels keep working.
+function relativeToIso(s) {
+  const t = String(s || '').toLowerCase()
+  const m = /(\d+)\s*(second|minute|hour|day|week|month|year|s|min|h|d|w|mo|y)/.exec(t)
+  if (!m) return ''
+  const n = Number(m[1])
+  const unit = m[2]
+  const secs =
+    { second: 1, s: 1, minute: 60, min: 60, hour: 3600, h: 3600, day: 86400, d: 86400,
+      week: 604800, w: 604800, month: 2592000, mo: 2592000, year: 31536000, y: 31536000 }[unit] || 0
+  return new Date(Date.now() - n * secs * 1000).toISOString()
+}
+
+// Walk ytInitialData once, collecting each upload in document (newest-first)
+// order. Long-form videos come as `lockupViewModel`; Shorts come as
+// `shortsLockupViewModel` — channels that post only Shorts have just the latter.
+function collectItems(node, out = []) {
+  if (!node || typeof node !== 'object') return out
+  if (node.lockupViewModel) out.push({ kind: 'video', v: node.lockupViewModel })
+  else if (node.shortsLockupViewModel) out.push({ kind: 'short', v: node.shortsLockupViewModel })
+  for (const k in node) collectItems(node[k], out)
+  return out
+}
+
+// A Shorts entry: id + title from overlayMetadata, view count parsed out of the
+// accessibility text ("<title>, 787 views - play Short"). No publish date is
+// exposed for Shorts on this surface.
+function shortToRecord(sl) {
+  const id = sl.onTap?.innertubeCommand?.reelWatchEndpoint?.videoId || sl.entityId?.replace(/^shorts-shelf-item-/, '')
+  if (!id) return null
+  const title = decodeEntities(sl.overlayMetadata?.primaryText?.content || '')
+  const views = parseCompactCount((/,\s*([\d.,]+\s*(?:thousand|million|billion)?)\s+views?/i.exec(sl.accessibilityText || '') || [])[1] || '')
+  return {
+    id,
+    title,
+    url: `https://www.youtube.com/shorts/${id}`,
+    thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+    views,
+    likes: 0,
+    publishedAt: '',
+  }
+}
+
+// Turn the channel /videos page HTML into the same video records parseFeed
+// produces, so the caller doesn't care which source was used.
+function parseVideosPage(html, limit) {
+  const m = YT_INITIAL_DATA_RE.exec(html)
+  if (!m) return []
+  let data
+  try {
+    data = JSON.parse(m[1])
+  } catch {
+    return []
+  }
+  const out = []
+  const seen = new Set()
+  for (const item of collectItems(data)) {
+    let rec
+    if (item.kind === 'short') {
+      rec = shortToRecord(item.v)
+    } else {
+      const lv = item.v
+      const id = lv.contentId
+      if (!id) continue
+      const meta = lv.metadata?.lockupMetadataViewModel
+      const parts = meta?.metadata?.contentMetadataViewModel?.metadataRows?.flatMap((r) => r.metadataParts || []) || []
+      let views = 0
+      let publishedAt = ''
+      for (const p of parts) {
+        const text = p?.text?.content || ''
+        const label = p?.accessibilityLabel || ''
+        if (/view/i.test(label) || /view/i.test(text)) views = parseCompactCount(text)
+        else if (/ago|streamed|premiered/i.test(label) || /ago/i.test(text)) publishedAt = relativeToIso(text)
+      }
+      rec = {
+        id,
+        title: decodeEntities(meta?.title?.content || ''),
+        url: `https://www.youtube.com/watch?v=${id}`,
+        thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        views,
+        likes: 0, // not exposed on the channel page
+        publishedAt,
+      }
+    }
+    if (!rec || !rec.id || seen.has(rec.id)) continue
+    seen.add(rec.id)
+    out.push(rec)
+    if (out.length >= limit) break
+  }
+  return out
+}
+
 // In-memory cache so repeated dashboard loads / refreshes stay fast and don't
 // hammer YouTube. Short TTL; the client's Refresh sends noCache to force fresh.
 const cache = new Map() // input → { at, data }
@@ -118,18 +233,41 @@ export async function fetchChannel(input, { limit = 5, noCache = false } = {}) {
   const { id, title, avatar } = parseChannelPage(html)
   if (!id) throw new Error('Could not find this channel — check the link.')
 
-  const feedRes = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`, {
-    headers: FETCH_HEADERS,
-  })
-  if (!feedRes.ok) throw new Error(`feed ${feedRes.status}`)
-  const xml = await feedRes.text()
+  // Primary: the RSS feed (exact views, likes and real publish dates). If it's
+  // unavailable (YouTube has been serving error pages for this endpoint), fall
+  // back to scraping the channel's /videos page for the latest uploads.
+  let videos = []
+  let feedTitle = ''
+  let feedOk = false
+  try {
+    const feedRes = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`, {
+      headers: FETCH_HEADERS,
+    })
+    if (feedRes.ok) {
+      const xml = await feedRes.text()
+      videos = parseFeed(xml, limit)
+      feedTitle = decodeEntities(firstMatch(xml, /<title>([^<]*)<\/title>/))
+      feedOk = videos.length > 0
+    }
+  } catch {
+    // ignore — fall through to the page scrape
+  }
+
+  if (!feedOk) {
+    const videosRes = await fetch(`${pageUrl.replace(/\/+$/, '')}/videos`, {
+      headers: FETCH_HEADERS,
+      redirect: 'follow',
+    })
+    if (!videosRes.ok) throw new Error(`videos page ${videosRes.status}`)
+    videos = parseVideosPage(await videosRes.text(), limit)
+  }
 
   const data = {
     id,
-    title: title || decodeEntities(firstMatch(xml, /<title>([^<]*)<\/title>/)) || 'Channel',
+    title: title || feedTitle || 'Channel',
     avatar,
     url: `https://www.youtube.com/channel/${id}`,
-    videos: parseFeed(xml, limit),
+    videos,
   }
   cache.set(key, { at: Date.now(), data })
   return data
