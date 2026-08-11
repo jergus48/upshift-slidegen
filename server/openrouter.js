@@ -28,14 +28,63 @@ export async function validateKey(apiKey) {
   return true
 }
 
+// Balance a (possibly truncated) JSON fragment: close any string/brackets left
+// open and drop a dangling trailing comma, so a response cut off mid-array can
+// still be parsed. Used only as a repair path when strict parsing fails.
+function balanceJson(s) {
+  const stack = []
+  let inStr = false
+  let esc = false
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (esc) { esc = false; continue }
+    if (c === '\\') { esc = true; continue }
+    if (c === '"') { inStr = !inStr; continue }
+    if (inStr) continue
+    if (c === '{' || c === '[') stack.push(c)
+    else if (c === '}' || c === ']') stack.pop()
+  }
+  let out = inStr ? s + '"' : s
+  out = out.replace(/,\s*$/, '') // trailing comma before the auto-closed bracket
+  for (let i = stack.length - 1; i >= 0; i--) out += stack[i] === '{' ? '}' : ']'
+  return out
+}
+
+// Salvage a truncated JSON object: walk backwards from the end and, at each
+// value boundary, try closing the open structures and parsing. The first prefix
+// that yields valid JSON wins — so a list cut off mid-item keeps every complete
+// item and just drops the partial tail. Returns null if nothing parses.
+function repairJson(fragment) {
+  for (let end = fragment.length; end > 0; end--) {
+    const ch = fragment[end - 1]
+    // Only bother at plausible value ends (}, ], ", digit, or true/false/null).
+    if (end !== fragment.length && !/[}\]"0-9eln]/.test(ch)) continue
+    try {
+      return JSON.parse(balanceJson(fragment.slice(0, end)))
+    } catch {
+      /* keep trimming */
+    }
+  }
+  return null
+}
+
 // Pull a JSON object out of a model response, tolerating code fences / prose.
+// If strict parsing fails (usually a length-truncated response), fall back to a
+// repair that recovers as many complete items as possible instead of erroring.
 function extractJson(text) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)
   const candidate = fenced ? fenced[1] : text
   const start = candidate.indexOf('{')
   const end = candidate.lastIndexOf('}')
-  if (start === -1 || end === -1) throw new Error('Model did not return JSON.')
-  return JSON.parse(candidate.slice(start, end + 1))
+  if (start === -1) throw new Error('Model did not return JSON.')
+  const slice = candidate.slice(start, end > start ? end + 1 : undefined)
+  try {
+    return JSON.parse(slice)
+  } catch (e) {
+    const repaired = repairJson(candidate.slice(start))
+    if (repaired && typeof repaired === 'object') return repaired
+    throw new Error(`Model returned malformed JSON (${e.message}).`)
+  }
 }
 
 // One chat completion that must return a JSON object. `sampling` can carry
