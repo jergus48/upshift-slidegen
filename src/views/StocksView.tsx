@@ -12,6 +12,8 @@ import {
   HelpCircle,
   Pencil,
   ExternalLink,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import type {
   Holding,
@@ -110,6 +112,18 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
   // simply omitted rather than shown wrong).
   const [fx, setFx] = useState<Record<string, number> | null>(null);
 
+  // Symbols temporarily excluded from the totals — a scratch "what-if" toggle so
+  // you can see how the portfolio total shifts without a holding. In-memory only
+  // (resets on reload); the holding stays visible, just dimmed and uncounted.
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const toggleExcluded = (symbol: string) =>
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      const s = symbol.toUpperCase();
+      next.has(s) ? next.delete(s) : next.add(s);
+      return next;
+    });
+
   const [expanded, setExpanded] = useState<string | null>(null);
   const [analyses, setAnalyses] = useState<Record<string, StockAnalysis | { error: string } | 'loading'>>({});
   const [why, setWhy] = useState<Record<string, WhyMoved | { error: string } | 'loading'>>({});
@@ -207,7 +221,7 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
   // rates are missing, conversion no-ops and mixed holdings won't add up cleanly
   // — flagged via `mixed` so the UI can note it rather than lie.
   const totals = useMemo(() => {
-    const priced = rows.filter((r) => r.value != null);
+    const priced = rows.filter((r) => r.value != null && !excluded.has(r.h.symbol.toUpperCase()));
     const inCur = (target: string) => {
       let value = 0;
       let cost = 0;
@@ -238,8 +252,9 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
       eur: have ? inCur('EUR') : null,
       // If holdings span >1 currency and we have no rates, the sums are unreliable.
       mixed: currencies.length > 1 && !fx,
+      excludedCount: rows.filter((r) => r.value != null && excluded.has(r.h.symbol.toUpperCase())).length,
     };
-  }, [rows, fx]);
+  }, [rows, fx, excluded]);
 
   // Open a holding → lazily fetch its full analysis once.
   const toggle = (symbol: string) => {
@@ -388,6 +403,16 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
                     FX rates unavailable — mixed-currency total may be off.
                   </div>
                 )}
+                {totals.excludedCount > 0 && (
+                  <button
+                    onClick={() => setExcluded(new Set())}
+                    className="self-center flex items-center gap-1.5 text-[11px] text-ink-5 hover:text-ink"
+                    title="Reset — count every holding again"
+                  >
+                    <EyeOff size={12} />
+                    {totals.excludedCount} hidden from total · reset
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -435,6 +460,8 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
                     key={r.h.symbol}
                     row={r}
                     fx={fx}
+                    excluded={excluded.has(r.h.symbol.toUpperCase())}
+                    onToggleExclude={() => toggleExcluded(r.h.symbol)}
                     expanded={expanded === r.h.symbol.toUpperCase()}
                     analysis={analyses[r.h.symbol.toUpperCase()]}
                     why={why[r.h.symbol.toUpperCase()]}
@@ -605,6 +632,8 @@ function Stat({ label, value, alt, sub, color }: { label: string; value: string;
 function HoldingCard({
   row,
   fx,
+  excluded,
+  onToggleExclude,
   expanded,
   analysis,
   why,
@@ -616,6 +645,8 @@ function HoldingCard({
 }: {
   row: Row;
   fx: Fx;
+  excluded: boolean;
+  onToggleExclude: () => void;
   expanded: boolean;
   analysis: StockAnalysis | { error: string } | 'loading' | undefined;
   why: WhyMoved | { error: string } | 'loading' | undefined;
@@ -638,10 +669,10 @@ function HoldingCard({
   const [avg, setAvg] = useState(String(h.avgPrice));
 
   return (
-    <div className="bg-card border border-line rounded-xl overflow-hidden">
+    <div className={`bg-card border rounded-xl overflow-hidden transition-colors ${excluded ? 'border-dashed border-line-2' : 'border-line'}`}>
       {/* Header row */}
       <div className="flex items-center gap-3 p-3.5">
-        <button onClick={onToggle} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+        <button onClick={onToggle} className={`flex items-center gap-3 flex-1 min-w-0 text-left ${excluded ? 'opacity-45' : ''}`}>
           <div className="w-9 h-9 rounded-lg bg-raised shrink-0 flex items-center justify-center overflow-hidden">
             {analysis && analysis !== 'loading' && !('error' in analysis) && analysis.profile?.image ? (
               <img src={analysis.profile.image} alt="" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
@@ -661,7 +692,7 @@ function HoldingCard({
         </button>
 
         {/* Price + today's move */}
-        <div className="text-right shrink-0">
+        <div className={`text-right shrink-0 ${excluded ? 'opacity-45' : ''}`}>
           <div className="text-[14px] font-semibold text-ink">{money(quote?.price, cur)}</div>
           <div className={`text-[12px] ${upColor(quote?.changePct)} flex items-center gap-1 justify-end`}>
             {quote?.changePct != null && (quote.changePct >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />)}
@@ -670,13 +701,23 @@ function HoldingCard({
         </div>
 
         {/* Value + unrealized (native, with EUR equivalent underneath) */}
-        <div className="text-right shrink-0 w-28 hidden sm:block">
+        <div className={`text-right shrink-0 w-28 hidden sm:block ${excluded ? 'opacity-45' : ''}`}>
           <div className="text-[14px] font-semibold text-ink">{money(value, cur)}</div>
           {eur(value) && <div className="text-[11px] text-ink-5 opacity-80">≈ {eur(value)}</div>}
           <div className={`text-[12px] ${upColor(gain)}`}>
             {signedMoney(gain, cur, 0)} · {pct(gainPct)}
           </div>
         </div>
+
+        {/* Exclude-from-total toggle — a scratch "what-if", doesn't remove the holding */}
+        <button
+          onClick={onToggleExclude}
+          className={`shrink-0 p-1 ${excluded ? 'text-amber-500 hover:text-amber-400' : 'text-ink-6 hover:text-ink'}`}
+          aria-label={excluded ? 'Count in total again' : 'Hide from total'}
+          title={excluded ? 'Counting off — click to include in total' : 'Exclude from total (what-if)'}
+        >
+          {excluded ? <EyeOff size={15} /> : <Eye size={15} />}
+        </button>
 
         <button onClick={onToggle} className="text-ink-6 hover:text-ink shrink-0 p-1" aria-label="Toggle details">
           <ChevronDown size={16} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
