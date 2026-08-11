@@ -114,6 +114,28 @@ async function fetchYahooQuote(symbol) {
   }
 }
 
+// Keyless Yahoo Finance symbol search — the fallback for searchSymbols() when
+// FMP is unavailable (rate-limited / plan-restricted). Returns matches in the
+// same shape as the FMP path: { symbol, name, exchange, currency }. Yahoo's
+// search doesn't report currency, so it's left blank (the add-holding flow
+// defaults to USD); equities/ETFs only, so index/currency/futures noise is
+// filtered out.
+async function searchYahooSymbols(query) {
+  const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=15&newsCount=0`
+  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+  if (!res.ok) throw new Error(`Yahoo search ${res.status}`)
+  const body = await res.json().catch(() => null)
+  const quotes = Array.isArray(body?.quotes) ? body.quotes : []
+  return quotes
+    .filter((q) => q?.symbol && (q.quoteType === 'EQUITY' || q.quoteType === 'ETF'))
+    .map((q) => ({
+      symbol: q.symbol,
+      name: q.longname || q.shortname || '',
+      exchange: q.exchDisp || q.exchange || '',
+      currency: '',
+    }))
+}
+
 // Batch quotes. Per symbol: try FMP (richer fields for covered US names), then
 // fall back to Yahoo for anything FMP's plan blocks. Concurrent, cached 60s. A
 // symbol neither source can price resolves to null and is dropped.
@@ -169,11 +191,24 @@ export async function searchSymbols(query, apiKey) {
       currency: r.currency || '',
     })
   }
+  // FMP unavailable (rate-limited / plan-restricted) → nothing merged. Fall back
+  // to keyless Yahoo search so the add-holding flow keeps working. Yahoo also
+  // powers the quote fallback, so any symbol it returns can still be priced.
+  if (merged.size === 0) {
+    try {
+      const yahoo = await searchYahooSymbols(q)
+      for (const r of yahoo) {
+        if (!merged.has(r.symbol)) merged.set(r.symbol, { ...r, exchangeFull: r.exchange })
+      }
+    } catch (e) {
+      log.step(`Yahoo symbol search failed for "${q}": ${e.message}`)
+    }
+  }
   const rank = (r) => (US_EXCHANGES.has((r.exchange || '').toUpperCase()) ? 0 : r.currency === 'USD' ? 1 : 2)
   return [...merged.values()]
     .sort((a, b) => rank(a) - rank(b))
     .slice(0, 12)
-    .map((r) => ({ symbol: r.symbol, name: r.name, exchange: r.exchangeFull, currency: r.currency }))
+    .map((r) => ({ symbol: r.symbol, name: r.name, exchange: r.exchangeFull || r.exchange, currency: r.currency }))
 }
 
 // Full per-symbol enrichment for the detail panel: profile, analyst price-target
