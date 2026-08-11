@@ -53,7 +53,14 @@ function parseChannelPage(html) {
     firstMatch(html, /"channelId":"(UC[A-Za-z0-9_-]{22})"/)
   const title = decodeEntities(firstMatch(html, /<meta[^>]+property="og:title"[^>]+content="([^"]*)"/))
   const avatar = firstMatch(html, /<meta[^>]+property="og:image"[^>]+content="([^"]*)"/)
-  return { id, title, avatar }
+  // Subscriber count is embedded in ytInitialData as a compact string like
+  // "51M subscribers" / "1.23K subscribers" / "1,234 subscribers".
+  const subsText =
+    firstMatch(html, /"subscriberCountText":\{[^}]*"simpleText":"([^"]+)"/) ||
+    firstMatch(html, /"subscriberCountText":\{[^}]*"content":"([^"]+)"/) ||
+    firstMatch(html, /([\d.,]+[KMB]?)\s+subscribers?/i)
+  const subscribers = subsText ? parseCompactCount(subsText) : 0
+  return { id, title, avatar, subscribers }
 }
 
 // Minimal HTML/XML entity decode for the handful that show up in titles.
@@ -230,7 +237,7 @@ export async function fetchChannel(input, { limit = 5, noCache = false } = {}) {
   const pageRes = await fetch(pageUrl, { headers: FETCH_HEADERS, redirect: 'follow' })
   if (!pageRes.ok) throw new Error(`channel page ${pageRes.status}`)
   const html = await pageRes.text()
-  const { id, title, avatar } = parseChannelPage(html)
+  const { id, title, avatar, subscribers } = parseChannelPage(html)
   if (!id) throw new Error('Could not find this channel — check the link.')
 
   // Primary: the RSS feed (exact views, likes and real publish dates). If it's
@@ -266,6 +273,7 @@ export async function fetchChannel(input, { limit = 5, noCache = false } = {}) {
     id,
     title: title || feedTitle || 'Channel',
     avatar,
+    subscribers,
     url: `https://www.youtube.com/channel/${id}`,
     videos,
   }

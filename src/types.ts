@@ -20,6 +20,7 @@ export interface YtChannel {
   id?: string;
   title?: string;
   avatar?: string;
+  subscribers?: number;
   url?: string;
   videos?: YtVideo[];
 }

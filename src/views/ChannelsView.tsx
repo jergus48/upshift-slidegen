@@ -286,7 +286,7 @@ function ChannelCard({
           )}
           <span className="text-[11px] text-ink-6 truncate block">
             {channel.ok
-              ? `${formatNumber(sumViews(videos))} views · ${videos.length} ${videos.length === 1 ? 'upload' : 'uploads'}`
+              ? `${channel.subscribers ? `${formatNumber(channel.subscribers)} subscribers · ` : ''}${formatNumber(sumViews(videos))} views · ${videos.length} ${videos.length === 1 ? 'upload' : 'uploads'}`
               : channel.error}
           </span>
         </div>
