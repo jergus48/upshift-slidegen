@@ -10,6 +10,7 @@
 // summarize that public data and always carry a "not financial advice"
 // disclaimer — see buildPortfolioPrompt / buildIdeasPrompt / buildWhyPrompt.
 import { logger } from './log.js'
+import { readData, writeData } from './storage.js'
 
 const log = logger('stocks')
 const BASE = 'https://financialmodelingprep.com/stable'
@@ -25,6 +26,46 @@ async function cached(key, ttlMs, produce) {
   if (hit && Date.now() - hit.at < hit.ttl) return hit.value
   const value = await produce()
   cache.set(key, { at: Date.now(), ttl: ttlMs, value })
+  return value
+}
+
+// ── Disk day-cache ───────────────────────────────────────────────────────────
+// Slow-moving enrichment (analyst targets, ratings, earnings, company profile)
+// barely changes intraday and is the expensive part of the FMP budget, so we
+// persist it to a small JSON file keyed by symbol + calendar day. Unlike the
+// in-memory cache above it survives a server restart, so reopening a holding
+// (or restarting `npm run dev`) doesn't re-hit FMP/Yahoo — the data is fetched
+// at most once per symbol per day. Live prices are NOT day-cached; they keep
+// their own short in-memory TTL so the panel stays current.
+const DAY_CACHE_KEY = 'stock-cache'
+const today = () => new Date().toISOString().slice(0, 10)
+let dayCacheMem = null // { [key]: { day, value } }, lazily loaded from disk
+
+async function loadDayCache() {
+  if (dayCacheMem) return dayCacheMem
+  const raw = await readData(DAY_CACHE_KEY, {})
+  // Drop stale (previous-day) entries on first load so the file doesn't grow.
+  const d = today()
+  dayCacheMem = {}
+  for (const [k, v] of Object.entries(raw)) {
+    if (v && v.day === d) dayCacheMem[k] = v
+  }
+  return dayCacheMem
+}
+
+// Return today's cached value for `key`, else run `produce()`, store, persist.
+// `shouldStore` guards against caching an empty/failed result for the whole day
+// (so an uncovered symbol just retries next time instead of sticking as blank).
+async function dayCached(key, produce, shouldStore = () => true) {
+  const store = await loadDayCache()
+  const hit = store[key]
+  if (hit && hit.day === today()) return hit.value
+  const value = await produce()
+  if (shouldStore(value)) {
+    store[key] = { day: today(), value }
+    // Best-effort persist — a write failure must never break the request.
+    writeData(DAY_CACHE_KEY, store).catch((e) => log.step(`day-cache write failed: ${e.message}`))
+  }
   return value
 }
 
@@ -136,6 +177,83 @@ async function searchYahooSymbols(query) {
     }))
 }
 
+// ── Yahoo analyst enrichment (fallback for FMP-uncovered symbols) ─────────────
+// Yahoo's quoteSummary carries analyst price targets and a rating breakdown for
+// listings the FMP free plan blocks (non-US ADRs like AMKBY, foreign lines,
+// etc.). It needs a cookie + "crumb" pair, which we fetch once and reuse.
+const YAHOO_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36'
+let yahooAuth = null // { cookie, crumb, at }
+
+async function getYahooAuth() {
+  if (yahooAuth && Date.now() - yahooAuth.at < 25 * 60_000) return yahooAuth
+  const r = await fetch('https://fc.yahoo.com', { headers: { 'User-Agent': YAHOO_UA } })
+  const cookie = (r.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ')
+  if (!cookie) throw new Error('no Yahoo cookie')
+  const crumbRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
+    headers: { 'User-Agent': YAHOO_UA, Cookie: cookie },
+  })
+  const crumb = (await crumbRes.text()).trim()
+  if (!crumb || crumb.includes('<') || crumb.length > 32) throw new Error('no Yahoo crumb')
+  yahooAuth = { cookie, crumb, at: Date.now() }
+  return yahooAuth
+}
+
+// Turn a recommendationTrend period ({strongBuy,buy,hold,sell,strongSell}) into
+// a consensus label, weighting Buy→Sell 1..5 (lower = more bullish) — the same
+// shape FMP's grades-consensus returns.
+function consensusFromCounts(t) {
+  const sb = t.strongBuy || 0, b = t.buy || 0, h = t.hold || 0, s = t.sell || 0, ss = t.strongSell || 0
+  const total = sb + b + h + s + ss
+  if (!total) return ''
+  const mean = (sb * 1 + b * 2 + h * 3 + s * 4 + ss * 5) / total
+  if (mean <= 1.5) return 'Strong Buy'
+  if (mean <= 2.5) return 'Buy'
+  if (mean <= 3.5) return 'Hold'
+  if (mean <= 4.5) return 'Sell'
+  return 'Strong Sell'
+}
+
+// Fetch analyst price target + rating breakdown from Yahoo. Returns
+// { target, ratings } in the SAME shape analyzeSymbol builds from FMP; either
+// field is null when Yahoo has no analyst data for that symbol.
+async function fetchYahooEnrichment(symbol) {
+  const { cookie, crumb } = await getYahooAuth()
+  const url =
+    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}` +
+    `?modules=financialData,recommendationTrend&crumb=${encodeURIComponent(crumb)}`
+  const res = await fetch(url, { headers: { 'User-Agent': YAHOO_UA, Cookie: cookie } })
+  if (!res.ok) throw new Error(`Yahoo quoteSummary ${res.status}`)
+  const body = await res.json().catch(() => null)
+  const r = body?.quoteSummary?.result?.[0]
+  if (!r) return { target: null, ratings: null }
+
+  const fd = r.financialData || {}
+  const mean = num(fd.targetMeanPrice?.raw)
+  const target = mean != null
+    ? {
+        high: num(fd.targetHighPrice?.raw),
+        low: num(fd.targetLowPrice?.raw),
+        consensus: mean,
+        median: num(fd.targetMedianPrice?.raw) ?? mean,
+      }
+    : null
+
+  const trend = r.recommendationTrend?.trend?.[0]
+  const ratings = trend && (trend.strongBuy + trend.buy + trend.hold + trend.sell + trend.strongSell) > 0
+    ? {
+        consensus: consensusFromCounts(trend),
+        strongBuy: trend.strongBuy || 0,
+        buy: trend.buy || 0,
+        hold: trend.hold || 0,
+        sell: trend.sell || 0,
+        strongSell: trend.strongSell || 0,
+      }
+    : null
+
+  return { target, ratings }
+}
+
 // Batch quotes. Per symbol: try FMP (richer fields for covered US names), then
 // fall back to Yahoo for anything FMP's plan blocks. Concurrent, cached 60s. A
 // symbol neither source can price resolves to null and is dropped.
@@ -221,55 +339,79 @@ export async function analyzeSymbol(symbol, apiKey) {
   // symbol (or no key is set), so the panel still renders — just without the
   // FMP-only analyst/earnings sections.
   const sym = String(symbol).trim().toUpperCase()
-  return cached(`analyze:${sym}`, 10 * 60_000, async () => {
-    const [quote, profile, target, ratings, earnings, news] = await Promise.all([
-      fetchQuotes([sym], apiKey).then((q) => q[0] || null).catch(() => null),
-      best(() => fmpGet('profile', apiKey, { symbol: sym })).then((a) => firstOf(a)),
-      best(() => fmpGet('price-target-consensus', apiKey, { symbol: sym })).then((a) => firstOf(a)),
-      best(() => fmpGet('grades-consensus', apiKey, { symbol: sym })).then((a) => firstOf(a)),
-      // FMP's free tier caps `limit` at 5 on these endpoints (a higher value
-      // 400s), so stay within it. News is a premium endpoint on the free plan
-      // and simply resolves to [] there (handled by best()).
-      best(() => fmpGet('earnings', apiKey, { symbol: sym, limit: 5 })),
-      getNews(sym, apiKey),
-    ])
-    return {
-      symbol: sym,
-      quote,
-      profile: profile
-        ? {
-            companyName: profile.companyName || '',
-            sector: profile.sector || '',
-            industry: profile.industry || '',
-            image: profile.image || '',
-            description: profile.description || '',
-            website: profile.website || '',
-            beta: num(profile.beta),
-            range: profile.range || '',
-          }
-        : null,
-      target: target
-        ? {
-            high: num(target.targetHigh),
-            low: num(target.targetLow),
-            consensus: num(target.targetConsensus),
-            median: num(target.targetMedian),
-          }
-        : null,
-      ratings: ratings
-        ? {
-            consensus: ratings.consensus || '',
-            strongBuy: num(ratings.strongBuy) || 0,
-            buy: num(ratings.buy) || 0,
-            hold: num(ratings.hold) || 0,
-            sell: num(ratings.sell) || 0,
-            strongSell: num(ratings.strongSell) || 0,
-          }
-        : null,
-      earnings: normalizeEarnings(earnings),
-      news,
+  // Live price stays fresh (its own short TTL); the slow enrichment is fetched
+  // at most once a day and persisted to disk (see dayCached / fetchEnrichment).
+  const [quote, enrich, news] = await Promise.all([
+    fetchQuotes([sym], apiKey).then((q) => q[0] || null).catch(() => null),
+    dayCached(
+      `enrich:${sym}`,
+      () => fetchEnrichment(sym, apiKey),
+      // Only day-cache a result that actually carries something, so a fully
+      // uncovered symbol retries next time rather than sticking blank all day.
+      (v) => !!(v && (v.profile || v.target || v.ratings || (v.earnings && v.earnings.length))),
+    ),
+    getNews(sym, apiKey),
+  ])
+  return { symbol: sym, quote, ...enrich, news }
+}
+
+// The slow-moving, day-cacheable half of the analysis: company profile, analyst
+// price-target consensus, rating breakdown and earnings. FMP is tried first;
+// when it can't cover the symbol (free-plan restriction / rate limit) the
+// analyst target + ratings fall back to Yahoo, so non-US listings still show a
+// target and consensus instead of "not covered by the free FMP plan".
+async function fetchEnrichment(sym, apiKey) {
+  const [profile, target, ratings, earnings] = await Promise.all([
+    best(() => fmpGet('profile', apiKey, { symbol: sym })).then((a) => firstOf(a)),
+    best(() => fmpGet('price-target-consensus', apiKey, { symbol: sym })).then((a) => firstOf(a)),
+    best(() => fmpGet('grades-consensus', apiKey, { symbol: sym })).then((a) => firstOf(a)),
+    // FMP's free tier caps `limit` at 5 on these endpoints (a higher value
+    // 400s), so stay within it.
+    best(() => fmpGet('earnings', apiKey, { symbol: sym, limit: 5 })),
+  ])
+
+  let outTarget = target
+    ? { high: num(target.targetHigh), low: num(target.targetLow), consensus: num(target.targetConsensus), median: num(target.targetMedian) }
+    : null
+  let outRatings = ratings
+    ? {
+        consensus: ratings.consensus || '',
+        strongBuy: num(ratings.strongBuy) || 0,
+        buy: num(ratings.buy) || 0,
+        hold: num(ratings.hold) || 0,
+        sell: num(ratings.sell) || 0,
+        strongSell: num(ratings.strongSell) || 0,
+      }
+    : null
+
+  // Fill any gap FMP left with Yahoo's analyst data (one call covers both).
+  if (!outTarget || !outRatings) {
+    try {
+      const y = await fetchYahooEnrichment(sym)
+      if (!outTarget) outTarget = y.target
+      if (!outRatings) outRatings = y.ratings
+    } catch (e) {
+      log.step(`Yahoo enrichment failed for ${sym}: ${e.message}`)
     }
-  })
+  }
+
+  return {
+    profile: profile
+      ? {
+          companyName: profile.companyName || '',
+          sector: profile.sector || '',
+          industry: profile.industry || '',
+          image: profile.image || '',
+          description: profile.description || '',
+          website: profile.website || '',
+          beta: num(profile.beta),
+          range: profile.range || '',
+        }
+      : null,
+    target: outTarget,
+    ratings: outRatings,
+    earnings: normalizeEarnings(earnings),
+  }
 }
 
 // News for a symbol, with a free fallback. FMP's stock-news endpoint is premium
