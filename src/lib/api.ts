@@ -163,6 +163,14 @@ export const getYoutubeChannels = (channels: string[], noCache = false) =>
 export const getStockQuotes = (symbols: string[]) =>
   req<StockQuote[]>('/stocks/quotes', { method: 'POST', body: JSON.stringify({ symbols }) });
 
+// Spot FX rates for the display-currency toggle. Returns rates FROM `base`
+// (e.g. base 'USD' → { EUR: 0.86, GBP: 0.79, USD: 1, … }). No key required.
+export const getFxRates = (base = 'USD') =>
+  req<{ base: string; date: string; rates: Record<string, number> }>('/stocks/fx', {
+    method: 'POST',
+    body: JSON.stringify({ base }),
+  });
+
 // Symbol search for the add-holding flow (query → matching FMP tickers).
 export const searchStockSymbols = (q: string) =>
   req<SymbolSearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}`);

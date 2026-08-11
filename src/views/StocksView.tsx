@@ -25,6 +25,7 @@ import type {
 import { ViewHeader } from '../components/ViewHeader';
 import {
   getStockQuotes,
+  getFxRates,
   searchStockSymbols,
   analyzeStock,
   whyStockMoved,
@@ -52,6 +53,34 @@ function fmtDate(iso: string) {
 const upColor = (n: number | null | undefined) =>
   n == null ? 'text-ink-4' : n > 0 ? 'text-emerald-500' : n < 0 ? 'text-red-500' : 'text-ink-4';
 
+// Convert an amount from one currency to another using rates keyed off a single
+// base (here USD). `fx[X]` is "how many X per 1 base", so X→Y is `× fx[Y]/fx[X]`.
+// Returns the amount unchanged when currencies match, rates are missing, or a
+// currency is unknown — so a rate gap degrades to "shown in native" not a blank.
+type Fx = Record<string, number> | null;
+// Some listings quote in a currency's minor unit — London stocks trade in GBp
+// (pence = 1/100 GBP), and FX tables only carry the major unit (GBP). Normalise
+// to { ISO code that fx uses, factor to reach the major unit } so pence converts
+// correctly instead of coming out 100× too high.
+function normCur(cur: string): { code: string; factor: number } {
+  if (cur === 'GBp' || cur === 'GBX') return { code: 'GBP', factor: 0.01 };
+  if (cur === 'ZAc' || cur === 'ZAX') return { code: 'ZAR', factor: 0.01 };
+  if (cur === 'ILA') return { code: 'ILS', factor: 0.01 };
+  return { code: (cur || '').toUpperCase(), factor: 1 };
+}
+function convertRaw(n: number | null | undefined, from: string, to: string, fx: Fx): number | null {
+  if (n == null || Number.isNaN(n)) return null;
+  const F = normCur(from);
+  const T = normCur(to);
+  if (!F.code || !T.code) return n;
+  const major = n * F.factor; // amount in F's major unit
+  if (F.code === T.code) return major / T.factor;
+  const rf = fx?.[F.code];
+  const rt = fx?.[T.code];
+  if (!rf || !rt) return n;
+  return (major * (rt / rf)) / T.factor;
+}
+
 // A holding joined with its live quote + derived P/L, for rendering + sorting.
 interface Row {
   h: Holding;
@@ -75,6 +104,11 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+
+  // Spot FX rates (base USD) for showing every value in EUR alongside its native
+  // currency. null until loaded / if the rate service is down (then EUR lines are
+  // simply omitted rather than shown wrong).
+  const [fx, setFx] = useState<Record<string, number> | null>(null);
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [analyses, setAnalyses] = useState<Record<string, StockAnalysis | { error: string } | 'loading'>>({});
@@ -136,6 +170,23 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
     };
   }, [hasFmp]);
 
+  // Spot FX rates (base USD), fetched once. Server-cached 1h, so this is cheap
+  // and shared across refreshes. Failure leaves fx null → toggle falls back to
+  // native values (see convertRaw), so the page still works offline from rates.
+  useEffect(() => {
+    let cancelled = false;
+    getFxRates('USD')
+      .then((r) => {
+        if (!cancelled) setFx(r.rates);
+      })
+      .catch(() => {
+        /* rates unavailable → conversion silently no-ops */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const rows: Row[] = useMemo(() => {
     return holdings
       .map((h) => {
@@ -150,37 +201,45 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
       .sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
   }, [holdings, quotes]);
 
+  // Portfolio totals, summed into a single target currency so the combined figure
+  // is correct even across mixed-currency listings (converting each row first).
+  // We compute it in both USD and EUR so the header can show both at once. When
+  // rates are missing, conversion no-ops and mixed holdings won't add up cleanly
+  // — flagged via `mixed` so the UI can note it rather than lie.
   const totals = useMemo(() => {
-    let value = 0;
-    let cost = 0;
-    let dayChange = 0;
-    let haveValue = false;
-    for (const r of rows) {
-      if (r.value != null) {
-        value += r.value;
-        haveValue = true;
-        cost += r.cost;
+    const priced = rows.filter((r) => r.value != null);
+    const inCur = (target: string) => {
+      let value = 0;
+      let cost = 0;
+      let dayChange = 0;
+      for (const r of priced) {
+        value += convertRaw(r.value, r.cur, target, fx) ?? r.value!;
+        cost += convertRaw(r.cost, r.cur, target, fx) ?? r.cost;
         const prev = r.quote?.previousClose;
-        if (prev != null) dayChange += (r.quote!.price! - prev) * r.h.shares;
+        if (prev != null) {
+          const dc = (r.quote!.price! - prev) * r.h.shares;
+          dayChange += convertRaw(dc, r.cur, target, fx) ?? dc;
+        }
       }
-    }
-    const gain = haveValue ? value - cost : null;
-    const gainPct = haveValue && cost > 0 ? (gain! / cost) * 100 : null;
-    const dayPct = haveValue && value - dayChange > 0 ? (dayChange / (value - dayChange)) * 100 : null;
-    // Totals only make sense in one currency. Detect the set of currencies in
-    // use; if holdings mix (e.g. some EUR listings + some USD), flag it so the
-    // total isn't silently misleading.
-    const currencies = [...new Set(rows.filter((r) => r.value != null).map((r) => r.cur))];
-    return {
-      value: haveValue ? value : null,
-      gain,
-      gainPct,
-      dayChange: haveValue ? dayChange : null,
-      dayPct,
-      cur: currencies[0] || 'USD',
-      mixed: currencies.length > 1,
+      const gain = value - cost;
+      return {
+        value,
+        gain,
+        gainPct: cost > 0 ? (gain / cost) * 100 : null,
+        dayChange,
+        dayPct: value - dayChange > 0 ? (dayChange / (value - dayChange)) * 100 : null,
+      };
     };
-  }, [rows]);
+    const have = priced.length > 0;
+    const currencies = [...new Set(priced.map((r) => normCur(r.cur).code))];
+    return {
+      have,
+      usd: have ? inCur('USD') : null,
+      eur: have ? inCur('EUR') : null,
+      // If holdings span >1 currency and we have no rates, the sums are unreliable.
+      mixed: currencies.length > 1 && !fx,
+    };
+  }, [rows, fx]);
 
   // Open a holding → lazily fetch its full analysis once.
   const toggle = (symbol: string) => {
@@ -305,19 +364,30 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
           <div className="px-4 sm:px-8 py-4 border-b border-line bg-surface">
             <div className="max-w-4xl mx-auto flex flex-wrap items-end gap-x-8 gap-y-4 justify-between">
               <div className="flex flex-wrap gap-x-8 gap-y-4">
-                <Stat label="Portfolio value" value={money(totals.value, totals.cur)} />
+                <Stat
+                  label="Portfolio value"
+                  value={money(totals.usd?.value, 'USD')}
+                  alt={fx ? money(totals.eur?.value, 'EUR') : undefined}
+                />
                 <Stat
                   label="Today"
-                  value={signedMoney(totals.dayChange, totals.cur)}
-                  sub={pct(totals.dayPct)}
-                  color={upColor(totals.dayChange)}
+                  value={signedMoney(totals.usd?.dayChange, 'USD')}
+                  alt={fx ? signedMoney(totals.eur?.dayChange, 'EUR') : undefined}
+                  sub={pct(totals.usd?.dayPct)}
+                  color={upColor(totals.usd?.dayChange)}
                 />
                 <Stat
                   label="Total unrealised"
-                  value={signedMoney(totals.gain, totals.cur)}
-                  sub={pct(totals.gainPct)}
-                  color={upColor(totals.gain)}
+                  value={signedMoney(totals.usd?.gain, 'USD')}
+                  alt={fx ? signedMoney(totals.eur?.gain, 'EUR') : undefined}
+                  sub={pct(totals.usd?.gainPct)}
+                  color={upColor(totals.usd?.gain)}
                 />
+                {totals.mixed && (
+                  <div className="self-center text-[11px] text-amber-500 max-w-[180px]">
+                    FX rates unavailable — mixed-currency total may be off.
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -364,6 +434,7 @@ export function StocksView({ hasFmp, canGenerate, model }: StocksViewProps) {
                   <HoldingCard
                     key={r.h.symbol}
                     row={r}
+                    fx={fx}
                     expanded={expanded === r.h.symbol.toUpperCase()}
                     analysis={analyses[r.h.symbol.toUpperCase()]}
                     why={why[r.h.symbol.toUpperCase()]}
@@ -519,11 +590,12 @@ function AddHolding({ existing, onAdd }: { existing: string[]; onAdd: (h: Holdin
   );
 }
 
-function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+function Stat({ label, value, alt, sub, color }: { label: string; value: string; alt?: string; sub?: string; color?: string }) {
   return (
     <div>
       <div className="text-[11px] text-ink-6 uppercase tracking-widest">{label}</div>
       <div className={`text-[22px] font-semibold leading-none mt-1.5 ${color || 'text-ink'}`}>{value}</div>
+      {alt && <div className={`text-[13px] mt-1 opacity-70 ${color || 'text-ink-4'}`}>≈ {alt}</div>}
       {sub && <div className={`text-[12px] mt-1 ${color || 'text-ink-5'}`}>{sub}</div>}
     </div>
   );
@@ -532,6 +604,7 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
 // ── One holding row + expandable analysis ─────────────────────────────────────
 function HoldingCard({
   row,
+  fx,
   expanded,
   analysis,
   why,
@@ -542,6 +615,7 @@ function HoldingCard({
   onEdit,
 }: {
   row: Row;
+  fx: Fx;
   expanded: boolean;
   analysis: StockAnalysis | { error: string } | 'loading' | undefined;
   why: WhyMoved | { error: string } | 'loading' | undefined;
@@ -552,6 +626,13 @@ function HoldingCard({
   onEdit: (shares: number, avgPrice: number) => void;
 }) {
   const { h, quote, cur, value, gain, gainPct } = row;
+  // EUR equivalent of a native amount, for the secondary line. Returns null when
+  // the holding is already in EUR (no second line needed) or rates are missing.
+  const eur = (n: number | null | undefined): string | null => {
+    if (n == null || !fx || normCur(cur).code === 'EUR') return null;
+    const v = convertRaw(n, cur, 'EUR', fx);
+    return v == null ? null : money(v, 'EUR');
+  };
   const [editing, setEditing] = useState(false);
   const [shares, setShares] = useState(String(h.shares));
   const [avg, setAvg] = useState(String(h.avgPrice));
@@ -588,9 +669,10 @@ function HoldingCard({
           </div>
         </div>
 
-        {/* Value + unrealized */}
+        {/* Value + unrealized (native, with EUR equivalent underneath) */}
         <div className="text-right shrink-0 w-28 hidden sm:block">
           <div className="text-[14px] font-semibold text-ink">{money(value, cur)}</div>
+          {eur(value) && <div className="text-[11px] text-ink-5 opacity-80">≈ {eur(value)}</div>}
           <div className={`text-[12px] ${upColor(gain)}`}>
             {signedMoney(gain, cur, 0)} · {pct(gainPct)}
           </div>

@@ -14,7 +14,7 @@ import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.
 import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { fetchChannels } from './youtube.js'
-import { fetchQuotes, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
+import { fetchQuotes, fetchFxRates, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
 
@@ -299,6 +299,11 @@ app.post('/api/stocks/quotes', h(async (req, res) => {
   const keys = await getKeys()
   const symbols = Array.isArray(req.body?.symbols) ? req.body.symbols : []
   res.json(await fetchQuotes(symbols, keys.fmp))
+}))
+
+// FX spot rates for the portfolio display-currency toggle (no key needed).
+app.post('/api/stocks/fx', h(async (req, res) => {
+  res.json(await fetchFxRates(req.body?.base || 'USD'))
 }))
 
 // Symbol search for the "add holding" flow, so the user picks a ticker FMP has.

@@ -283,6 +283,30 @@ export async function fetchQuotes(symbols, apiKey) {
   return results.filter(Boolean)
 }
 
+// ── FX rates ─────────────────────────────────────────────────────────────────
+// Currency conversion for the portfolio's display-currency toggle. Holdings can
+// be quoted in USD, EUR, GBP… (European listings come through Yahoo), so to show
+// one combined total — or every row — in a single currency we need spot rates.
+// Source: frankfurter.dev (free, no key, ECB reference rates). Cached 1h in
+// memory since ECB publishes once a day; a personal tool doesn't need tick data.
+// Returns a flat map of rates FROM `base` (e.g. base 'EUR' → { USD: 1.15, … });
+// the base itself is always 1. Falls back to `{ [base]: 1 }` if the API is down,
+// so the caller degrades to "can't convert" rather than throwing.
+export async function fetchFxRates(base = 'USD') {
+  const b = String(base || 'USD').trim().toUpperCase() || 'USD'
+  return cached(`fx:${b}`, 3_600_000, async () => {
+    try {
+      const res = await fetch(`https://api.frankfurter.dev/v1/latest?base=${b}`)
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body?.rates) throw new Error(`FX ${res.status}`)
+      return { base: b, date: body.date || today(), rates: { ...body.rates, [b]: 1 } }
+    } catch (e) {
+      log.step(`FX rates for ${b} unavailable: ${e.message}`)
+      return { base: b, date: today(), rates: { [b]: 1 } }
+    }
+  })
+}
+
 // Symbol search for the "add holding" flow. FMP splits this into two endpoints —
 // search-symbol (matches tickers) and search-name (matches company names) — so
 // we query both and merge. US-listed USD tickers are floated to the top because
