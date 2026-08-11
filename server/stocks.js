@@ -560,37 +560,58 @@ export function buildPortfolioPrompt(holdings) {
     .map((h) => {
       const q = h.quote || {}
       const t = h.target || {}
+      // Forward-looking signal: how far today's price sits below/above the
+      // analyst consensus target. THIS — not the holder's cost basis — is what
+      // should drive a buy/sell lean. Positive = room to run, negative = the
+      // price has already overshot where analysts see fair value.
+      const upsidePct =
+        t.consensus != null && q.price != null && q.price > 0
+          ? (((t.consensus - q.price) / q.price) * 100).toFixed(1)
+          : null
       const parts = [
         `${h.symbol} (${h.name || q.name || ''})`,
         `shares=${h.shares ?? '?'}`,
-        `avgCost=${h.avgPrice ?? '?'}`,
         q.price != null ? `price=${q.price}` : null,
-        q.changePct != null ? `todayPct=${q.changePct}` : null,
-        h.gainPct != null ? `unrealizedPct=${h.gainPct}` : null,
         t.consensus != null ? `analystTarget=${t.consensus}` : null,
+        upsidePct != null ? `upsideToTargetPct=${upsidePct}` : null,
         h.ratingConsensus ? `analystRating=${h.ratingConsensus}` : null,
+        q.changePct != null ? `todayPct=${q.changePct}` : null,
+        q.yearHigh != null ? `week52High=${q.yearHigh}` : null,
+        q.yearLow != null ? `week52Low=${q.yearLow}` : null,
         h.sector ? `sector=${h.sector}` : null,
+        // Cost basis is included ONLY so the overview can name winners/losers.
+        // It must NOT influence any stance — see the rules below.
+        h.avgPrice != null ? `holderAvgCost=${h.avgPrice}` : null,
+        h.gainPct != null ? `holderUnrealizedPct=${h.gainPct}` : null,
       ].filter(Boolean)
       return `- ${parts.join(', ')}`
     })
     .join('\n')
 
-  return `You are a careful equity research assistant. Below is a real portfolio with live prices, the holder's average cost, and (where available) analyst consensus price targets and rating consensus.
+  return `You are a careful, forward-looking equity research assistant. Below is a real portfolio with live prices, analyst consensus price targets and rating consensus (where available), 52-week range, valuation, and the holder's cost basis.
 
 Portfolio:
 ${rows}
 
+Decide a stance for each holding based ONLY on forward-looking, security-level signals — never on the holder's profit or loss. The holder's average cost and unrealized P/L are SUNK: whether they are up or down says nothing about whether the stock is attractive from here. A stock can be a screaming buy while the holder is down, or a clear trim while the holder is up.
+
+How to reason about each stance:
+- "accumulate": meaningful upside to the analyst target AND/OR a Buy-leaning rating, reasonable valuation, and no obvious negative catalyst. The forward case is intact or improving.
+- "hold": roughly fairly valued vs the target, mixed or neutral signals, no strong edge either way.
+- "trim": the price has run to or ABOVE the analyst target (little or no upside, negative upsideToTargetPct), stretched valuation, sitting at/near the 52-week high with deteriorating signals, or an oversized position that dominates the portfolio (concentration risk). Trim because upside is gone — NOT because the holder is sitting on a gain, and NEVER because they are sitting on a loss.
+- "review": a real red flag needs a closer look (rating downgrade, price far above target, weak fundamentals) before acting.
+
 Write a JSON object with this exact shape:
 {
-  "overview": "3-5 sentence plain-English read on the portfolio: concentration, sector tilt, notable winners/losers today and vs cost. Reference the numbers.",
+  "overview": "3-5 sentence plain-English read on the portfolio: concentration, sector tilt, and which names have the best/worst forward setup (upside to target, rating). You may mention notable winners/losers vs cost, but frame stances around forward prospects.",
   "positions": [
-    { "symbol": "TICKER", "stance": "accumulate | hold | trim | review", "reason": "1-2 sentences citing the specific data (target vs price, rating, today's move, position size). Attribute analyst views to 'analysts'.", "confidence": "low | medium | high" }
+    { "symbol": "TICKER", "stance": "accumulate | hold | trim | review", "reason": "1-2 sentences citing the specific FORWARD data that drives the stance — upside/downside to target, rating, valuation, 52-week position, concentration. Attribute analyst views to 'analysts'. Do NOT cite the holder's gain or loss as a reason.", "confidence": "low | medium | high" }
   ],
-  "watch": ["short bullet risks or catalysts to watch this week, e.g. upcoming earnings, concentration risk"],
+  "watch": ["short bullet risks or catalysts to watch this week, e.g. upcoming earnings, names trading above target, concentration risk"],
   "disclaimer": ${JSON.stringify(DISCLAIMER)}
 }
 
-Rules: base every claim on the data given — do NOT invent prices, targets or ratings. If analyst data is missing for a name, say so rather than guessing. Do not promise returns or use hype. Keep it concise and specific. Include one position object for every holding. Return only the JSON.`
+Rules: base every claim on the data given — do NOT invent prices, targets or ratings. If analyst data is missing for a name, say the signal is unavailable and lean "hold" rather than guessing. Never justify a stance with the holder's unrealized gain or loss. Do not promise returns or use hype. Keep it concise and specific. Include one position object for every holding. Return only the JSON.`
 }
 
 // The screening universe, grouped by theme. Deliberately mixes megacaps with

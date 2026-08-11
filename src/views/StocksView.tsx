@@ -917,6 +917,13 @@ function SummaryCard({ summary, onClose }: { summary: PortfolioSummary; onClose:
     trim: 'text-amber-500 border-amber-500/30 bg-amber-500/10',
     review: 'text-red-500 border-red-500/30 bg-red-500/10',
   };
+  // Plain-English meaning of each stance tag, shown as a legend under the positions.
+  const stanceHelp: { key: string; label: string; help: string }[] = [
+    { key: 'accumulate', label: 'Accumulate', help: 'Upside to analyst target and/or a Buy rating — the forward case is intact.' },
+    { key: 'hold', label: 'Hold', help: 'Roughly fairly valued vs target — no strong edge either way.' },
+    { key: 'trim', label: 'Trim', help: 'Price at or above target (little upside left) or an oversized position — not because of any gain or loss.' },
+    { key: 'review', label: 'Review', help: 'A red flag (downgrade, price far above target) worth a closer look before acting.' },
+  ];
   return (
     <div className="rounded-xl border border-line bg-card p-4">
       <div className="flex items-center justify-between mb-3">
@@ -944,6 +951,17 @@ function SummaryCard({ summary, onClose }: { summary: PortfolioSummary; onClose:
               </span>
             </div>
           ))}
+          {/* Legend — what each stance tag means */}
+          <div className="mt-2 pt-3 border-t border-line flex flex-col gap-1.5">
+            {stanceHelp.map((s) => (
+              <div key={s.key} className="flex items-start gap-3">
+                <span className={`text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 w-[86px] text-center ${stanceColor[s.key]}`}>
+                  {s.label}
+                </span>
+                <span className="text-[11px] text-ink-6 leading-snug flex-1 pt-0.5">{s.help}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
