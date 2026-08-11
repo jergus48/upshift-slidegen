@@ -7,7 +7,7 @@ import { scrapePinterest } from '../lib/api';
 import { getMergedLibrary } from '../lib/mergedLibrary';
 import { addLocalImages, removeLocalImage } from '../lib/localLibrary';
 import { getHiddenPacks, setPackHidden } from '../lib/hiddenPacks';
-import { createZip, type ZipEntry } from '../lib/zip';
+import { createZip, dataUrlToBytes, type ZipEntry } from '../lib/zip';
 
 // File extension for a downloaded image, from its blob MIME type.
 function extForImage(type: string): string {
@@ -25,6 +25,36 @@ function extForImage(type: string): string {
 // Filesystem-safe slug for a pack name, used as the zip filename.
 function packSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'library';
+}
+
+// Re-encode an image blob through a canvas so the output carries NO metadata —
+// EXIF, XMP, GPS, and embedded provenance chunks (C2PA / "Content Credentials",
+// i.e. the AI label that Gemini/Imagen and others stamp on generated images) are
+// all dropped, because the canvas is redrawn from raw pixels into a brand-new
+// file. Drawing from an object URL of the blob we already fetched avoids any
+// cross-origin canvas tainting. Returns clean bytes plus the matching extension.
+// PNGs stay lossless PNG; everything else becomes high-quality JPEG.
+async function stripBlobMetadata(blob: Blob): Promise<{ bytes: Uint8Array; ext: string }> {
+  const isPng = blob.type === 'image/png';
+  const objUrl = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Could not load image for cleaning.'));
+      el.src = objUrl;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    const type = isPng ? 'image/png' : 'image/jpeg';
+    const dataUrl = canvas.toDataURL(type, isPng ? undefined : 0.95);
+    return { bytes: dataUrlToBytes(dataUrl), ext: isPng ? 'png' : 'jpg' };
+  } finally {
+    URL.revokeObjectURL(objUrl);
+  }
 }
 
 // Read a File as a base64 data URL for shipping to the server as JSON.
@@ -93,7 +123,9 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
   };
 
   // Zip every image in a pack (fetched as bytes — works for bundled paths,
-  // scraped/uploaded blob URLs and inline data URLs alike) and save it.
+  // scraped/uploaded blob URLs and inline data URLs alike) and save it. Each
+  // image is re-encoded through a canvas first, which strips ALL metadata —
+  // including the C2PA "Content Credentials" AI label — from the exported files.
   const downloadPack = async (pack: string, imgs: LibraryImage[]) => {
     if (!imgs.length || downloading) return;
     setError(null);
@@ -106,9 +138,20 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
         const res = await fetch(imgs[i].url);
         if (!res.ok) throw new Error(`Could not fetch image ${i + 1} of ${imgs.length}`);
         const blob = await res.blob();
-        const bytes = new Uint8Array(await blob.arrayBuffer());
-        const name = `${String(i + 1).padStart(pad, '0')}.${extForImage(blob.type)}`;
-        entries.push({ name, data: bytes });
+        // Re-encode to drop metadata (incl. the AI label); fall back to the raw
+        // bytes if a re-encode fails (e.g. an unsupported/broken image).
+        let data: Uint8Array;
+        let ext: string;
+        try {
+          const cleaned = await stripBlobMetadata(blob);
+          data = cleaned.bytes;
+          ext = cleaned.ext;
+        } catch {
+          data = new Uint8Array(await blob.arrayBuffer());
+          ext = extForImage(blob.type);
+        }
+        const name = `${String(i + 1).padStart(pad, '0')}.${ext}`;
+        entries.push({ name, data });
       }
       const url = URL.createObjectURL(createZip(entries));
       const a = document.createElement('a');
