@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Eye, ThumbsUp, RefreshCw, Loader2, Plus, X, Flame, MonitorPlay } from 'lucide-react';
+import { Eye, ThumbsUp, RefreshCw, Loader2, Plus, X, Flame, MonitorPlay, ExternalLink } from 'lucide-react';
 import type { YtChannel, YtVideo } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { getYoutubeChannels } from '../lib/api';
-import { loadChannels, saveChannels } from '../lib/localChannels';
+import { loadChannels, saveChannels, PLATFORMS, PLATFORM_LABELS, type Platform } from '../lib/localChannels';
+
+// Per-platform copy for the add bar. Only YouTube fetches live stats; the rest
+// just persist the account links the user pastes.
+const PLATFORM_PLACEHOLDER: Record<Platform, string> = {
+  youtube: 'Paste a channel link — youtube.com/@handle, /channel/UC…, or @handle',
+  instagram: 'Paste an Instagram profile link or @handle',
+  facebook: 'Paste a Facebook page link',
+  threads: 'Paste a Threads profile link or @handle',
+  x: 'Paste an X profile link or @handle',
+  tiktok: 'Paste a TikTok profile link or @handle',
+};
 
 function formatNumber(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -31,14 +42,23 @@ function timeAgo(iso: string) {
 const sumViews = (vids: YtVideo[]) => vids.reduce((s, v) => s + v.views, 0);
 
 // Time-window filter for the dashboard. 'all' = no filter (latest 5 uploads).
-type TimeFilter = 'all' | '24h' | 'week';
+type TimeFilter = 'all' | '24h' | 'week' | 'month' | 'year';
+const DAY = 24 * 60 * 60 * 1000;
 const WINDOW_MS: Record<TimeFilter, number> = {
   all: 0,
-  '24h': 24 * 60 * 60 * 1000,
-  week: 7 * 24 * 60 * 60 * 1000,
+  '24h': DAY,
+  week: 7 * DAY,
+  month: 30 * DAY,
+  year: 365 * DAY,
 };
-const FILTER_LABELS: Record<TimeFilter, string> = { all: 'All', '24h': '24h', week: 'Week' };
-const WINDOW_NOUN: Record<TimeFilter, string> = { all: '', '24h': 'the last 24 hours', week: 'the last week' };
+const FILTER_LABELS: Record<TimeFilter, string> = { all: 'All', '24h': '24h', week: 'Week', month: 'Month', year: 'Year' };
+const WINDOW_NOUN: Record<TimeFilter, string> = {
+  all: '',
+  '24h': 'the last 24 hours',
+  week: 'the last week',
+  month: 'the last month',
+  year: 'the last year',
+};
 
 // Videos to show for a channel under `filter`: 'all' → latest 5; otherwise every
 // upload published within the window, measured from `now` (the last-fetch time,
@@ -51,13 +71,16 @@ function shownVideos(c: YtChannel, filter: TimeFilter, now: number): YtVideo[] {
 }
 
 export function ChannelsView() {
-  const [links, setLinks] = useState<string[]>(() => loadChannels());
+  const [platform, setPlatform] = useState<Platform>('youtube');
+  const [links, setLinks] = useState<string[]>(() => loadChannels('youtube'));
   const [data, setData] = useState<YtChannel[] | null>(null);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [filter, setFilter] = useState<TimeFilter>('all');
+
+  const isYoutube = platform === 'youtube';
 
   const fetchAll = useCallback(async (targets: string[], noCache = false) => {
     if (!targets.length) {
@@ -77,10 +100,25 @@ export function ChannelsView() {
     }
   }, []);
 
-  // Initial load. Set state only inside the async callbacks (never synchronously
-  // in the effect body) — the first render already shows Loading via data===null.
+  // Switch platforms: swap in that platform's saved accounts. Only YouTube
+  // fetches live stats; the other platforms just render their stored links.
+  const switchPlatform = (p: Platform) => {
+    if (p === platform) return;
+    setPlatform(p);
+    setInput('');
+    setError(null);
+    setData(null);
+    setUpdatedAt(null);
+    const saved = loadChannels(p);
+    setLinks(saved);
+    if (p === 'youtube') void fetchAll(saved);
+  };
+
+  // Initial load (YouTube only). Set state only inside the async callbacks
+  // (never synchronously in the effect body) — the first render already shows
+  // Loading via data===null.
   useEffect(() => {
-    const initial = loadChannels();
+    const initial = loadChannels('youtube');
     if (!initial.length) return;
     getYoutubeChannels(initial)
       .then((d) => {
@@ -99,15 +137,15 @@ export function ChannelsView() {
     }
     const next = [...links, link];
     setLinks(next);
-    saveChannels(next);
+    saveChannels(platform, next);
     setInput('');
-    void fetchAll(next);
+    if (isYoutube) void fetchAll(next);
   };
 
   const removeChannel = (link: string) => {
     const next = links.filter((l) => l !== link);
     setLinks(next);
-    saveChannels(next);
+    saveChannels(platform, next);
     setData((d) => (d ? d.filter((c) => c.input !== link) : d));
   };
 
@@ -135,13 +173,18 @@ export function ChannelsView() {
     <>
       <ViewHeader
         title="Channels"
-        subtitle="Latest uploads and their views across all your YouTube channels — no API key needed."
+        subtitle={
+          isYoutube
+            ? 'Latest uploads and their views across all your YouTube channels — no API key needed.'
+            : `Your ${PLATFORM_LABELS[platform]} accounts — saved per platform.`
+        }
         right={
+          isYoutube &&
           links.length > 0 && (
             <>
               {/* Time-window filter — default is All (no filter). */}
               <div className="flex items-center rounded-lg border border-line p-0.5 bg-card">
-                {(['all', '24h', 'week'] as TimeFilter[]).map((f) => (
+                {(['all', '24h', 'week', 'month', 'year'] as TimeFilter[]).map((f) => (
                   <button
                     key={f}
                     onClick={() => setFilter(f)}
@@ -170,6 +213,25 @@ export function ChannelsView() {
       />
 
       <div className="flex-1 overflow-y-auto">
+        {/* Platform switcher — default YouTube; each platform keeps its own accounts. */}
+        <div className="px-4 sm:px-8 pt-4 border-b border-line bg-surface">
+          <div className="max-w-4xl mx-auto flex flex-wrap gap-1.5 pb-3">
+            {PLATFORMS.map((p) => (
+              <button
+                key={p}
+                onClick={() => switchPlatform(p)}
+                className={`h-8 px-3 rounded-lg text-[12px] font-medium transition-colors border ${
+                  platform === p
+                    ? 'bg-ink text-bg border-ink'
+                    : 'bg-card text-ink-4 border-line hover:text-ink hover:border-line-2'
+                }`}
+              >
+                {PLATFORM_LABELS[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Add-channel bar */}
         <div className="px-4 sm:px-8 py-4 border-b border-line bg-surface">
           <div className="max-w-4xl mx-auto flex gap-2">
@@ -177,7 +239,7 @@ export function ChannelsView() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addChannel()}
-              placeholder="Paste a channel link — youtube.com/@handle, /channel/UC…, or @handle"
+              placeholder={PLATFORM_PLACEHOLDER[platform]}
               className="flex-1 h-9 px-3 rounded-lg bg-card border border-line text-[13px] text-ink placeholder:text-ink-6 outline-none focus-visible:ring-2 focus-visible:ring-ink/10"
             />
             <button
@@ -190,7 +252,7 @@ export function ChannelsView() {
         </div>
 
         {/* Top-strip totals */}
-        {okChannels.length > 0 && (
+        {isYoutube && okChannels.length > 0 && (
           <div className="px-4 sm:px-8 py-4 border-b border-line bg-surface">
             <div className="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-6">
               <Stat label="Channels" value={String(okChannels.length)} />
@@ -215,7 +277,15 @@ export function ChannelsView() {
 
         <div className="p-4 sm:p-8">
           <div className="max-w-4xl mx-auto flex flex-col gap-4">
-            {links.length === 0 ? (
+            {!isYoutube ? (
+              links.length === 0 ? (
+                <Empty text={`Add your ${PLATFORM_LABELS[platform]} accounts above — they're saved per platform in this browser.`} />
+              ) : (
+                links.map((link) => (
+                  <AccountCard key={link} link={link} onRemove={() => removeChannel(link)} />
+                ))
+              )
+            ) : links.length === 0 ? (
               <Empty text="Add your YouTube channel links above to see each one's latest uploads and views in a single dashboard." />
             ) : error && !data ? (
               <Empty text={error} />
@@ -342,6 +412,45 @@ function VideoCard({ video }: { video: YtVideo }) {
         </span>
       </div>
     </a>
+  );
+}
+
+// A saved account for a non-YouTube platform. We don't fetch stats there, so
+// the card just shows the pasted link (or handle) with a link out and remove.
+function AccountCard({ link, onRemove }: { link: string; onRemove: () => void }) {
+  const isUrl = /^https?:\/\//i.test(link);
+  const label = link.replace(/^https?:\/\/(www\.)?/i, '');
+  return (
+    <div className="bg-card border border-line rounded-xl p-4 flex items-center gap-3">
+      <div className="min-w-0 flex-1">
+        {isUrl ? (
+          <a
+            href={link}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[14px] font-semibold text-ink hover:underline truncate block"
+          >
+            {label}
+          </a>
+        ) : (
+          <span className="text-[14px] font-semibold text-ink truncate block">{link}</span>
+        )}
+      </div>
+      {isUrl && (
+        <a
+          href={link}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Open account"
+          className="text-ink-6 hover:text-ink shrink-0 p-1"
+        >
+          <ExternalLink size={15} />
+        </a>
+      )}
+      <button onClick={onRemove} aria-label="Remove account" className="text-ink-6 hover:text-ink shrink-0 p-1">
+        <X size={15} />
+      </button>
+    </div>
   );
 }
 
