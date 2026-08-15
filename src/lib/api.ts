@@ -13,6 +13,7 @@ import type {
   LibraryImage,
   LibraryPack,
   YtChannel,
+  SocialProfile,
   StockQuote,
   StockAnalysis,
   StockNews,
@@ -155,6 +156,15 @@ export const getYoutubeChannels = (channels: string[], noCache = false) =>
   req<YtChannel[]>('/youtube/channels', {
     method: 'POST',
     body: JSON.stringify({ channels, noCache }),
+  });
+
+// ── Social profiles (Instagram / TikTok / X / Threads / Facebook) ────────────
+// Best-effort public follower/post counts for a batch of accounts on one
+// platform. `noCache` (the Refresh button) forces a fresh scrape.
+export const getSocialProfiles = (platform: string, accounts: string[], noCache = false) =>
+  req<SocialProfile[]>('/social/profiles', {
+    method: 'POST',
+    body: JSON.stringify({ platform, accounts, noCache }),
   });
 
 // ── Stock analyzer (Financial Modeling Prep + AI summaries) ─────────────────

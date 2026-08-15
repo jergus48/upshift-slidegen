@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Eye, ThumbsUp, RefreshCw, Loader2, Plus, X, Flame, MonitorPlay, ExternalLink } from 'lucide-react';
-import type { YtChannel, YtVideo } from '../types';
+import { Eye, ThumbsUp, RefreshCw, Loader2, Plus, X, Flame, MonitorPlay, ExternalLink, Users, Heart, Grid3x3 } from 'lucide-react';
+import type { YtChannel, YtVideo, SocialProfile } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
-import { getYoutubeChannels } from '../lib/api';
+import { getYoutubeChannels, getSocialProfiles } from '../lib/api';
 import { loadChannels, saveChannels, PLATFORMS, PLATFORM_LABELS, type Platform } from '../lib/localChannels';
 
 // Per-platform copy for the add bar. Only YouTube fetches live stats; the rest
@@ -17,6 +17,7 @@ const PLATFORM_PLACEHOLDER: Record<Platform, string> = {
 };
 
 function formatNumber(n: number) {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toString();
@@ -74,6 +75,7 @@ export function ChannelsView() {
   const [platform, setPlatform] = useState<Platform>('youtube');
   const [links, setLinks] = useState<string[]>(() => loadChannels('youtube'));
   const [data, setData] = useState<YtChannel[] | null>(null);
+  const [social, setSocial] = useState<SocialProfile[] | null>(null);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,18 +102,45 @@ export function ChannelsView() {
     }
   }, []);
 
-  // Switch platforms: swap in that platform's saved accounts. Only YouTube
-  // fetches live stats; the other platforms just render their stored links.
+  // Best-effort public stats for a non-YouTube platform.
+  const fetchSocial = useCallback(async (p: Platform, targets: string[], noCache = false) => {
+    if (!targets.length) {
+      setSocial([]);
+      setUpdatedAt(Date.now());
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      setSocial(await getSocialProfiles(p, targets, noCache));
+      setUpdatedAt(Date.now());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Refresh whichever platform is active (used by the header Refresh button).
+  const refresh = () => {
+    if (isYoutube) void fetchAll(links, true);
+    else void fetchSocial(platform, links, true);
+  };
+
+  // Switch platforms: swap in that platform's saved accounts and fetch its
+  // best-effort public stats.
   const switchPlatform = (p: Platform) => {
     if (p === platform) return;
     setPlatform(p);
     setInput('');
     setError(null);
     setData(null);
+    setSocial(null);
     setUpdatedAt(null);
     const saved = loadChannels(p);
     setLinks(saved);
     if (p === 'youtube') void fetchAll(saved);
+    else void fetchSocial(p, saved);
   };
 
   // Initial load (YouTube only). Set state only inside the async callbacks
@@ -140,6 +169,7 @@ export function ChannelsView() {
     saveChannels(platform, next);
     setInput('');
     if (isYoutube) void fetchAll(next);
+    else void fetchSocial(platform, next);
   };
 
   const removeChannel = (link: string) => {
@@ -147,6 +177,7 @@ export function ChannelsView() {
     setLinks(next);
     saveChannels(platform, next);
     setData((d) => (d ? d.filter((c) => c.input !== link) : d));
+    setSocial((s) => (s ? s.filter((p) => p.input !== link) : s));
   };
 
   // Reference "now" for windowing = when the data was last fetched (stable, so
@@ -179,28 +210,29 @@ export function ChannelsView() {
             : `Your ${PLATFORM_LABELS[platform]} accounts — saved per platform.`
         }
         right={
-          isYoutube &&
           links.length > 0 && (
             <>
-              {/* Time-window filter — default is All (no filter). */}
-              <div className="flex items-center rounded-lg border border-line p-0.5 bg-card">
-                {(['all', '24h', 'week', 'month', 'year'] as TimeFilter[]).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setFilter(f)}
-                    className={`h-7 px-2.5 rounded-md text-[12px] font-medium transition-colors ${
-                      filter === f ? 'bg-raised text-ink' : 'text-ink-5 hover:text-ink'
-                    }`}
-                  >
-                    {FILTER_LABELS[f]}
-                  </button>
-                ))}
-              </div>
+              {/* Time-window filter — YouTube only (the others have no per-post dates). */}
+              {isYoutube && (
+                <div className="flex items-center rounded-lg border border-line p-0.5 bg-card">
+                  {(['all', '24h', 'week', 'month', 'year'] as TimeFilter[]).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setFilter(f)}
+                      className={`h-7 px-2.5 rounded-md text-[12px] font-medium transition-colors ${
+                        filter === f ? 'bg-raised text-ink' : 'text-ink-5 hover:text-ink'
+                      }`}
+                    >
+                      {FILTER_LABELS[f]}
+                    </button>
+                  ))}
+                </div>
+              )}
               {updatedAt && !loading && (
                 <span className="text-[11px] text-ink-6 mr-1">updated {timeAgo(new Date(updatedAt).toISOString())} ago</span>
               )}
               <button
-                onClick={() => void fetchAll(links, true)}
+                onClick={refresh}
                 disabled={loading}
                 className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-4 hover:text-ink hover:border-line-2 disabled:opacity-50"
               >
@@ -280,10 +312,14 @@ export function ChannelsView() {
             {!isYoutube ? (
               links.length === 0 ? (
                 <Empty text={`Add your ${PLATFORM_LABELS[platform]} accounts above — they're saved per platform in this browser.`} />
+              ) : social === null ? (
+                <Loading />
               ) : (
-                links.map((link) => (
-                  <AccountCard key={link} link={link} onRemove={() => removeChannel(link)} />
-                ))
+                [...social]
+                  .sort((a, b) => (b.followers ?? -1) - (a.followers ?? -1))
+                  .map((p) => (
+                    <SocialCard key={p.input} profile={p} onRemove={() => removeChannel(p.input)} />
+                  ))
               )
             ) : links.length === 0 ? (
               <Empty text="Add your YouTube channel links above to see each one's latest uploads and views in a single dashboard." />
@@ -415,17 +451,28 @@ function VideoCard({ video }: { video: YtVideo }) {
   );
 }
 
-// A saved account for a non-YouTube platform. We don't fetch stats there, so
-// the card just shows the pasted link (or handle) with a link out and remove.
-function AccountCard({ link, onRemove }: { link: string; onRemove: () => void }) {
-  const isUrl = /^https?:\/\//i.test(link);
-  const label = link.replace(/^https?:\/\/(www\.)?/i, '');
+// A saved account on a non-YouTube platform, with whatever public stats we could
+// scrape. Login-walled platforms may expose only some fields (or none) — those
+// just don't render, and a hard failure shows the pasted link with an error.
+function SocialCard({ profile, onRemove }: { profile: SocialProfile; onRemove: () => void }) {
+  const p = profile;
+  const label = p.title || (p.handle ? `@${p.handle}` : p.input);
+  const hasStats = p.followers != null || p.posts != null || p.likes != null;
   return (
     <div className="bg-card border border-line rounded-xl p-4 flex items-center gap-3">
+      <div className="w-10 h-10 rounded-full overflow-hidden bg-raised shrink-0">
+        {p.avatar ? (
+          <img src={p.avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-ink-6">
+            <Users size={16} />
+          </div>
+        )}
+      </div>
       <div className="min-w-0 flex-1">
-        {isUrl ? (
+        {p.ok && p.url ? (
           <a
-            href={link}
+            href={p.url}
             target="_blank"
             rel="noreferrer"
             className="text-[14px] font-semibold text-ink hover:underline truncate block"
@@ -433,12 +480,42 @@ function AccountCard({ link, onRemove }: { link: string; onRemove: () => void })
             {label}
           </a>
         ) : (
-          <span className="text-[14px] font-semibold text-ink truncate block">{link}</span>
+          <span className="text-[14px] font-semibold text-ink truncate block">{label}</span>
+        )}
+        {p.ok ? (
+          hasStats ? (
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ink-5">
+              {p.followers != null && (
+                <span className="flex items-center gap-1">
+                  <Users size={12} className="text-ink-6" />
+                  {formatNumber(p.followers)} followers
+                </span>
+              )}
+              {p.posts != null && (
+                <span className="flex items-center gap-1">
+                  <Grid3x3 size={12} className="text-ink-6" />
+                  {formatNumber(p.posts)} posts
+                </span>
+              )}
+              {p.likes != null && (
+                <span className="flex items-center gap-1">
+                  <Heart size={12} className="text-ink-6" />
+                  {formatNumber(p.likes)} likes
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-[11px] text-ink-6 truncate block">
+              No public stats — this platform blocks logged-out access.
+            </span>
+          )
+        ) : (
+          <span className="text-[11px] text-ink-6 truncate block">{p.error}</span>
         )}
       </div>
-      {isUrl && (
+      {p.ok && p.url && (
         <a
-          href={link}
+          href={p.url}
           target="_blank"
           rel="noreferrer"
           aria-label="Open account"

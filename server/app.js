@@ -14,6 +14,7 @@ import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.
 import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { fetchChannels } from './youtube.js'
+import { fetchProfiles } from './social.js'
 import { fetchQuotes, fetchFxRates, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
@@ -290,6 +291,17 @@ app.post('/api/youtube/channels', h(async (req, res) => {
   // Return the full feed (~15) so the client can filter by time window (24h /
   // week) without a refetch; the default "no filter" view shows the latest 5.
   res.json(await fetchChannels(channels, { limit: 15, noCache }))
+}))
+
+// ── Social profiles (Instagram / TikTok / X / Threads / Facebook) ───────────
+// Best-effort PUBLIC follower/post counts scraped from each profile's Open Graph
+// tags + embedded JSON (no API key). Login-walled platforms may come back with
+// just the account; per-account errors are captured, not thrown.
+app.post('/api/social/profiles', h(async (req, res) => {
+  const platform = String(req.body?.platform || '')
+  const accounts = Array.isArray(req.body?.accounts) ? req.body.accounts : []
+  const noCache = !!req.body?.noCache
+  res.json(await fetchProfiles(platform, accounts, { noCache }))
 }))
 
 // ── Stock analyzer (Financial Modeling Prep + AI summaries) ─────────────────

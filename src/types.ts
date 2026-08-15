@@ -25,6 +25,25 @@ export interface YtChannel {
   videos?: YtVideo[];
 }
 
+// ── Non-YouTube social profiles (best-effort public scrape, no API key) ──────
+// One tracked account's result. Like YtChannel, `ok: false` carries an `error`
+// instead of data. All stat fields are optional — login-walled platforms often
+// expose only some (or none) of them.
+export interface SocialProfile {
+  input: string; // the link/handle the user pasted (stable key for add/remove)
+  ok: boolean;
+  platform: string;
+  error?: string;
+  handle?: string;
+  title?: string;
+  avatar?: string;
+  url?: string;
+  followers?: number | null;
+  following?: number | null;
+  posts?: number | null;
+  likes?: number | null; // total likes/hearts (TikTok)
+}
+
 export interface Slide {
   id: string;
   text: string;
