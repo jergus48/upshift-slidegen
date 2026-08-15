@@ -250,6 +250,8 @@ export default function App() {
         }),
       }));
       setQueue((q) => [...withStyle, ...q]);
+      // Auto-select the whole new batch so it's ready to download right away.
+      setSelectedIds((prev) => [...withStyle.map((s) => s.id), ...prev]);
       setActiveView('queue');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -288,6 +290,7 @@ export default function App() {
       })),
     };
     setQueue((q) => [show, ...q]);
+    setSelectedIds((prev) => [show.id, ...prev]);
   };
 
   // Keep the multi-select in sync as queue items come and go.
