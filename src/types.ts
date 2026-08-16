@@ -9,6 +9,11 @@ export interface YtVideo {
   views: number;
   likes: number;
   publishedAt: string;
+  // Real views gained per time window, measured against the server's snapshot
+  // history (see server/viewSnapshots.js). `exact: false` means we don't yet
+  // have a baseline old enough to cover the window — the value is a partial
+  // lower bound while tracking accumulates. Absent until the server has run.
+  gained?: Partial<Record<'24h' | 'week' | 'month' | 'year', { value: number; exact: boolean }>>;
 }
 
 // One tracked channel's result. `ok: false` carries an `error` instead of data,

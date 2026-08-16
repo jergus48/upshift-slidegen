@@ -42,6 +42,28 @@ function timeAgo(iso: string) {
 
 const sumViews = (vids: YtVideo[]) => vids.reduce((s, v) => s + v.views, 0);
 
+// Real views a video gained inside the active window, as measured server-side
+// against snapshot history. null for the 'all' view or before tracking has run.
+function gainedFor(v: YtVideo, filter: TimeFilter): { value: number; exact: boolean } | null {
+  if (filter === 'all') return null;
+  return v.gained?.[filter] ?? null;
+}
+
+// A channel's total real gained views in the window across every fetched video,
+// plus whether all contributing figures had enough history to be exact (if any
+// lacked a baseline old enough, the total is a partial lower bound).
+function channelGained(c: YtChannel, filter: TimeFilter): { value: number; exact: boolean } {
+  let value = 0;
+  let exact = true;
+  for (const v of c.videos ?? []) {
+    const g = gainedFor(v, filter);
+    if (!g) continue;
+    value += g.value;
+    if (!g.exact) exact = false;
+  }
+  return { value, exact };
+}
+
 // Time-window filter for the dashboard. 'all' = no filter (latest 5 uploads).
 type TimeFilter = 'all' | '24h' | 'week' | 'month' | 'year';
 const DAY = 24 * 60 * 60 * 1000;
@@ -185,18 +207,27 @@ export function ChannelsView() {
   const now = updatedAt ?? 0;
   const shownFor = (c: YtChannel): YtVideo[] => shownVideos(c, filter, now);
 
-  // Sort channels so the best-performing (most views in the window) float to the top.
-  const sorted = data
-    ? [...data].sort((a, b) => sumViews(shownFor(b)) - sumViews(shownFor(a)))
-    : null;
-  const okChannels = sorted?.filter((c) => c.ok) ?? [];
-  const totalViews = okChannels.reduce((s, c) => s + sumViews(shownFor(c)), 0);
+  // The metric a channel is ranked/summed by: real gained views under a window
+  // filter, lifetime views of the latest uploads under 'all'.
+  const metric = (c: YtChannel): number =>
+    filter === 'all' ? sumViews(shownFor(c)) : channelGained(c, filter).value;
 
-  // The single best-performing Short in the window across every channel.
-  let top: { video: YtVideo; channel: YtChannel } | null = null;
+  // Sort channels so the best-performing (most views in the window) float to the top.
+  const sorted = data ? [...data].sort((a, b) => metric(b) - metric(a)) : null;
+  const okChannels = sorted?.filter((c) => c.ok) ?? [];
+  const totalViews = okChannels.reduce((s, c) => s + metric(c), 0);
+  // Partial when any channel lacks a baseline old enough to fill the window —
+  // the number is still accumulating as tracking history builds up.
+  const totalExact = filter === 'all' || okChannels.every((c) => channelGained(c, filter).exact);
+
+  // The single best-performing video in the window across every channel — scored
+  // by real gained views when filtered, lifetime views under 'all'.
+  let top: { video: YtVideo; channel: YtChannel; score: number } | null = null;
   for (const c of okChannels) {
-    for (const v of shownFor(c)) {
-      if (!top || v.views > top.video.views) top = { video: v, channel: c };
+    const pool = filter === 'all' ? shownFor(c) : c.videos ?? [];
+    for (const v of pool) {
+      const score = filter === 'all' ? v.views : gainedFor(v, filter)?.value ?? 0;
+      if (!top || score > top.score) top = { video: v, channel: c, score };
     }
   }
 
@@ -289,8 +320,15 @@ export function ChannelsView() {
             <div className="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-6">
               <Stat label="Channels" value={String(okChannels.length)} />
               <Stat
-                label={filter === 'all' ? 'Recent views' : `Views · ${FILTER_LABELS[filter]}`}
-                value={formatNumber(totalViews)}
+                label={filter === 'all' ? 'Recent views' : `Views gained · ${FILTER_LABELS[filter]}`}
+                value={`${totalExact ? '' : '~'}${formatNumber(totalViews)}`}
+                note={
+                  filter === 'all'
+                    ? undefined
+                    : totalExact
+                      ? 'real views earned in this window'
+                      : 'still building history — partial so far'
+                }
               />
               {top && (
                 <div className="min-w-0">
@@ -298,7 +336,7 @@ export function ChannelsView() {
                     <Flame size={11} className="text-orange-500" /> Top performer
                   </div>
                   <div className="text-[14px] font-semibold text-ink leading-tight mt-1 truncate">
-                    {formatNumber(top.video.views)} · {top.channel.title}
+                    {formatNumber(top.score)} · {top.channel.title}
                   </div>
                   <div className="text-[11px] text-ink-6 truncate">{top.video.title}</div>
                 </div>
@@ -333,6 +371,7 @@ export function ChannelsView() {
                   key={c.input}
                   channel={c}
                   videos={shownFor(c)}
+                  filter={filter}
                   emptyNote={filter === 'all' ? '' : `No uploads in ${WINDOW_NOUN[filter]}.`}
                   onRemove={() => removeChannel(c.input)}
                 />
@@ -345,11 +384,12 @@ export function ChannelsView() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div>
       <div className="text-[11px] text-ink-6 uppercase tracking-widest">{label}</div>
       <div className="text-[22px] font-semibold text-ink leading-none mt-1">{value}</div>
+      {note && <div className="text-[10px] text-ink-6 mt-1">{note}</div>}
     </div>
   );
 }
@@ -357,11 +397,13 @@ function Stat({ label, value }: { label: string; value: string }) {
 function ChannelCard({
   channel,
   videos,
+  filter,
   emptyNote,
   onRemove,
 }: {
   channel: YtChannel;
   videos: YtVideo[];
+  filter: TimeFilter;
   emptyNote: string;
   onRemove: () => void;
 }) {
@@ -409,7 +451,7 @@ function ChannelCard({
         (videos.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             {videos.map((v) => (
-              <VideoCard key={v.id} video={v} />
+              <VideoCard key={v.id} video={v} gained={gainedFor(v, filter)} />
             ))}
           </div>
         ) : (
@@ -419,7 +461,7 @@ function ChannelCard({
   );
 }
 
-function VideoCard({ video }: { video: YtVideo }) {
+function VideoCard({ video, gained }: { video: YtVideo; gained?: { value: number; exact: boolean } | null }) {
   return (
     <a href={video.url} target="_blank" rel="noreferrer" className="group block">
       <div className="relative aspect-video rounded-md overflow-hidden bg-raised">
@@ -446,6 +488,12 @@ function VideoCard({ video }: { video: YtVideo }) {
           <ThumbsUp size={11} className="text-ink-6" />
           {formatNumber(video.likes)}
         </span>
+        {gained && (
+          <span className="flex items-center gap-1 text-emerald-500 font-medium" title="real views gained in this window">
+            {gained.exact ? '+' : '~+'}
+            {formatNumber(gained.value)}
+          </span>
+        )}
       </div>
     </a>
   );

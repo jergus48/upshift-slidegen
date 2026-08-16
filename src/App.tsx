@@ -53,7 +53,12 @@ export default function App() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [bundledPackNames, setBundledPackNames] = useState<string[]>([]);
   const [authStatus, setAuthStatus] = useState<{ required: boolean; authed: boolean } | null>(null);
-  const [activeView, setActiveView] = useState<ViewKey>('queue');
+  // Only the Channels view gets its own URL (/youtube) so a page refresh lands
+  // back on it; every other view lives at the index path (its selection isn't
+  // reflected in the URL). Initialize from the path so a hard reload restores it.
+  const [activeView, setActiveView] = useState<ViewKey>(
+    () => (window.location.pathname === '/youtube' ? 'channels' : 'queue')
+  );
   const [queue, setQueue] = useState<Slideshow[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -94,7 +99,10 @@ export default function App() {
     // so the queue-load effect below picks up the recovered items.
     recoverOrphanQueues(w.projects.map((p) => p.id), w.activeProjectId);
     setWorkspace(w);
-    if (!keyStatus.openrouter && !keyStatus.postbridge) setActiveView('settings');
+    // First-run with no keys jumps to Settings — unless the URL explicitly asked
+    // for the Channels page (/youtube), which we honor across a refresh.
+    if (!keyStatus.openrouter && !keyStatus.postbridge && window.location.pathname !== '/youtube')
+      setActiveView('settings');
     if (keyStatus.postbridge) loadAccounts();
   }, [loadAccounts]);
 
@@ -122,6 +130,23 @@ export default function App() {
       setError(e instanceof Error ? e.message : 'Could not reach the Slidesmith server.');
     }
   };
+
+  // Reflect the Channels view in the URL (/youtube) and everything else at '/',
+  // so a refresh restores Channels but no other view. Also respond to the
+  // browser's back/forward buttons.
+  useEffect(() => {
+    const wantPath = activeView === 'channels' ? '/youtube' : '/';
+    if (window.location.pathname !== wantPath) {
+      window.history.pushState(null, '', wantPath);
+    }
+  }, [activeView]);
+
+  useEffect(() => {
+    const onPop = () =>
+      setActiveView(window.location.pathname === '/youtube' ? 'channels' : 'queue');
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   // The queue lives in the browser (per project) — load it whenever the active
   // project changes, and persist it back on every change. `queueProject` tracks

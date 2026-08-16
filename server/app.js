@@ -14,6 +14,7 @@ import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.
 import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { fetchChannels } from './youtube.js'
+import { withViewDeltas } from './viewSnapshots.js'
 import { fetchProfiles } from './social.js'
 import { fetchQuotes, fetchFxRates, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
 import { logger } from './log.js'
@@ -290,7 +291,10 @@ app.post('/api/youtube/channels', h(async (req, res) => {
   const noCache = !!req.body?.noCache
   // Return the full feed (~15) so the client can filter by time window (24h /
   // week) without a refetch; the default "no filter" view shows the latest 5.
-  res.json(await fetchChannels(channels, { limit: 15, noCache }))
+  const result = await fetchChannels(channels, { limit: 15, noCache })
+  // Record each video's current view count and attach real per-window gained
+  // views (`video.gained`), measured against our own snapshot history.
+  res.json(await withViewDeltas(result))
 }))
 
 // ── Social profiles (Instagram / TikTok / X / Threads / Facebook) ───────────
