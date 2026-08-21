@@ -250,9 +250,8 @@ export function ChannelsView() {
                     <button
                       key={f}
                       onClick={() => setFilter(f)}
-                      className={`h-7 px-2.5 rounded-md text-[12px] font-medium transition-colors ${
-                        filter === f ? 'bg-raised text-ink' : 'text-ink-5 hover:text-ink'
-                      }`}
+                      className={`h-7 px-2.5 rounded-md text-[12px] font-medium transition-colors ${filter === f ? 'bg-raised text-ink' : 'text-ink-5 hover:text-ink'
+                        }`}
                     >
                       {FILTER_LABELS[f]}
                     </button>
@@ -283,11 +282,10 @@ export function ChannelsView() {
               <button
                 key={p}
                 onClick={() => switchPlatform(p)}
-                className={`h-8 px-3 rounded-lg text-[12px] font-medium transition-colors border ${
-                  platform === p
+                className={`h-8 px-3 rounded-lg text-[12px] font-medium transition-colors border ${platform === p
                     ? 'bg-ink text-bg border-ink'
                     : 'bg-card text-ink-4 border-line hover:text-ink hover:border-line-2'
-                }`}
+                  }`}
               >
                 {PLATFORM_LABELS[p]}
               </button>
@@ -488,12 +486,7 @@ function VideoCard({ video, gained }: { video: YtVideo; gained?: { value: number
           <ThumbsUp size={11} className="text-ink-6" />
           {formatNumber(video.likes)}
         </span>
-        {gained && (
-          <span className="flex items-center gap-1 text-emerald-500 font-medium" title="real views gained in this window">
-            {gained.exact ? '+' : '~+'}
-            {formatNumber(gained.value)}
-          </span>
-        )}
+
       </div>
     </a>
   );
