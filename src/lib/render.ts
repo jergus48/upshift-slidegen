@@ -517,6 +517,25 @@ async function pickAvcConfig(): Promise<VideoEncoderConfig | null> {
   return null;
 }
 
+// Builds a valid AAC-LC AudioSpecificConfig (the 2-byte "esds" payload that tells
+// a player the codec's sample rate + channel count). Safari's WebCodecs
+// AudioEncoder emits a broken/empty decoder config, so the muxed MP4 ends up
+// declaring "0 channels" — which plays locally but jams server-side transcoders
+// (YouTube gets stuck "processing" such files forever). We rebuild the config
+// from the exact values we configured the encoder with, so the audio-track header
+// is always correct regardless of what the browser reports.
+function aacAudioSpecificConfig(sampleRate: number, channels: number): Uint8Array {
+  const RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+  const objectType = 2; // AAC-LC
+  const chCfg = Math.max(1, Math.min(2, channels)); // 1 = mono, 2 = stereo
+  let idx = RATES.indexOf(sampleRate);
+  if (idx < 0) idx = 4; // unknown rate → fall back to the 44.1kHz index
+  // 5 bits objectType | 4 bits samplingFrequencyIndex | 4 bits channelConfig | 3 bits 0
+  const b0 = (objectType << 3) | (idx >> 1);
+  const b1 = ((idx & 1) << 7) | (chCfg << 3);
+  return new Uint8Array([b0, b1]);
+}
+
 async function renderSlideshowVideoWebCodecs(
   show: Slideshow,
   music?: MusicTrack | null,
@@ -615,8 +634,24 @@ async function renderSlideshowVideoWebCodecs(
   if (renderedAudio) {
     const channels = renderedAudio.numberOfChannels;
     const sampleRate = renderedAudio.sampleRate;
+    // A guaranteed-correct decoder config, used to override whatever the browser
+    // hands us (Safari's is broken → "0 channels"). We know these values exactly:
+    // the encoder is configured with them right below.
+    const description = aacAudioSpecificConfig(sampleRate, channels);
     const audioEncoder = new AudioEncoder({
-      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+      output: (chunk, meta) => {
+        const fixedMeta: EncodedAudioChunkMetadata = {
+          ...meta,
+          decoderConfig: {
+            ...(meta?.decoderConfig ?? {}),
+            codec: 'mp4a.40.2',
+            sampleRate,
+            numberOfChannels: channels,
+            description,
+          },
+        };
+        muxer.addAudioChunk(chunk, fixedMeta);
+      },
       error: (e) => { encodeError = e; },
     });
     audioEncoder.configure({ codec: 'mp4a.40.2', numberOfChannels: channels, sampleRate, bitrate: 128_000 });
