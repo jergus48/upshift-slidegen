@@ -486,7 +486,12 @@ function VideoCard({ video, gained }: { video: YtVideo; gained?: { value: number
           <ThumbsUp size={11} className="text-ink-6" />
           {formatNumber(video.likes)}
         </span>
-
+        {gained && (
+          <span className="text-accent">
+            +{gained.exact ? '' : '~'}
+            {formatNumber(gained.value)}
+          </span>
+        )}
       </div>
     </a>
   );
