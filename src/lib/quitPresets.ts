@@ -634,6 +634,197 @@ const SELF_SPECS: SelfSpec[] = [
   },
 ];
 
+// ---- Viral slideshow presets (mined from top TikTok carousels) ------------
+// Reverse-engineered from the accounts' actual viral photo slideshows (decks
+// that hit 250k-2M views): exercise "tier lists", split ratings, contrarian
+// "things to avoid", unconventional-habit lists, and "high-value" trait lists.
+// These copy the STRUCTURE and the blunt, punchy, screenshot-bait voice that
+// made them hit — which is deliberately DIFFERENT from the shared VIRAL_VOICE
+// (complete conversational sentences). So they use their own voice block below.
+//
+// The single most repeated winning move in the source decks: a countdown that
+// rates a POPULAR pick shockingly low (e.g. "Pull ups -1/10, waste of time")
+// to bait comments, then lands on a 10/10 "no explanation needed" finisher, and
+// slips ONE soft app plug into a "PRO TIP" slide near the end. Here that plug is
+// Upshift, framed honestly (consistency/attention), never as a workout tracker.
+
+const PUNCHY_VOICE =
+  'Voice, Tone & Formatting (viral TikTok carousel style):\n' +
+  'Blunt, confident, a little cocky, like a gym/self-improvement creator who KNOWS. Short punchy lines, not essays. ' +
+  'UNLIKE a normal caption, here clipped fragments are GOOD: "Waste of time." / "No explanation needed." / ' +
+  '"Trust me, I know ball." are exactly the vibe. Use gym/internet slang sparingly and naturally (cooked, ' +
+  'demon, peak, S-tier, ykyk) — never forced.\n' +
+  'Keep each slide skimmable in under 2 seconds: a short title line, then at most a line or two under it.\n' +
+  'BANNED words/phrases (they scream AI): rediscover, embrace, unlock, journey, elevate, empower, "dive in", ' +
+  '"in today\'s world", boost, foster, cultivate, nurture, "take back control", "rewire your brain", ' +
+  '"say goodbye to", "level up your life", "game changer". No em-dashes. No markdown or bold. ' +
+  'The app has NO community or forum — never reference other members.\n' +
+  'HOOKS: any example hook below is ONLY inspiration for the angle — write your OWN fresh original hook, and vary ' +
+  'it every time. Never copy an example word for word.';
+
+// The Upshift plug for these punchy decks — honest, one slide, near the end,
+// styled like the source decks' "PRO TIP" slide (which plugged a fitness app).
+const PUNCHY_UPSHIFT =
+  'THE APP SLIDE (exactly ONE, styled like a "PRO TIP" slide near the end, never salesy): the tier list / advice ' +
+  'means nothing if you skip days and scroll your life away. In one honest first-person line say Upshift is how you ' +
+  'stay consistent — it locks your phone and kills the mindless scroll so you actually show up. Brand it "Upshift". ' +
+  'This is ONE of the slides in the count, not an extra one. Every other slide stays 100% on topic with zero app mention.';
+
+interface ViralSpec {
+  key: string;
+  label: string;
+  slides: number;
+  niche: string;
+  audience: (g: Gender) => string;
+  hooks: string; // example hook angles (inspiration only)
+  body: string; // the exact slide plan for this format
+}
+
+const VIRAL_SPECS: ViralSpec[] = [
+  // The single biggest format across every account: ranked exercise tier list.
+  {
+    key: 'exercise-tierlist',
+    label: 'Exercise tier list (top 5 for a muscle)',
+    slides: 8,
+    niche: 'ranking the best exercises for a muscle group',
+    audience: () => 'Gym people who want the best exercises for a body part!',
+    hooks:
+      '- "top 5 PEAK exercises for CALVES"\n' +
+      '- "How to build a DEMON back..."\n' +
+      '- "only S-Tier triceps exercises you need"\n' +
+      '- "Exercises I REGRET not doing earlier"',
+    body:
+      'Pick ONE muscle group (back, biceps, triceps, calves, abs, chest, shoulders, legs) and rank exercises for it.\n' +
+      'Slide 1 (Hook): your own original hook naming the muscle, in the spirit above.\n' +
+      'Slide 2 (Flex): one short cocky line establishing you know your stuff ("trust me, I know ball" / "yea ik what works").\n' +
+      'Slides 3-6 (The countdown, 5 down to 2): each is ONE exercise with a rating out of 10 and one blunt line of ' +
+      'verdict. Number them counting DOWN. Rate at least one popular/expected exercise shockingly low (-1/10 or 2/10) ' +
+      'with a savage one-liner ("Waste of time.", "trains your soleus not your calves") — this is the comment bait.\n' +
+      'Slide 7 (The App / PRO TIP): your Upshift slide, styled like a pro tip near the end.\n' +
+      'Slide 8 (The 1/10... the winner): the number 1 exercise rated 10/10 with "No explanation needed... highly ' +
+      'effective". End on the winner so it lands.',
+  },
+
+  // "Rating splits I've tried" — paragraph verdicts building to a 10/10 GOAT.
+  {
+    key: 'split-rating',
+    label: 'Rating gym splits I’ve tried',
+    slides: 7,
+    niche: 'rating training splits from worst to best',
+    audience: () => 'Lifters trying to pick the right training split!',
+    hooks:
+      '- "rating splits I’ve tried as a gym rat who transformed his body"\n' +
+      '- "every gym split ranked worst to best"',
+    body:
+      'Slide 1 (Hook): your own original hook about rating the splits you have tried.\n' +
+      'Slide 2 (Flex): one cocky line ("yea ik what works").\n' +
+      'Slides 3-5: each is ONE split (PPL, Arnold, Full Body, Bro Split, Upper/Lower) with a rating out of 10 and a ' +
+      '2-3 line honest verdict on what works and what is cooked about it. Build UP toward the best one.\n' +
+      'Slide 6 (The App / PRO TIP): your Upshift slide, styled like a pro tip.\n' +
+      'Slide 7 (The 10/10 winner): the split that changed everything, 10/10, the GOAT. Land on it.',
+  },
+
+  // Contrarian "things to AVOID" — reverse listicle, very shareable.
+  {
+    key: 'things-to-avoid',
+    label: '5 things to AVOID (to gain muscle)',
+    slides: 7,
+    niche: 'common mistakes killing your gym progress',
+    audience: () => 'Gym people whose gains are stalling!',
+    hooks:
+      '- "5 things to AVOID if you want to gain muscle"\n' +
+      '- "stop doing these if you actually want to grow"',
+    body:
+      'Slide 1 (Hook): your own original hook about what to avoid to actually grow.\n' +
+      'Slides 2-6: five blunt "don’t do X, do Y instead" mistakes, ONE per slide, numbered 1-5, each short and ' +
+      'a little contrarian (rep ranges, junk volume, bad splits, not tracking, ego lifting). Punchy, not preachy.\n' +
+      'One of these middle slides is the App slide: frame "don’t let your phone eat the day you should be ' +
+      'training" and name Upshift as how you kill the scroll and stay consistent.\n' +
+      'Slide 7 (CTA): blunt closer ("Save this. Fix one today.").',
+  },
+
+  // Unconventional-habit list (jaidenfitt "weird advice that actually works").
+  {
+    key: 'weird-advice',
+    label: 'Weird advice that actually works',
+    slides: 9,
+    niche: 'unconventional self-improvement habits',
+    audience: () => 'People who want habits that actually change something!',
+    hooks:
+      '- "weird advice that actually works"\n' +
+      '- "unusual habits that fixed my life"',
+    body:
+      'Slide 1 (Hook): your own original hook about weird advice that actually works.\n' +
+      'Slides 2-8: seven unconventional but real habits, ONE per slide, numbered 1-7. Each = a short bold habit title, ' +
+      'then 2-3 SHORT lines (fragments are fine) on why it works. Draw from things like: put your phone across the ' +
+      'room, talk to yourself in the mirror kindly, do something badly on purpose, write worries down then bin them, ' +
+      'same outfit daily to cut decision fatigue, micro-gratitude before meals.\n' +
+      'Make the "put your phone across the room / kill the scroll" habit the App slide: name Upshift as how you ' +
+      'actually make the phone hard to reach and lock the scroll.\n' +
+      'Slide 9 (CTA): quiet blunt closer.',
+  },
+
+  // "High-value man/woman" trait list — triad of examples + a one-line why.
+  {
+    key: 'high-value-traits',
+    label: 'Traits that make you high-value',
+    slides: 11,
+    niche: 'traits that make you respected and high-value',
+    audience: (g) =>
+      g === 'women'
+        ? 'Women who want to become genuinely high-value!'
+        : 'Guys who want to become a genuinely high-value man!',
+    hooks:
+      '- "10 traits that make you a high-value man"\n' +
+      '- "signs you’re becoming that girl"\n' +
+      '- "quiet traits people respect instantly"',
+    body:
+      'Slide 1 (Hook): your own original hook about the traits that make you high-value.\n' +
+      'Slides 2-10: nine traits, ONE per slide, numbered 1-9. Each slide = a short bold trait title, then a TRIAD of ' +
+      'three tiny concrete examples on their own lines, then ONE line on why it matters. ' +
+      'Example shape: "Be the guy people call first / Broken car. Flat tire. Bad day. / It’s about being useful ' +
+      'when needed." Keep it grounded and specific, never generic hustle-bro lines.\n' +
+      'Make the "train your body / keep a promise to yourself daily" trait the App slide: name Upshift as how you ' +
+      'protect that discipline by locking the phone so you actually do the thing.\n' +
+      'Slide 11 (CTA): blunt closer.',
+  },
+
+  // Simple emotional 5-step ("how to start loving yourself again").
+  {
+    key: 'love-yourself-again',
+    label: 'How to start loving yourself again',
+    slides: 8,
+    niche: 'small steps back to self-respect',
+    audience: () => 'People at a low point who want to feel like themselves again!',
+    hooks:
+      '- "How to start loving yourself again"\n' +
+      '- "small steps back to yourself"',
+    body:
+      'Slide 1 (Hook): your own original hook about starting to love yourself again.\n' +
+      'Slides 2-6: five simple, gentle steps, ONE per slide, each just a few words to a short line: train your body, ' +
+      'get outside more, track your progress, eat good food, rest your body and mind. Warm, not preachy.\n' +
+      'Slide 7 (The App): name Upshift softly as how you stop the doomscroll that keeps you stuck, so the other ' +
+      'steps actually happen.\n' +
+      'Slide 8 (Closer): a quiet, almost tender sign-off (like "take care of yourself"), not a hype CTA.',
+  },
+];
+
+const viralBuilder = (s: ViralSpec): PresetBuilder => (g) => ({
+  key: s.key,
+  label: s.label,
+  slides: s.slides,
+  niche: s.niche,
+  audience: s.audience(g),
+  styleMemory:
+    `${PUNCHY_VOICE}${PERSONA(g)}\n\n${PUNCHY_UPSHIFT}\n\n` +
+    `SLIDE BUDGET (strict): produce EXACTLY ${s.slides} slides. Every numbered item/rank gets its OWN single slide, ` +
+    'never split across two, never drop the later ones. If space is tight, tighten wording, do not cut items.\n\n' +
+    'Hook inspiration (angle ONLY — write your own original, never copy word for word):\n' +
+    s.hooks +
+    '\n\nStructure & Flow (specific to THIS format — never fall back to a generic template):\n' +
+    s.body,
+});
+
 const selfBuilder = (s: SelfSpec): PresetBuilder => (g) => ({
   key: s.key,
   label: s.label,
@@ -651,8 +842,13 @@ const selfBuilder = (s: SelfSpec): PresetBuilder => (g) => ({
     s.body,
 });
 
-// Quit-habit presets first, then the self-improvement family.
-const ALL_BUILDERS: PresetBuilder[] = [...BUILDERS, ...SELF_SPECS.map(selfBuilder)];
+// Quit-habit presets first, then the self-improvement family, then the viral
+// slideshow formats mined from top TikTok carousel accounts.
+const ALL_BUILDERS: PresetBuilder[] = [
+  ...BUILDERS,
+  ...SELF_SPECS.map(selfBuilder),
+  ...VIRAL_SPECS.map(viralBuilder),
+];
 
 // Build the preset list for a given pack. Defaults to the men's pack.
 export function getQuitPresets(gender: Gender = 'men'): QuitPreset[] {
