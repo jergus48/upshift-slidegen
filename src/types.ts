@@ -256,6 +256,9 @@ export interface LibraryImage {
   id: string;
   url: string;
   pack: string;
+  // Sub-group inside the pack (local images only). Absent = Unfiled. See
+  // src/lib/subfolders.ts.
+  subfolder?: string;
   source: 'bundled' | 'scraped' | 'uploaded';
 }
 
@@ -264,6 +267,11 @@ export interface LibraryPack {
   source: 'bundled' | 'scraped' | 'uploaded';
   count: number;
   covers: string[];
+  // Subfolders declared for this pack (registry names, even empty ones) with a
+  // live image count and cover thumbnails. Only local packs can have these.
+  subfolders?: { name: string; count: number; covers: string[] }[];
+  // Images in the pack not assigned to any subfolder.
+  unfiledCount?: number;
 }
 
 export interface ModelOption {

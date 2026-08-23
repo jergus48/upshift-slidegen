@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Download, Trash2, Upload, Eye, EyeOff } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { Loader2, Download, Trash2, Upload, Eye, EyeOff, FolderPlus, X } from 'lucide-react';
 import type { LibraryImage } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { scrapePinterest } from '../lib/api';
 import { getMergedLibrary } from '../lib/mergedLibrary';
-import { addLocalImages, removeLocalImage } from '../lib/localLibrary';
+import { addLocalImages, removeLocalImage, setImageSubfolder, moveSubfolderImages } from '../lib/localLibrary';
 import { getHiddenPacks, setPackHidden } from '../lib/hiddenPacks';
+import { getSubfolders, addSubfolder, removeSubfolder } from '../lib/subfolders';
 import { createZip, dataUrlToBytes, type ZipEntry } from '../lib/zip';
+
+// Filter sentinels for the subfolder view within a pack.
+const ALL_SUB = '__all__';
+const UNFILED = '__unfiled__';
 
 // File extension for a downloaded image, from its blob MIME type.
 function extForImage(type: string): string {
@@ -88,6 +93,12 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
   const [hidden, setHidden] = useState<Set<string>>(() => getHiddenPacks());
   const [downloading, setDownloading] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Which subfolder is being viewed per pack (ALL_SUB default), the new-subfolder
+  // input text per pack, and the drop target currently hovered ("pack::bin").
+  const [viewSub, setViewSub] = useState<Record<string, string>>({});
+  const [newSub, setNewSub] = useState<Record<string, string>>({});
+  const [addingSub, setAddingSub] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
 
   // Show every pack here (including hidden ones) so they can be un-hidden.
   const load = () => getMergedLibrary(true).then(setImages).catch((e) => setError(e.message));
@@ -119,6 +130,33 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
 
   const remove = async (id: string) => {
     await removeLocalImage(id);
+    await load();
+  };
+
+  // Assign a dragged image to a subfolder (or Unfiled with null), then refresh.
+  const assignSub = async (id: string, subfolder: string | null) => {
+    await setImageSubfolder(id, subfolder);
+    await load();
+  };
+
+  // Create a subfolder in a pack from the inline input.
+  const createSub = (pack: string) => {
+    const name = (newSub[pack] || '').trim();
+    if (!name) return;
+    addSubfolder(pack, name);
+    setNewSub((m) => ({ ...m, [pack]: '' }));
+    setAddingSub(null);
+    setViewSub((m) => ({ ...m, [pack]: name }));
+    // Registry lives in localStorage; a reload isn't needed for it, but images
+    // may need re-grouping, so refresh the view state.
+    setImages((imgs) => (imgs ? [...imgs] : imgs));
+  };
+
+  // Delete a subfolder: move its images back to Unfiled, drop the registry name.
+  const deleteSub = async (pack: string, name: string) => {
+    await moveSubfolderImages(pack, name, null);
+    removeSubfolder(pack, name);
+    setViewSub((m) => ({ ...m, [pack]: ALL_SUB }));
     await load();
   };
 
@@ -317,6 +355,41 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
             ) : (
               groups.map(([pack, imgs]) => {
                 const isHidden = hidden.has(pack);
+                // Subfolders exist only for the user's own (local) images — the
+                // bundled aesthetic packs are read-only and can't be re-organised.
+                const isLocal = imgs.some((i) => i.source !== 'bundled');
+                const present = new Set<string>();
+                for (const i of imgs) if (i.subfolder) present.add(i.subfolder);
+                const subNames = [...new Set([...getSubfolders(pack), ...present])].sort((a, b) => a.localeCompare(b));
+                const view = viewSub[pack] || ALL_SUB;
+                const shown = imgs.filter((i) => {
+                  if (view === ALL_SUB) return true;
+                  if (view === UNFILED) return !i.subfolder;
+                  return i.subfolder === view;
+                });
+                const binCount = (bin: string) =>
+                  bin === ALL_SUB ? imgs.length
+                  : bin === UNFILED ? imgs.filter((i) => !i.subfolder).length
+                  : imgs.filter((i) => i.subfolder === bin).length;
+
+                // A subfolder chip that doubles as a filter and a drop target.
+                const dropProps = (bin: string) => ({
+                  onDragOver: (e: DragEvent) => { e.preventDefault(); setDragOver(`${pack}::${bin}`); },
+                  onDragLeave: () => setDragOver((d) => (d === `${pack}::${bin}` ? null : d)),
+                  onDrop: (e: DragEvent) => {
+                    e.preventDefault();
+                    setDragOver(null);
+                    const id = e.dataTransfer.getData('text/plain');
+                    if (id) assignSub(id, bin === UNFILED ? null : bin);
+                  },
+                });
+                const chipCls = (bin: string, active: boolean) =>
+                  `px-2 h-6 rounded-full border text-[11px] leading-none flex items-center gap-1 transition-colors ${
+                    dragOver === `${pack}::${bin}` ? 'border-ink ring-2 ring-ink bg-raised'
+                    : active ? 'border-ink bg-ink text-bg'
+                    : 'border-line text-ink-5 hover:border-line-2'
+                  }`;
+
                 return (
                 <div key={pack}>
                   <div className="flex items-baseline gap-3 mb-3">
@@ -343,10 +416,82 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
                       {isHidden ? 'Show' : 'Hide'}
                     </button>
                   </div>
+
+                  {/* Subfolder bar — filter + drag-and-drop targets (local packs only) */}
+                  {isLocal && (
+                    <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                      <button
+                        onClick={() => setViewSub((m) => ({ ...m, [pack]: ALL_SUB }))}
+                        className={chipCls('__filter_all__', view === ALL_SUB)}
+                        title="Show every image in this pack"
+                      >
+                        All <span className={view === ALL_SUB ? 'text-bg/70' : 'text-ink-6'}>{binCount(ALL_SUB)}</span>
+                      </button>
+                      <button
+                        onClick={() => setViewSub((m) => ({ ...m, [pack]: UNFILED }))}
+                        {...dropProps(UNFILED)}
+                        className={chipCls(UNFILED, view === UNFILED)}
+                        title="Images not in any subfolder — drop here to remove from a subfolder"
+                      >
+                        Unfiled <span className={view === UNFILED ? 'text-bg/70' : 'text-ink-6'}>{binCount(UNFILED)}</span>
+                      </button>
+                      {subNames.map((sub) => (
+                        <div
+                          key={sub}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setViewSub((m) => ({ ...m, [pack]: sub }))}
+                          {...dropProps(sub)}
+                          className={`${chipCls(sub, view === sub)} cursor-pointer`}
+                          title={`Drop images here to move them into "${sub}"`}
+                        >
+                          {sub} <span className={view === sub ? 'text-bg/70' : 'text-ink-6'}>{binCount(sub)}</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteSub(pack, sub); }}
+                            aria-label={`Delete subfolder ${sub}`}
+                            className="ml-0.5 -mr-0.5 hover:opacity-70"
+                            title="Delete subfolder (images move back to Unfiled)"
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      ))}
+                      {addingSub === pack ? (
+                        <input
+                          autoFocus
+                          value={newSub[pack] || ''}
+                          onChange={(e) => setNewSub((m) => ({ ...m, [pack]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') createSub(pack); if (e.key === 'Escape') setAddingSub(null); }}
+                          onBlur={() => (newSub[pack]?.trim() ? createSub(pack) : setAddingSub(null))}
+                          placeholder="e.g. gym"
+                          className="h-6 w-24 bg-card border border-line rounded-full px-2.5 text-[11px] text-ink placeholder:text-ink-6 outline-none focus:border-ink-7"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => setAddingSub(pack)}
+                          className="px-2 h-6 rounded-full border border-dashed border-line text-[11px] leading-none flex items-center gap-1 text-ink-5 hover:text-ink hover:border-line-2 transition-colors"
+                          title="Create a subfolder in this pack"
+                        >
+                          <FolderPlus size={12} /> Subfolder
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   <div className={`grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 ${isHidden ? 'opacity-40' : ''}`}>
-                    {imgs.map((img) => (
-                      <div key={img.id} className="group relative aspect-[9/16] rounded-lg overflow-hidden bg-raised">
-                        <img src={img.url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                    {shown.map((img) => (
+                      <div
+                        key={img.id}
+                        draggable={img.source !== 'bundled'}
+                        onDragStart={(e) => { e.dataTransfer.setData('text/plain', img.id); e.dataTransfer.effectAllowed = 'move'; }}
+                        className={`group relative aspect-[9/16] rounded-lg overflow-hidden bg-raised ${img.source !== 'bundled' ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                      >
+                        <img src={img.url} alt="" loading="lazy" className="w-full h-full object-cover pointer-events-none" />
+                        {view === ALL_SUB && img.subfolder && (
+                          <span className="absolute bottom-1 left-1 max-w-[calc(100%-8px)] truncate px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] leading-none">
+                            {img.subfolder}
+                          </span>
+                        )}
                         {img.source !== 'bundled' && (
                           <button
                             onClick={() => remove(img.id)}
@@ -358,6 +503,11 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
                         )}
                       </div>
                     ))}
+                    {!shown.length && (
+                      <div className="col-span-full text-[12px] text-ink-6 py-6 text-center">
+                        {view === UNFILED ? 'Every image is in a subfolder.' : 'No images here yet — drag some onto this subfolder.'}
+                      </div>
+                    )}
                   </div>
                 </div>
                 );

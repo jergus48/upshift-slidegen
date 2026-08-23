@@ -25,6 +25,7 @@ import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
 import { loadQueue, saveQueue, recoverOrphanQueues } from './lib/localQueue';
 import { getMergedLibrary } from './lib/mergedLibrary';
+import { tokenMatches } from './lib/subfolders';
 import { getHiddenPhotos } from './lib/hiddenPhotos';
 import { assignBackgrounds, assignAppSlidePov } from './lib/backgrounds';
 import { libraryRef } from './lib/imageSrc';
@@ -215,7 +216,9 @@ export default function App() {
     captionStyle: CaptionStyle,
   ) => {
     const library = await getMergedLibrary();
-    const pool = packs.length ? library.filter((i) => packs.includes(i.pack)) : [];
+    // `packs` are selection tokens: a bare pack name (whole pack) or a
+    // pack+subfolder token (one subfolder). See lib/subfolders.ts.
+    const pool = packs.length ? library.filter((i) => packs.some((t) => tokenMatches(t, i))) : [];
     // POV pack for this batch's gender — set once in Brain — a random shot from
     // it lands on the app ("Upshift") slide so it never has to be swapped by hand.
     const povPack = gender === 'women' ? activeProject!.povPackWomen : activeProject!.povPackMen;

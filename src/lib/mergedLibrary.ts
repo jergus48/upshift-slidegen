@@ -8,6 +8,7 @@ import type { LibraryImage, LibraryPack } from '../types';
 import { getLibrary } from './api';
 import { listLocalImages } from './localLibrary';
 import { getHiddenPacks } from './hiddenPacks';
+import { getSubfolders } from './subfolders';
 
 // `includeHidden` keeps user-hidden packs in the result — only the Library view
 // (which offers a "Show" toggle) passes true. Everything that generates slides
@@ -23,11 +24,40 @@ export async function getMergedLibrary(includeHidden = false): Promise<LibraryIm
 export async function getMergedPacks(includeHidden = false): Promise<LibraryPack[]> {
   const images = await getMergedLibrary(includeHidden);
   const map = new Map<string, LibraryPack>();
+  // Per-pack subfolder accumulators, keyed by subfolder name.
+  const subAcc = new Map<string, Map<string, { count: number; covers: string[] }>>();
+  const unfiled = new Map<string, number>();
   for (const img of images) {
-    if (!map.has(img.pack)) map.set(img.pack, { name: img.pack, source: img.source, count: 0, covers: [] });
+    if (!map.has(img.pack)) {
+      map.set(img.pack, { name: img.pack, source: img.source, count: 0, covers: [] });
+      subAcc.set(img.pack, new Map());
+      unfiled.set(img.pack, 0);
+    }
     const p = map.get(img.pack)!;
     p.count++;
     if (p.covers.length < 4) p.covers.push(img.url);
+    if (img.subfolder) {
+      const subs = subAcc.get(img.pack)!;
+      if (!subs.has(img.subfolder)) subs.set(img.subfolder, { count: 0, covers: [] });
+      const s = subs.get(img.subfolder)!;
+      s.count++;
+      if (s.covers.length < 4) s.covers.push(img.url);
+    } else {
+      unfiled.set(img.pack, (unfiled.get(img.pack) || 0) + 1);
+    }
+  }
+  // Merge in declared-but-empty subfolders from the registry so a freshly
+  // created (still empty) subfolder still shows in the picker/library.
+  for (const [name, pack] of map) {
+    const subs = subAcc.get(name)!;
+    for (const declared of getSubfolders(name)) {
+      if (!subs.has(declared)) subs.set(declared, { count: 0, covers: [] });
+    }
+    const list = [...subs.entries()].map(([sName, v]) => ({ name: sName, count: v.count, covers: v.covers }));
+    if (list.length) {
+      pack.subfolders = list;
+      pack.unfiledCount = unfiled.get(name) || 0;
+    }
   }
   return [...map.values()];
 }

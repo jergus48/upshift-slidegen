@@ -11,6 +11,10 @@ const DB_VERSION = 1;
 interface StoredImage {
   id: string;
   pack: string;
+  // Optional sub-group inside the pack (e.g. "gym", "lifestyle"). Absent =
+  // "Unfiled". Assigned in the Library view; used to target a single subfolder
+  // in generation. See src/lib/subfolders.ts.
+  subfolder?: string;
   source: 'scraped' | 'uploaded';
   addedAt: string;
   blob: Blob;
@@ -102,7 +106,37 @@ export async function listLocalImages(): Promise<LibraryImage[]> {
   const records = await getAllRecords();
   return records
     .sort((a, b) => b.addedAt.localeCompare(a.addedAt)) // newest first
-    .map((r) => ({ id: r.id, url: urlFor(r.id, r.blob), pack: r.pack, source: r.source }));
+    .map((r) => ({ id: r.id, url: urlFor(r.id, r.blob), pack: r.pack, subfolder: r.subfolder, source: r.source }));
+}
+
+// Move an image into a subfolder of its pack (or back to Unfiled with null).
+// Only the tag changes; the blob and pack stay put.
+export async function setImageSubfolder(id: string, subfolder: string | null): Promise<void> {
+  const db = await openDb();
+  const record = await new Promise<StoredImage | undefined>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).get(id);
+    req.onsuccess = () => resolve(req.result as StoredImage | undefined);
+    req.onerror = () => reject(req.error);
+  });
+  if (!record) return;
+  const clean = subfolder?.trim();
+  if (clean) record.subfolder = clean;
+  else delete record.subfolder;
+  await putRecord(record);
+}
+
+// Re-tag every image currently in `from` to `to` (used when a subfolder is
+// renamed) — pass null for `to` to move them back to Unfiled (subfolder deleted).
+export async function moveSubfolderImages(pack: string, from: string, to: string | null): Promise<void> {
+  const records = await getAllRecords();
+  for (const r of records) {
+    if (r.pack !== pack || r.subfolder !== from) continue;
+    const clean = to?.trim();
+    if (clean) r.subfolder = clean;
+    else delete r.subfolder;
+    await putRecord(r);
+  }
 }
 
 // `dataUrls` are base64 data URLs — either read from a File the user picked,
