@@ -662,168 +662,457 @@ const PUNCHY_VOICE =
   'HOOKS: any example hook below is ONLY inspiration for the angle — write your OWN fresh original hook, and vary ' +
   'it every time. Never copy an example word for word.';
 
-// The Upshift plug for these punchy decks — honest, one slide, near the end,
-// styled like the source decks' "PRO TIP" slide (which plugged a fitness app).
-const PUNCHY_UPSHIFT =
-  'THE APP SLIDE (exactly ONE, styled like a "PRO TIP" slide near the end, never salesy): the tier list / advice ' +
-  'means nothing if you skip days and scroll your life away. In one honest first-person line say Upshift is how you ' +
-  'stay consistent — it locks your phone and kills the mindless scroll so you actually show up. Brand it "Upshift". ' +
-  'This is ONE of the slides in the count, not an extra one. Every other slide stays 100% on topic with zero app mention.';
 
-interface ViralSpec {
+
+// Default app-slide rule for clones whose source deck plugs a fitness tracker.
+const DEFAULT_APP_NOTE =
+  'THE APP SLIDE: the example plugs a fitness/tracking app (a "PRO TIP" slide, or an "[a tracking app]" line). In ' +
+  'YOUR version keep that same slide in the same spot, but plug Upshift instead — one honest, first-person line that ' +
+  'Upshift locks your phone and kills the mindless scroll so you actually stay consistent and show up to train. ' +
+  'Brand it "Upshift". Never add an extra slide for it, never sound salesy, and name no other app.';
+
+// A clone spec embeds a REAL viral deck (competitor app names already scrubbed
+// to "[a tracking app]") and tells the model to reproduce it slide-for-slide,
+// swapping only the specifics and turning the app slide into an Upshift plug.
+interface CloneSpec {
   key: string;
   label: string;
-  slides: number;
   niche: string;
-  audience: (g: Gender) => string;
-  hooks: string; // example hook angles (inspiration only)
-  body: string; // the exact slide plan for this format
+  audience: string | ((g: Gender) => string);
+  views: string; // human view count of the source deck, for the prompt
+  task: string; // what to vary vs. keep identical
+  example: string[]; // the real deck, verbatim (one string per slide)
+  appNote?: string; // override DEFAULT_APP_NOTE when the deck plugs differently
 }
 
-const VIRAL_SPECS: ViralSpec[] = [
-  // The single biggest format across every account: ranked exercise tier list.
+// Each CLONE_SPEC embeds a real viral deck (mined from the source accounts;
+// competitor app names scrubbed to "[a tracking app]") so generations clone the
+// exact hook, countdown, rating pattern and voice — only the specifics change,
+// and the app slide becomes Upshift. `slides` is derived from example.length.
+const CLONE_SPECS: CloneSpec[] = [
+  // ---- Exercise "tier list" family (one per muscle) ----------------------
   {
-    key: 'exercise-tierlist',
-    label: 'Exercise tier list (top 5 for a muscle)',
-    slides: 8,
-    niche: 'ranking the best exercises for a muscle group',
-    audience: () => 'Gym people who want the best exercises for a body part!',
-    hooks:
-      '- "top 5 PEAK exercises for CALVES"\n' +
-      '- "How to build a DEMON back..."\n' +
-      '- "only S-Tier triceps exercises you need"\n' +
-      '- "Exercises I REGRET not doing earlier"',
-    body:
-      'Pick ONE muscle group (back, biceps, triceps, calves, abs, chest, shoulders, legs) and rank exercises for it.\n' +
-      'Slide 1 (Hook): your own original hook naming the muscle, in the spirit above.\n' +
-      'Slide 2 (Flex): one short cocky line establishing you know your stuff ("trust me, I know ball" / "yea ik what works").\n' +
-      'Slides 3-6 (The countdown, 5 down to 2): each is ONE exercise with a rating out of 10 and one blunt line of ' +
-      'verdict. Number them counting DOWN. Rate at least one popular/expected exercise shockingly low (-1/10 or 2/10) ' +
-      'with a savage one-liner ("Waste of time.", "trains your soleus not your calves") — this is the comment bait.\n' +
-      'Slide 7 (The App / PRO TIP): your Upshift slide, styled like a pro tip near the end.\n' +
-      'Slide 8 (The 1/10... the winner): the number 1 exercise rated 10/10 with "No explanation needed... highly ' +
-      'effective". End on the winner so it lands.',
+    key: 'back-tierlist',
+    label: 'DEMON back tier list',
+    niche: 'ranking back exercises worst to best',
+    audience: 'Lifters who want a bigger, thicker back!',
+    views: '380k',
+    task:
+      'Keep it a BACK exercise tier list. Swap in a fresh mix of real back exercises and re-rank them, but keep the ' +
+      'exact countdown-from-5 layout, the shock "-1/10 waste of time" on a popular pick (like pull ups), and the ' +
+      '10/10 "no explanation needed" seal-rows-style finisher last.',
+    example: [
+      'How to build a DEMON back...',
+      '5. Pull ups\n-1/10\n\nWaste of time. Hard to target the back and actually progress with weight',
+      '4. Bent over rows\n3/10\n\nPretty bad unless you have PERFECT form',
+      '3. Lat pulldown\n6.5/10\n\nYou need good mind-muscle connection but you can actually make good progress with these',
+      '2. T-bar rows\n9/10\n\nAlmost perfect back movement, easy to progress',
+      '1. SEAL ROWS\n11/10\n\nNo explanation needed... Highly effective',
+      'PRO TIP\nTrack your workouts for progressive overload and consistency\n\n[a tracking app]',
+    ],
   },
-
-  // "Rating splits I've tried" — paragraph verdicts building to a 10/10 GOAT.
   {
-    key: 'split-rating',
-    label: 'Rating gym splits I’ve tried',
-    slides: 7,
-    niche: 'rating training splits from worst to best',
-    audience: () => 'Lifters trying to pick the right training split!',
-    hooks:
-      '- "rating splits I’ve tried as a gym rat who transformed his body"\n' +
-      '- "every gym split ranked worst to best"',
-    body:
-      'Slide 1 (Hook): your own original hook about rating the splits you have tried.\n' +
-      'Slide 2 (Flex): one cocky line ("yea ik what works").\n' +
-      'Slides 3-5: each is ONE split (PPL, Arnold, Full Body, Bro Split, Upper/Lower) with a rating out of 10 and a ' +
-      '2-3 line honest verdict on what works and what is cooked about it. Build UP toward the best one.\n' +
-      'Slide 6 (The App / PRO TIP): your Upshift slide, styled like a pro tip.\n' +
-      'Slide 7 (The 10/10 winner): the split that changed everything, 10/10, the GOAT. Land on it.',
+    key: 'biceps-tierlist',
+    label: 'Peak biceps tier list',
+    niche: 'ranking biceps exercises worst to best',
+    audience: 'Lifters who want bigger biceps!',
+    views: '230k',
+    task:
+      'Keep it a BICEPS exercise tier list. Swap in a fresh set of real curl variations and re-rank them, keeping the ' +
+      'countdown-from-5, a "-1/10 not even a bicep exercise" shock pick (like hammer curls hitting forearms), and a ' +
+      '10/10 "no explanation needed" finisher.',
+    example: [
+      'top 5 PEAK exercises for BICEPS',
+      '5. Hammer curls\n-1/10\n\nNot even a bicep exercise, gains go straight to the forearms',
+      '4. Preacher curls\n3/10\n\nGood tension, but can be really dangerous',
+      '3. EZ bar curls\n5.5/10\n\nThese are decent but they can give you forearm splints...',
+      '2. Bayesian curls\n8.2/10\n\nNot many people know about these, but they have great ROM and stretch',
+      '1. Snake curls\n10/10\n\nNo explanation needed... Highly efficient',
+      'PRO TIP\nTrack your workouts for progressive overload and consistency\n\n[a tracking app]',
+    ],
   },
-
-  // Contrarian "things to AVOID" — reverse listicle, very shareable.
   {
-    key: 'things-to-avoid',
-    label: '5 things to AVOID (to gain muscle)',
-    slides: 7,
-    niche: 'common mistakes killing your gym progress',
-    audience: () => 'Gym people whose gains are stalling!',
-    hooks:
-      '- "5 things to AVOID if you want to gain muscle"\n' +
-      '- "stop doing these if you actually want to grow"',
-    body:
-      'Slide 1 (Hook): your own original hook about what to avoid to actually grow.\n' +
-      'Slides 2-6: five blunt "don’t do X, do Y instead" mistakes, ONE per slide, numbered 1-5, each short and ' +
-      'a little contrarian (rep ranges, junk volume, bad splits, not tracking, ego lifting). Punchy, not preachy.\n' +
-      'One of these middle slides is the App slide: frame "don’t let your phone eat the day you should be ' +
-      'training" and name Upshift as how you kill the scroll and stay consistent.\n' +
-      'Slide 7 (CTA): blunt closer ("Save this. Fix one today.").',
+    key: 'triceps-tierlist',
+    label: 'S-Tier triceps exercises',
+    niche: 'ranking triceps exercises',
+    audience: 'Lifters who want bigger arms!',
+    views: '300k',
+    task:
+      'Keep it a TRICEPS exercise tier list. Swap in a fresh set of real triceps movements and re-rank, keeping the ' +
+      'cocky slide 2 ("Trust me I know ball"), the ratings under each exercise, and a 10/10 finisher with a one-liner.',
+    example: [
+      'only S-Tier triceps exercises you need',
+      'Trust me I know ball',
+      '1. Triceps pushdowns\n5/10\nYou can go really heavy at this one, but unstable',
+      '2. Skullcrusher\n5.5/10\nNot for beginners, can be dangerous but good movement to hit your long head',
+      '3. Triceps extensions overhead\n7/10\nAlso good to hit your long head, easier to stabilize',
+      '4. Weighted dips\n7.5/10\nVery good exercise to hit your full triceps, but also targets chest and shoulders, no isolation',
+      '5. Katana extensions\n10/10\nDon\u2019t need to say more',
+      'PRO TIP\nFind out your triceps muscle rank and track it for progressive overload\n\n[a tracking app]',
+    ],
   },
-
-  // Unconventional-habit list (jaidenfitt "weird advice that actually works").
+  {
+    key: 'calves-tierlist',
+    label: 'Peak calves tier list',
+    niche: 'ranking calf exercises worst to best',
+    audience: 'Lifters who want to grow stubborn calves!',
+    views: '1.3M',
+    task:
+      'Keep it a CALVES exercise tier list. Swap in a fresh set of real calf movements and re-rank, keeping the cocky ' +
+      'slide 2, the joke "-1/10" pick that does not even hit calves, and the 10/10 finisher.',
+    example: [
+      'top 5 PEAK exercises for CALVES',
+      'trust me, I know where I started...',
+      '5. BENCH PRESS -1/10\n\nDoesn\u2019t hit the calves. If you\u2019re still skipping leg days you\u2019re cooked',
+      '4. Seated calf raise 2/10\n\nAbsolutely horrible, trains your soleus not calves',
+      '3. Dumbbell Calf Raise 6/10\n\nOnly good for beginners. impossible to progress once you\u2019re advanced',
+      '2. Hack Calf Raise 8.5/10\n\nOne of the best calf exercise you can do, just 1 better option',
+      '1. Donkey calf raise 10/10\n\nNo explanation needed, just train hard',
+      'PRO TIP\nTrack your progress, find out your potential and weak points so you can focus on them\n\n[a tracking app]',
+    ],
+  },
+  {
+    key: 'abs-tierlist',
+    label: 'Peak abs tier list (no equipment)',
+    niche: 'ranking ab exercises worst to best',
+    audience: 'People who want visible abs with no equipment!',
+    views: '290k',
+    task:
+      'Keep it a bodyweight ABS exercise tier list. Swap in a fresh set of real no-equipment ab movements and re-rank, ' +
+      'keeping the "-1/10" shock pick (like planks), and the 10/10 "no explanation needed" finisher.',
+    example: [
+      'top 5 PEAK exercises for ABS\n(NO EQUIPMENT)',
+      '5. Plank\n-1/10\n\nAbsolutely horrible, trains your core not abs',
+      '4. Crunches\n3/10\n\nThere\u2019s way better variants, don\u2019t waste your time with these',
+      '3. Leg raises\n6/10\n\nSolid movement if done correctly, won\u2019t see results from JUST these',
+      '2. V-ups\n8/10\n\nReally solid exercise, targets the abs very well',
+      '1. Frog crunch\n10/10\n\nNo explanation needed... Highly efficient',
+      'PRO TIP\nTrack your workouts for progressive overload and consistency\n\n[a tracking app]',
+    ],
+  },
+  {
+    key: 'chest-tierlist',
+    label: 'Peak chest tier list',
+    niche: 'ranking chest exercises worst to best',
+    audience: 'Lifters who want a bigger chest!',
+    views: '18k',
+    task:
+      'Keep it a CHEST exercise tier list. Swap in a fresh set of real chest movements and re-rank, keeping the "-1/10" ' +
+      'shock pick (like push ups), and the 10/10 "no explanation needed" finisher.',
+    example: [
+      'top 5 PEAK exercises for CHEST',
+      '5. Push ups\n-1/10\nIt\u2019s an OG but let\u2019s be real, it barely even hits the chest and it\u2019s hard to progress',
+      '4. Cable flys\n3/10\nThere are way better fly variants, don\u2019t waste your time on these',
+      '3. Dips\n6/10\nWith correct form you can achieve a decent chest from these',
+      '2. Guillotine press\n8/10\nIncredible mind muscle connection if you can control the eccentric.',
+      '1. Pec dec fly\n10/10\nHighly efficient, no explanation needed...',
+      'PRO TIP\nTrack your workouts for progressive overload and consistency\n\n[a tracking app]',
+    ],
+  },
+  {
+    key: 'quads-tierlist',
+    label: 'Key quad exercises tier list',
+    niche: 'ranking quad exercises worst to best',
+    audience: 'Lifters who want to build bigger legs!',
+    views: '33k',
+    task:
+      'Keep it a QUADS exercise tier list. Swap in a fresh set of real quad movements and re-rank, keeping the cocky ' +
+      'slide 2, ratings under each, and a high-rated finisher.',
+    example: [
+      'KEY exercises to build your QUADRICEPS',
+      'trust me, I know where I started...',
+      '1. Hack squat\n1/10\nVery harsh on the knees and not ideal for hypertrophy',
+      '2. Leg press\n4/10\nMost of the load ends up going straight to the glutes.',
+      '3. Leg extension\n6.5/10\nWe\u2019ve all done it. Great for getting an insane pump in the quadriceps.',
+      '4. Pendulum squats\n8/10\nYou can literally feel the fibers stretch and contract. Crazy ROM',
+      '5. Sissy squat\n9.5/10\nEvery program needs this exercise if you want dense and thick legs.',
+      'PRO TIP\nThe best quad exercises won\u2019t grow your legs if you never progress them. Track your reps and weight!!\n\n[a tracking app]',
+    ],
+  },
+  // ---- Split / program family --------------------------------------------
+  {
+    key: 'rating-splits',
+    label: 'Rating gym splits I\u2019ve tried',
+    niche: 'rating training splits worst to best',
+    audience: 'Lifters trying to pick the right training split!',
+    views: '2.1M',
+    task:
+      'Keep it a rating of training splits with a 2-3 line paragraph verdict each, building UP to the 10/10 that ' +
+      '"changed everything". Swap in a fresh set of real splits and honest verdicts. Keep the cocky slide 2. This deck ' +
+      'has NO app slide in the example \u2014 do not add one; instead follow the appNote below.',
+    example: [
+      'rating splits I\u2019ve tried as a gym rat who transformed his body',
+      'yea ik what works',
+      'PPL: 4/10\nThis is what almost everyone starts with. And yeah, it works at first... because literally anything works when you\u2019re new. Simple split, easy to follow, but the train-to-rest ratio is kinda trash.',
+      'PPL x Arnold: 5/10\nBasically PPL with extra pump addiction. Fun? Yeah. Better pump? For sure. But the same recovery problem is still there. Looks elite on paper, feels cooked after a few weeks.',
+      'FBEOD: 8/10\nFrequency is insane, results can be insane, but I personally hated training legs and upper body in the same session. Optimal? Probably. Enjoyable? Not for me.',
+      'U/L: 10/10\nThis split changed everything for me. Frequency is perfect, recovery actually makes sense, and the physique progress was stupid. People say the workouts are too long, but that\u2019s because they\u2019re doing junk volume. Cut the useless sets. This is the goat split.',
+    ],
+    appNote:
+      'This example has NO app slide. Do not add an extra slide. Instead, work ONE short honest Upshift line into the ' +
+      'final winning-split slide \u2014 that none of it matters if you skip sessions, and Upshift is how you stay consistent by ' +
+      'locking your phone and killing the scroll. Keep it to one sentence, never salesy, name no other app.',
+  },
+  {
+    key: 'splits-tierlist',
+    label: 'Top 5 gym splits ranked',
+    niche: 'ranking training splits worst to best',
+    audience: 'Lifters choosing a split that actually works!',
+    views: '25k',
+    task:
+      'Keep it a splits tier list with short ratings (not long paragraphs). Swap in a fresh set of real splits and ' +
+      're-rank, keeping the savage low rating on the bro split and the 10/10 winner that "speaks for itself".',
+    example: [
+      'top 5 gym splits that actually work...',
+      '5. Bro split\n-100/10\n\nIf you\u2019re still doing this, you\u2019re just wasting time',
+      '4. PPL\n3/10\n\nRan this when I first started lifting and never went back',
+      '3. Arnold split\n5/10\n\nIt\u2019s decent, but progressing gets way harder later on',
+      '2. Heavy duty split\n8/10\n\nProbably the most fun split and hits everything perfectly, but one is still better',
+      '1. PHAT split\n10/10\n\nThis one speaks for itself... I\u2019ve seen crazy results running this split',
+      'PRO TIP:\nTrack your lifts for progressive overload if you actually want to build muscle faster\n\n[a tracking app]',
+    ],
+  },
+  {
+    key: 'ul-routine',
+    label: 'My full U/L split routine',
+    niche: 'sharing a full upper/lower routine',
+    audience: 'Lifters who want a proven weekly routine!',
+    views: '59k',
+    task:
+      'Keep the exact layout: hook, cocky slide 2, a weekly overview slide, then one slide per training day listing ' +
+      'exercises with sets x reps, ending on the tracking slide. Swap in a fresh but realistic routine (real exercises, ' +
+      'sensible sets/reps). Keep every day on its own slide.',
+    example: [
+      'the best U/L split I\u2019ve tried as a gym rat who transformed his body',
+      'yea, ik what I\u2019m talking',
+      'here\u2019s how my week looks:\n\nMon: Upper A\nTue: Lower A\nWed: light cardio for recovery\nThu: Upper B\nFri: Lower B\nSat/Sun: rest, conditioning',
+      'Upper A:\n\nBench Press: 3x6\nWeighted Pull-Up: 3x8\nOverhead Press: 2x6\nChest Supported Row: 3x8\nIncline DB Press: 2x10\nLateral Raise: 3x18\nDB Curl: 2x12',
+      'Lower A:\n\nBack Squat: 3x6\nRomanian Deadlift: 3x6\nLeg Press: 2x10\nLeg Curl: 2x12\nStanding Calf Raise: 3x10\nHanging Leg Raise: 3x15',
+      'Upper B:\n\nIncline Bench Press: 3x10\nBarbell Row: 3x10\nWeighted Dip: 2x10\nLat Pulldown: 2x12\nShoulder Press: 2x12\nRear Delt Fly: 2x20\nHammer Curl: 2x15',
+      'Lower B:\n\nDeadlift: 3x8\nFront Squat: 3x8\nBulgarian Split Squat: 3x12\nLeg Curl: 2x12\nCalf Raise: 3x15\nAb Wheel: 3x20',
+      'I track my workouts so I know exactly what I did last time and keep building on it.\n\n[a tracking app]',
+    ],
+  },
+  // ---- Other proven gym formats ------------------------------------------
+  {
+    key: 'regret-exercises',
+    label: 'Exercises I regret not doing earlier',
+    niche: 'underrated exercises you should be doing',
+    audience: 'Lifters missing out on the best exercises!',
+    views: '980k',
+    task:
+      'Keep the format: a numbered list of underrated exercises, each with one hyped line about the results it gave ' +
+      'you. Swap in a fresh set of real exercises and results. End on the tracking slide.',
+    example: [
+      'Exercises I REGRET not doing earlier',
+      '1. Demon rows\nThese blew up my back faster than any other back exercise I\u2019ve tried',
+      '2. Frog crunch\nGreatest ab movement by far, I got defined abs with these in 2 months',
+      '3. JM press\nYou can literally feel every fiber in your tricep contracting, also go slow on these',
+      '4. Kitty curls\nSpeaks for itself...',
+      'PRO TIP\nTrack your workouts for progressive overload and consistency\n\n[a tracking app]',
+    ],
+  },
+  {
+    key: 'changed-physique',
+    label: 'Exercises that changed my physique',
+    niche: 'the exercises that made the biggest difference',
+    audience: 'Lifters who want the highest-impact exercises!',
+    views: '71k',
+    task:
+      'Keep the format: cocky slide 2, then a numbered list of exercises each with a 2-line why. Swap in a fresh set ' +
+      'of real high-impact exercises. End on the tracking slide.',
+    example: [
+      'Top 5 exercises that actually changed my physique',
+      'trust me, ik ball',
+      '1. Cuffed rear delt flies\n\nEasy way to build that 3D shoulder look and clean up your posture. Small muscle, big difference.',
+      '2. Back extensions\n\nA weak lower back causes more problems than people think. Do these every leg day. Simple, useful, stays in the rotation.',
+      '3. Incline tricep pushdowns\n\nGreat for stability and easy to progressively overload. Setup takes a minute, but it\u2019s worth it.',
+      '4. Chest-supported T-bar rows\n\nOne of the best moves for a thick, strong back. Lats are cool, but you need upper back thickness too.',
+      '5. Heavy ab crunches\n\nHeavy abs won\u2019t give you a blocky waist. They\u2019ll make your core stronger and help your big lifts too.',
+      'PRO TIP\nTrack your workouts for progressive overload\n\n[a tracking app]',
+    ],
+  },
+  {
+    key: 'get-big',
+    label: 'How to actually get BIG',
+    niche: 'blunt rules to build muscle',
+    audience: 'Lifters who want to actually grow!',
+    views: '490k',
+    task:
+      'Keep the blunt, half-meme numbered-tips format with very short slides. Swap in a fresh set of punchy real ' +
+      '(and a couple cheeky) muscle-building tips. Keep it fast and funny, not preachy.',
+    example: [
+      'How to actually get BIG in the gym',
+      '1. Lift heavy\n\nvery very very\nvery very very\n\nHEAVY',
+      '2. Eat MORE PROTEIN',
+      '3. Train to failure in each workout',
+      '4. Cardio after every workout\n(ifykyk)',
+      '5. Get your gym rank up\n\n[a tracking app]',
+      '6. Pick a split and actually stick to it',
+      '7. Remember that someone else is doing better than you',
+    ],
+  },
+  {
+    key: 'avoid-muscle',
+    label: '5 things to AVOID to gain muscle',
+    niche: 'mistakes that kill your gym progress',
+    audience: 'Lifters whose gains are stalling!',
+    views: '80k',
+    task:
+      'Keep the contrarian "don\u2019t do X" numbered format with short blunt slides. Swap in a fresh set of real ' +
+      '"don\u2019t do this, do that" mistakes. Keep one slide as the tracking slide.',
+    example: [
+      '5 things to AVOID if you want to gain muscle',
+      '1. Don\u2019t do 8-12 reps, just do 6-8 reps',
+      '2. Don\u2019t undereat\n2.5k cals, 180g protein minimum',
+      '3. Don\u2019t use PPL, use an Arnold split\nDay 1: chest/back\nDay 2: arms/shoulders\nDay 3: legs\nDay 4,5,6: repeat',
+      '4. Don\u2019t guess, track your progress\n\n[a tracking app]',
+      '5. Don\u2019t forget how you felt that day',
+    ],
+  },
+  {
+    key: 'wish-i-knew',
+    label: '8 things I wish I knew before lifting',
+    niche: 'lessons for your first year of lifting',
+    audience: 'Newer lifters who want to skip the mistakes!',
+    views: '480k',
+    task:
+      'Keep the format: hook, then one slide per body part / topic with 2-3 tight bullet-style lines of real advice, ' +
+      'ending on a tracking slide. Swap in fresh, genuinely useful lines per topic. Keep the bullets punchy.',
+    example: [
+      '8 things I wish I knew before I started lifting',
+      '1. Triceps\n\n- Train them heavy\n- You only need 2 exercises to properly train them (a tricep extension and JM press)',
+      '2. Chest\n\n- All you need is 1 incline and 1 fly movement if you train hard\n- Never take bench press to failure, fatigue catches up and injury is inevitable',
+      '3. Back\n\n- More reps and lower weights, technique is everything for a crazy back\n- Learn the muscles in your back and hit them all individually',
+      '4. Biceps\n\n- Cable exercises are best, you need constant tension\n- Spider curls and incline curls are the only exercises you need\n- Train forearms, people always see them',
+      '5. Legs\n\n- Push quads, hamstrings and calves to failure\n- Push your last set hard\n- One leg day a week is enough if you train hard',
+      '6. Abs\n\n- Abs twice a week minimum, they recover fast\n- Treat them like any other muscle, push them to failure',
+      '7. Shoulders\n\n- Flex your lats on any lateral raise and go high reps\n- Go heavy on shoulder press\n- Do not sleep on rear delts if you want to look 3D',
+      '8. Tracking\n\n- You can\u2019t make optimal progress working out blindly\n- Use an app that tells you exactly what weight and reps to hit\n\n[a tracking app]',
+    ],
+  },
+  {
+    key: 'gym-apps-ranking',
+    label: 'Gym apps ranked (worst to best)',
+    niche: 'ranking gym/discipline apps worst to best',
+    audience: 'Gym people looking for the app that actually helps!',
+    views: '480k',
+    task:
+      'Keep the "apps ranked worst to best" countdown format. Rate 4 unnamed generic rival apps low to mid (describe ' +
+      'them by weakness, e.g. "the one that\u2019s basically just a rep counter", "the paid one hiding everything behind a ' +
+      'subscription") \u2014 DO NOT name any real competitor app. This is the ONE format where the winner IS the app: make ' +
+      'the 1. slide land on Upshift at 10/10 as the free GOAT.',
+    example: [
+      'Gym apps ranked\n(worst to best)',
+      '5. the forearm one\n-1/10\n\nsomehow only tracks one thing, useless',
+      '4. the basic free one\n2/10\n\nimpossible to actually progress with, just get a plan',
+      '3. the popular tracker\n7/10\n\ndecent for logging workouts but limited and it does nothing about your phone',
+      '2. the paid one\n9/10\n\nmore features, but everything good is behind a subscription',
+      '1. Upshift\n10/10\n\nFREE\nlocks your phone so you actually train\nkills the mindless scroll\nkeeps you consistent\n\nthe goat',
+    ],
+    appNote:
+      'The winner slide already IS the Upshift slide (rated 10/10). Keep Upshift as number 1, free, framed as locking ' +
+      'your phone and killing the scroll so you stay consistent. Do not add another app slide and name no real rival.',
+  },
+  // ---- Self-improvement family (jaidenfitt) ------------------------------
   {
     key: 'weird-advice',
     label: 'Weird advice that actually works',
-    slides: 9,
     niche: 'unconventional self-improvement habits',
-    audience: () => 'People who want habits that actually change something!',
-    hooks:
-      '- "weird advice that actually works"\n' +
-      '- "unusual habits that fixed my life"',
-    body:
-      'Slide 1 (Hook): your own original hook about weird advice that actually works.\n' +
-      'Slides 2-8: seven unconventional but real habits, ONE per slide, numbered 1-7. Each = a short bold habit title, ' +
-      'then 2-3 SHORT lines (fragments are fine) on why it works. Draw from things like: put your phone across the ' +
-      'room, talk to yourself in the mirror kindly, do something badly on purpose, write worries down then bin them, ' +
-      'same outfit daily to cut decision fatigue, micro-gratitude before meals.\n' +
-      'Make the "put your phone across the room / kill the scroll" habit the App slide: name Upshift as how you ' +
-      'actually make the phone hard to reach and lock the scroll.\n' +
-      'Slide 9 (CTA): quiet blunt closer.',
+    audience: 'People who want habits that actually change something!',
+    views: '260k',
+    task:
+      'Keep the format: a numbered list of weird-but-real habits, each with a short bold title and 2-3 tiny lines on ' +
+      'why it works. Swap in a fresh set of unconventional habits. Keep the "put your phone across the room" style ' +
+      'habit as the Upshift slide.',
+    example: [
+      'weird advice that actually works',
+      '1. Brush your teeth with your non-dominant hand\n\nFeels stupid at first, but it forces you to focus.\n\nSmall way to break autopilot.',
+      '2. Put your phone across the room\n\nYou have to stand up to shut it off.\n\nMakes the snooze button way less tempting.',
+      '3. Talk to yourself in the mirror\n\nNot fake hype.\nJust stop speaking to yourself like you\u2019re your own enemy.',
+      '4. Do something badly on purpose\n\nPost the video.\nTry the new thing.\nProgress gets easier when you stop chasing perfect.',
+      '5. Write down your worries then throw them away\n\nGet it out of your head and onto paper.\nNot every thought deserves to stay all day.',
+      '6. Wear the same kind of outfit every day\n\nLess time picking clothes.\nSave that energy for stuff that matters.',
+      '7. Lock the mindless scroll\n\nThe endless feed eats the day you meant to use.\n\n[a tracking app]',
+      '8. Micro-gratitude before you eat\n\nName one thing you\u2019re grateful for before every meal.\nKeeps you off autopilot.',
+    ],
+    appNote:
+      'Slide 7 is the Upshift slide: keep it as a habit about killing the mindless scroll / making the phone hard to ' +
+      'reach, and name Upshift as how you do it (it locks your phone and blocks the scroll). One honest line, no other app.',
   },
-
-  // "High-value man/woman" trait list — triad of examples + a one-line why.
   {
-    key: 'high-value-traits',
-    label: 'Traits that make you high-value',
-    slides: 11,
+    key: 'high-value-man',
+    label: '10 traits of a high-value man',
     niche: 'traits that make you respected and high-value',
     audience: (g) =>
-      g === 'women'
-        ? 'Women who want to become genuinely high-value!'
-        : 'Guys who want to become a genuinely high-value man!',
-    hooks:
-      '- "10 traits that make you a high-value man"\n' +
-      '- "signs you’re becoming that girl"\n' +
-      '- "quiet traits people respect instantly"',
-    body:
-      'Slide 1 (Hook): your own original hook about the traits that make you high-value.\n' +
-      'Slides 2-10: nine traits, ONE per slide, numbered 1-9. Each slide = a short bold trait title, then a TRIAD of ' +
-      'three tiny concrete examples on their own lines, then ONE line on why it matters. ' +
-      'Example shape: "Be the guy people call first / Broken car. Flat tire. Bad day. / It’s about being useful ' +
-      'when needed." Keep it grounded and specific, never generic hustle-bro lines.\n' +
-      'Make the "train your body / keep a promise to yourself daily" trait the App slide: name Upshift as how you ' +
-      'protect that discipline by locking the phone so you actually do the thing.\n' +
-      'Slide 11 (CTA): blunt closer.',
+      g === 'women' ? 'Women who want to become genuinely high-value!' : 'Guys who want to become a genuinely high-value man!',
+    views: '50k',
+    task:
+      'Keep the format EXACTLY: a numbered trait, then a TRIAD of three tiny concrete examples on their own lines, then ' +
+      'one line on why it matters. Swap in a fresh set of grounded traits. Keep the "train your body / keep a promise ' +
+      'to yourself" trait as the Upshift slide. For a women\u2019s pack, reframe it for women (still grounded, not hustle-bro).',
+    example: [
+      '10 traits that make you a high-value man',
+      '1. Be the one people call first\n\nBroken car.\nFlat tire.\nBad day.\n\nIt\u2019s not about attention. It\u2019s about being useful when needed.',
+      '2. Make your family worry less\n\nHandle your money.\nAnswer the calls.\nKeep your word.\n\nYour people should feel at peace knowing you\u2019ve got yourself together.',
+      '3. Learn a skill you can\u2019t be ignored for\n\nCooking.\nMechanics.\nWoodworking.\n\nBuilding things with your hands changes the way you move.',
+      '4. Get comfortable making decisions\n\nPick the place.\nChoose the route.\nMake the call.\n\nNobody needs perfect decisions, just someone willing to make one.',
+      '5. Train your body with intention\n\nWork out.\nProtect your focus.\nRespect recovery.\n\nUpshift keeps your progress on track by locking the scroll. Strength builds confidence you carry anywhere.',
+      '6. Know people\u2019s names\n\nThe janitor.\nThe waiter.\nThe receptionist.\n\nRemembering names earns more respect than trying to impress.',
+      '7. Walk into rooms calmly\n\nOpen the door.\nSlow down.\nLook around.\n\nYou don\u2019t need to act important, just don\u2019t move like you\u2019re panicking.',
+      '8. Be useful in an emergency\n\nLearn CPR.\nChange a tire.\nUse a fire extinguisher.\n\nReal confidence is knowing you can help when it matters.',
+      '9. Keep one promise to yourself daily\n\nMake it small.\nA walk.\nOne chapter.\n\nSelf-respect comes from doing what you said you would.',
+      '10. Be okay being the beginner\n\nTake the class.\nAsk questions.\nLook inexperienced.\n\nYour ego slows you down more than a lack of talent.',
+    ],
+    appNote:
+      'Slide 5 is the Upshift slide (the "train your body / protect your focus" trait). Keep Upshift named there as how ' +
+      'you guard your discipline by locking the phone and killing the scroll. One honest line, no other app.',
   },
-
-  // Simple emotional 5-step ("how to start loving yourself again").
   {
-    key: 'love-yourself-again',
+    key: 'love-yourself',
     label: 'How to start loving yourself again',
-    slides: 8,
     niche: 'small steps back to self-respect',
-    audience: () => 'People at a low point who want to feel like themselves again!',
-    hooks:
-      '- "How to start loving yourself again"\n' +
-      '- "small steps back to yourself"',
-    body:
-      'Slide 1 (Hook): your own original hook about starting to love yourself again.\n' +
-      'Slides 2-6: five simple, gentle steps, ONE per slide, each just a few words to a short line: train your body, ' +
-      'get outside more, track your progress, eat good food, rest your body and mind. Warm, not preachy.\n' +
-      'Slide 7 (The App): name Upshift softly as how you stop the doomscroll that keeps you stuck, so the other ' +
-      'steps actually happen.\n' +
-      'Slide 8 (Closer): a quiet, almost tender sign-off (like "take care of yourself"), not a hype CTA.',
+    audience: 'People at a low point who want to feel like themselves again!',
+    views: '345k',
+    task:
+      'Keep the gentle, minimal format: a few-word step per slide, ending on a quiet, almost tender sign-off (like ' +
+      '"take care of yourself"), NOT a hype CTA. Swap in warm, simple steps. This deck has no app slide \u2014 follow the appNote.',
+    example: [
+      'How to start loving yourself again',
+      '1. Train your body',
+      '2. Get outside more',
+      '3. Protect your time',
+      '4. Eat good food',
+      '5. Rest your body and mind',
+      'You\u2019ll probably never see me again\n\nTake care of yourself',
+    ],
+    appNote:
+      'No dedicated app slide. Weave ONE soft Upshift mention into the "protect your time" step \u2014 that Upshift keeps you ' +
+      'off the doomscroll so the other steps actually happen. Keep it gentle and one sentence, name no other app, and ' +
+      'keep the tender closer as the final slide.',
   },
 ];
 
-const viralBuilder = (s: ViralSpec): PresetBuilder => (g) => ({
+const cloneBuilder = (s: CloneSpec): PresetBuilder => (g) => ({
   key: s.key,
   label: s.label,
-  slides: s.slides,
+  slides: s.example.length,
   niche: s.niche,
-  audience: s.audience(g),
+  audience: typeof s.audience === 'function' ? s.audience(g) : s.audience,
   styleMemory:
-    `${PUNCHY_VOICE}${PERSONA(g)}\n\n${PUNCHY_UPSHIFT}\n\n` +
-    `SLIDE BUDGET (strict): produce EXACTLY ${s.slides} slides. Every numbered item/rank gets its OWN single slide, ` +
-    'never split across two, never drop the later ones. If space is tight, tighten wording, do not cut items.\n\n' +
-    'Hook inspiration (angle ONLY — write your own original, never copy word for word):\n' +
-    s.hooks +
-    '\n\nStructure & Flow (specific to THIS format — never fall back to a generic template):\n' +
-    s.body,
+    `${PUNCHY_VOICE}${PERSONA(g)}\n\n` +
+    'You are cloning ONE specific viral TikTok slideshow. Reproduce its format EXACTLY: the same number of slides, the ' +
+    'same slide-by-slide structure, the same numbering/countdown, the same rating pattern, the same short line length, ' +
+    `and the same blunt voice. This is a proven ~${s.views}-view deck.\n\n` +
+    'REAL VIRAL EXAMPLE (study it, then make your own version just as tight):\n' +
+    s.example.map((t, i) => `--- Slide ${i + 1} ---\n${t}`).join('\n') +
+    `\n\nYOUR TASK: ${s.task}\n\n` +
+    `Output EXACTLY ${s.example.length} slides in the same order and shape as the example. Keep the ratings, the ` +
+    'shock-low pick, and the "no explanation needed" style finisher wherever the example uses them. Do NOT copy the ' +
+    'example\u2019s exact words \u2014 make it a fresh version that could sit next to it as another post from the same account.\n\n' +
+    (s.appNote || DEFAULT_APP_NOTE),
 });
+
 
 const selfBuilder = (s: SelfSpec): PresetBuilder => (g) => ({
   key: s.key,
@@ -847,7 +1136,7 @@ const selfBuilder = (s: SelfSpec): PresetBuilder => (g) => ({
 const ALL_BUILDERS: PresetBuilder[] = [
   ...BUILDERS,
   ...SELF_SPECS.map(selfBuilder),
-  ...VIRAL_SPECS.map(viralBuilder),
+  ...CLONE_SPECS.map(cloneBuilder),
 ];
 
 // Build the preset list for a given pack. Defaults to the men's pack.

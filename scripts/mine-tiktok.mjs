@@ -40,6 +40,7 @@ const HANDLES = [
   'zaaayd0',
   'jaidenfitt_',
   'loganhayeslifts',
+  'noahwalkerlifts',
 ]
 
 const UA =
