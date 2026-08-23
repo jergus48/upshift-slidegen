@@ -24,6 +24,11 @@ export interface QuitPreset {
   audience: string;
   styleMemory: string;
   slides: number; // recommended slides-per-slideshow for the full plan
+  // When present, this preset is a VERBATIM template: the exact slide text of a
+  // real viral deck (app slide already rewritten to Upshift). Generating it does
+  // NOT call the model — the deck is dropped onto the queue word-for-word. Only
+  // the clone presets carry this; the generative presets leave it undefined.
+  deck?: string[];
 }
 
 // Shared voice block. The single most important job here is to stop the output
@@ -671,9 +676,19 @@ const DEFAULT_APP_NOTE =
   'Upshift locks your phone and kills the mindless scroll so you actually stay consistent and show up to train. ' +
   'Brand it "Upshift". Never add an extra slide for it, never sound salesy, and name no other app.';
 
+// The verbatim Upshift slide that replaces the source deck's "[a tracking app]"
+// PRO TIP slide. The originals plug a workout tracker there; Upshift is a phone
+// blocker, so a coherent rewrite (not a bare name swap) keeps the deck honest.
+const CANONICAL_APP_SLIDE =
+  'PRO TIP\nThe reps only count if you actually show up. I lock my phone with Upshift so I stop scrolling and stay ' +
+  'consistent.\n\nUpshift';
+
 // A clone spec embeds a REAL viral deck (competitor app names already scrubbed
 // to "[a tracking app]") and tells the model to reproduce it slide-for-slide,
 // swapping only the specifics and turning the app slide into an Upshift plug.
+// `example` doubles as the verbatim `deck` (see cloneBuilder): the "[a tracking
+// app]" slide becomes CANONICAL_APP_SLIDE, and `appReplace` swaps one slide for
+// decks that have no such placeholder (so the Upshift plug still lands).
 interface CloneSpec {
   key: string;
   label: string;
@@ -683,6 +698,7 @@ interface CloneSpec {
   task: string; // what to vary vs. keep identical
   example: string[]; // the real deck, verbatim (one string per slide)
   appNote?: string; // override DEFAULT_APP_NOTE when the deck plugs differently
+  appReplace?: { at: number; text: string }; // verbatim-deck app slide for decks w/o the placeholder
 }
 
 // Each CLONE_SPEC embeds a real viral deck (mined from the source accounts;
@@ -852,6 +868,13 @@ const CLONE_SPECS: CloneSpec[] = [
       'This example has NO app slide. Do not add an extra slide. Instead, work ONE short honest Upshift line into the ' +
       'final winning-split slide \u2014 that none of it matters if you skip sessions, and Upshift is how you stay consistent by ' +
       'locking your phone and killing the scroll. Keep it to one sentence, never salesy, name no other app.',
+    appReplace: {
+      at: 5,
+      text:
+        'U/L: 10/10\nThis split changed everything for me. Frequency is perfect, recovery actually makes sense, and the ' +
+        'physique progress was stupid.\n\nBut none of it matters if you skip sessions \u2014 I lock my phone with Upshift so I ' +
+        'actually stay consistent.',
+    },
   },
   {
     key: 'splits-tierlist',
@@ -1090,8 +1113,23 @@ const CLONE_SPECS: CloneSpec[] = [
       'No dedicated app slide. Weave ONE soft Upshift mention into the "protect your time" step \u2014 that Upshift keeps you ' +
       'off the doomscroll so the other steps actually happen. Keep it gentle and one sentence, name no other app, and ' +
       'keep the tender closer as the final slide.',
+    appReplace: {
+      at: 3,
+      text: '3. Protect your time\n\nUpshift keeps you off the endless scroll, so the rest of this actually happens.',
+    },
   },
 ];
+
+// The verbatim deck a clone drops onto the queue: the real slides, with the
+// "[a tracking app]" PRO TIP slide rewritten to Upshift, plus any appReplace
+// swap for decks that had no such placeholder.
+function buildDeck(s: CloneSpec): string[] {
+  const deck = s.example.map((t) => (t.includes('[a tracking app]') ? CANONICAL_APP_SLIDE : t));
+  if (s.appReplace && s.appReplace.at >= 0 && s.appReplace.at < deck.length) {
+    deck[s.appReplace.at] = s.appReplace.text;
+  }
+  return deck;
+}
 
 const cloneBuilder = (s: CloneSpec): PresetBuilder => (g) => ({
   key: s.key,
@@ -1099,6 +1137,7 @@ const cloneBuilder = (s: CloneSpec): PresetBuilder => (g) => ({
   slides: s.example.length,
   niche: s.niche,
   audience: typeof s.audience === 'function' ? s.audience(g) : s.audience,
+  deck: buildDeck(s),
   styleMemory:
     `${PUNCHY_VOICE}${PERSONA(g)}\n\n` +
     'You are cloning ONE specific viral TikTok slideshow. Reproduce its format EXACTLY: the same number of slides, the ' +

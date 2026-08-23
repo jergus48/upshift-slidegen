@@ -6,59 +6,24 @@ import { GENDERS, getQuitPresets, type Gender } from '../lib/quitPresets';
 import type { CaptionStyle } from '../lib/captionStyle';
 
 interface GenerateModalProps {
-  defaultAudience: string;
-  defaultStyleMemory: string;
   generating: boolean;
   onClose: () => void;
-  onGenerate: (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string; captionStyle: CaptionStyle; gender: Gender }) => void;
-  onGenerateAll: (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender }) => void;
+  // Generate N random presets from the chosen pack — one deck each. Verbatim
+  // clone presets are dropped on verbatim; the rest are written by the model.
+  onGenerate: (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender }) => void;
 }
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
-const SLIDES_OPTIONS = [4, 5, 6, 7, 8];
 
-const textareaClass =
-  'w-full bg-card border border-line rounded-lg px-3 py-2.5 text-[13px] text-ink ' +
-  'placeholder:text-ink-6 outline-none transition-colors resize-none ' +
-  'focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50';
-
-export function GenerateModal({
-  defaultAudience,
-  defaultStyleMemory,
-  generating,
-  onClose,
-  onGenerate,
-  onGenerateAll,
-}: GenerateModalProps) {
-  const [count, setCount] = useState(1);
-  const [slidesPerShow, setSlidesPerShow] = useState(6);
+export function GenerateModal({ generating, onClose, onGenerate }: GenerateModalProps) {
+  const [count, setCount] = useState(5);
   const [length, setLength] = useState<'short' | 'long'>('short');
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>('app');
   const [packs, setPacks] = useState<string[]>([]);
-  const [audience, setAudience] = useState('');
-  const [styleMemory, setStyleMemory] = useState('');
   const [gender, setGender] = useState<Gender>('men');
-  // When on, we ignore the single Audience/Style memory below and instead run
-  // one batch per preset in this gender pack, each with its own settings.
-  const [allPresets, setAllPresets] = useState(false);
-  const presets = getQuitPresets(gender);
+  const total = getQuitPresets(gender).length;
 
-  const submit = () => {
-    if (allPresets) {
-      onGenerateAll({ count, length, packs, captionStyle, gender });
-      return;
-    }
-    onGenerate({
-      count,
-      slidesPerShow,
-      length,
-      packs,
-      audience: audience.trim() || undefined,
-      styleMemory: styleMemory.trim() || undefined,
-      captionStyle,
-      gender,
-    });
-  };
+  const submit = () => onGenerate({ count, length, packs, captionStyle, gender });
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={generating ? undefined : onClose}>
@@ -71,9 +36,9 @@ export function GenerateModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Count */}
+          {/* How many random presets */}
           <div>
-            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">How many?</label>
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">How many presets?</label>
             <div className="flex items-center gap-2">
               {COUNT_OPTIONS.map((n) => (
                 <button
@@ -97,36 +62,31 @@ export function GenerateModal({
                 className="flex-1 h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink text-center tabular-nums outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
               />
             </div>
-            <p className="text-[11px] text-ink-6 mt-1">1–100. Large batches take a while — they generate in chunks.</p>
+            <p className="text-[11px] text-ink-6 mt-1">
+              Picks {count === 1 ? 'one random preset' : `${count} random presets`} from all {total} and generates one slideshow each.
+              {count > total && ' Some presets repeat.'}
+            </p>
           </div>
 
-          {/* Slides per slideshow */}
+          {/* Pack (persona) */}
           <div>
-            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Slides per slideshow</label>
-            <div className="flex items-center gap-2">
-              {SLIDES_OPTIONS.map((n) => (
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Pack</label>
+            <div className="inline-flex p-0.5 rounded-lg border border-line bg-card">
+              {GENDERS.map((gnd) => (
                 <button
-                  key={n}
-                  onClick={() => setSlidesPerShow(n)}
-                  disabled={generating || allPresets}
-                  className={`w-12 h-9 rounded-lg border text-[13px] font-medium transition-colors disabled:opacity-50 ${
-                    slidesPerShow === n ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
+                  key={gnd.key}
+                  type="button"
+                  disabled={generating}
+                  onClick={() => setGender(gnd.key)}
+                  className={`text-[12px] px-3 h-7 rounded-md transition-colors disabled:opacity-50 ${
+                    gender === gnd.key ? 'bg-raised text-ink' : 'text-ink-4 hover:text-ink'
                   }`}
                 >
-                  {n}
+                  {gnd.label}
                 </button>
               ))}
-              <input
-                type="number"
-                min={2}
-                max={12}
-                value={slidesPerShow}
-                disabled={generating || allPresets}
-                onChange={(e) => setSlidesPerShow(Math.max(2, Math.min(12, Math.round(Number(e.target.value) || 6))))}
-                className="flex-1 h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink text-center tabular-nums outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
-              />
             </div>
-            <p className="text-[11px] text-ink-6 mt-1">Including the hook as slide 1. Default 6.</p>
+            <p className="text-[11px] text-ink-6 mt-1">Gender-matched persona, hooks and the POV shot on the app slide.</p>
           </div>
 
           {/* Slide length */}
@@ -150,7 +110,7 @@ export function GenerateModal({
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-ink-6 mt-1">The first slide is always a one-line hook, either way.</p>
+            <p className="text-[11px] text-ink-6 mt-1">Only affects the model-written presets — verbatim viral decks keep their own length.</p>
           </div>
 
           {/* Caption font */}
@@ -169,7 +129,6 @@ export function GenerateModal({
                     captionStyle === o.key ? 'border-ink ring-2 ring-ink' : 'border-line hover:border-line-2'
                   }`}
                 >
-                  {/* Sample rendered on a dark strip, exactly how the caption sits on a real slide */}
                   <div className="h-12 flex items-center justify-center bg-neutral-800">
                     <span
                       className="text-[17px] leading-none"
@@ -185,110 +144,12 @@ export function GenerateModal({
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-ink-6 mt-1">Preview of how the caption text will look on your slides.</p>
           </div>
 
           {/* Packs */}
           <div>
             <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Background packs</label>
             <PackPicker selected={packs} onChange={setPacks} disabled={generating} />
-          </div>
-
-          {/* Quick presets */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold block">
-                Quick presets <span className="normal-case font-normal text-ink-6">(optional)</span>
-              </label>
-              {/* Virtually selects every preset — one batch per preset on generate. */}
-              <button
-                type="button"
-                disabled={generating}
-                onClick={() => setAllPresets((v) => !v)}
-                className={`text-[11px] px-2.5 h-6 rounded-md border transition-colors disabled:opacity-50 ${
-                  allPresets ? 'border-ink bg-ink text-bg' : 'border-line text-ink-4 hover:text-ink hover:border-line-2'
-                }`}
-              >
-                {allPresets ? `All ${presets.length} selected` : 'Select all'}
-              </button>
-            </div>
-            {/* Men / Women pack — gender-matched persona, hooks and hobbies */}
-            <div className="inline-flex p-0.5 rounded-lg border border-line bg-card mb-1.5">
-              {GENDERS.map((gnd) => (
-                <button
-                  key={gnd.key}
-                  type="button"
-                  disabled={generating}
-                  onClick={() => setGender(gnd.key)}
-                  className={`text-[12px] px-3 h-7 rounded-md transition-colors disabled:opacity-50 ${
-                    gender === gnd.key ? 'bg-raised text-ink' : 'text-ink-4 hover:text-ink'
-                  }`}
-                >
-                  {gnd.label}
-                </button>
-              ))}
-            </div>
-            <div className={`flex flex-wrap gap-1.5 ${allPresets ? 'opacity-60' : ''}`}>
-              {presets.map((p) => (
-                <button
-                  key={p.key}
-                  type="button"
-                  disabled={generating || allPresets}
-                  onClick={() => {
-                    setAudience(p.audience);
-                    setStyleMemory(p.styleMemory);
-                    setSlidesPerShow(p.slides);
-                  }}
-                  className={`text-[12px] px-3 h-8 rounded-lg border transition-colors disabled:opacity-50 ${
-                    allPresets
-                      ? 'border-ink text-ink bg-raised'
-                      : 'border-line text-ink-3 hover:text-ink hover:border-line-2 hover:bg-raised'
-                  }`}
-                >
-                  {p.label} <span className={allPresets ? 'text-ink-5' : 'text-ink-6'}>({p.slides} slides)</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-ink-6 mt-1">
-              {allPresets
-                ? `Generates ${count === 1 ? 'one slideshow' : `${count} slideshows`} for every preset — ${presets.length} batches, each with its own slide count.`
-                : 'One click fills Audience and Style memory below.'}
-            </p>
-          </div>
-
-          {/* Audience override */}
-          <div>
-            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
-              Audience <span className="normal-case font-normal text-ink-6">(optional)</span>
-            </label>
-            <input
-              value={allPresets ? '' : audience}
-              onChange={(e) => setAudience(e.target.value)}
-              placeholder={allPresets ? 'Set per preset when generating all' : defaultAudience || 'e.g. busy parents in their 30s'}
-              disabled={generating || allPresets}
-              className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink placeholder:text-ink-6 outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
-            />
-            <p className="text-[11px] text-ink-6 mt-1">Leave blank to use the Brain default for this project.</p>
-          </div>
-
-          {/* Style memory override */}
-          <div>
-            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
-              Style memory <span className="normal-case font-normal text-ink-6">(optional)</span>
-            </label>
-            <p className="text-[11px] text-ink-5 mb-1.5">
-              The voice and patterns that work for you. Describe your hooks, slide structure, and CTAs — the AI
-              follows this closely.
-            </p>
-            <textarea
-              value={allPresets ? '' : styleMemory}
-              onChange={(e) => setStyleMemory(e.target.value)}
-              placeholder={allPresets ? 'Set per preset when generating all' : defaultStyleMemory || 'Leave blank to use your saved Style memory from Brain.'}
-              rows={5}
-              disabled={generating || allPresets}
-              className={`${textareaClass} font-mono text-[12px] leading-relaxed`}
-            />
-            <p className="text-[11px] text-ink-6 mt-1">Leave blank to use the Brain default for this project.</p>
           </div>
         </div>
 
@@ -300,11 +161,7 @@ export function GenerateModal({
             onClick={submit}
             disabled={generating}
           >
-            {generating
-              ? 'Generating…'
-              : allPresets
-                ? `Generate all ${presets.length}`
-                : `Generate ${count}`}
+            {generating ? 'Generating…' : `Generate ${count}`}
           </Button>
         </div>
       </div>

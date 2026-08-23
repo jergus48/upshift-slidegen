@@ -29,6 +29,7 @@ import { getHiddenPhotos } from './lib/hiddenPhotos';
 import { assignBackgrounds, assignAppSlidePov } from './lib/backgrounds';
 import { libraryRef } from './lib/imageSrc';
 import { getQuitPresets, type Gender } from './lib/quitPresets';
+import { buildFixedShows } from './lib/fixedDeck';
 import * as ws from './lib/localWorkspace';
 import * as api from './lib/api';
 import type {
@@ -165,21 +166,36 @@ export default function App() {
     if (activeProjectId && queueProject === activeProjectId) saveQueue(activeProjectId, queue);
   }, [queue, queueProject, activeProjectId]);
 
-  const generate = async (opts: { count: number; slidesPerShow: number; length: 'short' | 'long'; packs: string[]; audience?: string; styleMemory?: string; captionStyle: CaptionStyle; gender: Gender }) => {
+  // Pick `n` presets at random from the pack — unique while the pool lasts, then
+  // wrapping if more are asked for than there are presets.
+  const pickRandomPresets = <T,>(pool: T[], n: number): T[] => {
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    return Array.from({ length: Math.max(1, n) }, (_, i) => shuffled[i % shuffled.length]);
+  };
+
+  // The generation path: pick N random presets and produce one deck each.
+  // Verbatim clone presets (those carrying a `deck`) are dropped onto the queue
+  // word-for-word with no model call; the rest are written by the model from
+  // their own audience + style memory. Decks stream onto the queue as they land.
+  const generate = async (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender }) => {
     if (!activeProject) return;
     setError(null);
     setGenerating(true);
     try {
-      // The per-batch audience/style-memory overrides win; otherwise fall back
-      // to this project's saved Brain.
-      const brain: BrainState = {
-        ...activeProject.brain,
-        audience: opts.audience?.trim() || activeProject.brain.audience,
-        styleMemory: opts.styleMemory?.trim() || activeProject.brain.styleMemory,
-      };
-      const slideshows = await api.generate({ count: opts.count, slidesPerShow: opts.slidesPerShow, length: opts.length, model: workspace!.model, brain });
-      const withBackgrounds = await decorateShows(slideshows, opts.packs, opts.gender, opts.captionStyle);
-      setQueue((q) => [...withBackgrounds, ...q]);
+      const picks = pickRandomPresets(getQuitPresets(opts.gender), opts.count);
+      for (const p of picks) {
+        const shows = p.deck?.length
+          ? buildFixedShows(p.deck, 1)
+          : await api.generate({
+              count: 1,
+              slidesPerShow: p.slides,
+              length: opts.length,
+              model: workspace!.model,
+              brain: { ...activeProject.brain, audience: p.audience, styleMemory: p.styleMemory },
+            });
+        const withBackgrounds = await decorateShows(shows, opts.packs, opts.gender, opts.captionStyle);
+        setQueue((q) => [...withBackgrounds, ...q]);
+      }
       setGenerateOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -210,33 +226,6 @@ export default function App() {
       // baked PNG both render it.
       slides: show.slides.map((sl) => ({ ...sl, captionStyle })),
     }));
-  };
-
-  // "Generate all presets": one run per preset in the chosen gender pack, each
-  // with that preset's own audience, style memory and slide count. Decks stream
-  // onto the queue as each preset finishes, so progress is visible.
-  const generateAll = async (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender }) => {
-    if (!activeProject) return;
-    setError(null);
-    setGenerating(true);
-    try {
-      const presets = getQuitPresets(opts.gender);
-      for (const p of presets) {
-        const brain: BrainState = {
-          ...activeProject.brain,
-          audience: p.audience,
-          styleMemory: p.styleMemory,
-        };
-        const slideshows = await api.generate({ count: opts.count, slidesPerShow: p.slides, length: opts.length, model: workspace!.model, brain });
-        const withBackgrounds = await decorateShows(slideshows, opts.packs, opts.gender, opts.captionStyle);
-        setQueue((q) => [...withBackgrounds, ...q]);
-      }
-      setGenerateOpen(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setGenerating(false);
-    }
   };
 
   // Photo packs: the server returns whole slideshows with real R2 photos already
@@ -590,12 +579,9 @@ export default function App() {
 
       {generateOpen && (
         <GenerateModal
-          defaultAudience={activeProject.brain.audience}
-          defaultStyleMemory={activeProject.brain.styleMemory}
           generating={generating}
           onClose={() => setGenerateOpen(false)}
           onGenerate={generate}
-          onGenerateAll={generateAll}
         />
       )}
     </div>
