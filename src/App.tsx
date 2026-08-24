@@ -183,12 +183,14 @@ export default function App() {
     setError(null);
     setGenerating(true);
     try {
-      // Narrow to the chosen presets if any were picked; otherwise draw from the
-      // whole catalog (the original random-from-everything behavior).
+      // If specific presets were picked, generate EXACTLY those — one deck each,
+      // nothing random added. Only when nothing is chosen do we draw `count`
+      // presets at random from the whole catalog (the original behavior).
       const all = getQuitPresets(opts.gender);
       const keys = new Set(opts.presetKeys || []);
-      const pool = keys.size ? all.filter((p) => keys.has(p.key)) : all;
-      const picks = pickRandomPresets(pool, opts.count);
+      const picks = keys.size
+        ? all.filter((p) => keys.has(p.key))
+        : pickRandomPresets(all, opts.count);
       for (const p of picks) {
         const shows = p.deck?.length
           ? buildFixedShows(p.deck, 1)

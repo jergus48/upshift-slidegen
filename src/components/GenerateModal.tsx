@@ -25,8 +25,9 @@ export function GenerateModal({ generating, onClose, onGenerate }: GenerateModal
   const [gender, setGender] = useState<Gender>('men');
   const [presetKeys, setPresetKeys] = useState<string[]>([]);
   const total = getQuitPresets(gender).length;
-  // How many presets we're actually drawing from — the selected subset, or all.
-  const pool = presetKeys.length || total;
+  // How many slideshows this run will actually produce: one per chosen preset, or
+  // the random `count` when nothing specific is picked.
+  const genCount = presetKeys.length || count;
 
   const submit = () => onGenerate({ count, length, packs, captionStyle, gender, presetKeys });
 
@@ -41,45 +42,50 @@ export function GenerateModal({ generating, onClose, onGenerate }: GenerateModal
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* How many random presets */}
-          <div>
-            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">How many presets?</label>
-            <div className="flex items-center gap-2">
-              {COUNT_OPTIONS.map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setCount(n)}
-                  disabled={generating}
-                  className={`w-12 h-9 rounded-lg border text-[13px] font-medium transition-colors disabled:opacity-50 ${
-                    count === n ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={count}
-                disabled={generating}
-                onChange={(e) => setCount(Math.max(1, Math.min(100, Math.round(Number(e.target.value) || 1))))}
-                className="flex-1 h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink text-center tabular-nums outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
-              />
-            </div>
-            <p className="text-[11px] text-ink-6 mt-1">
-              {presetKeys.length
-                ? `Generates ${count} ${count === 1 ? 'slideshow' : 'slideshows'} drawn from your ${presetKeys.length} chosen preset${presetKeys.length === 1 ? '' : 's'}.`
-                : `Picks ${count === 1 ? 'one random preset' : `${count} random presets`} from all ${total} and generates one slideshow each.`}
-              {count > pool && ' Some presets repeat.'}
-            </p>
-          </div>
-
-          {/* Which presets to draw from */}
+          {/* Which presets to generate */}
           <div>
             <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Presets</label>
             <PresetPicker gender={gender} selected={presetKeys} onChange={setPresetKeys} disabled={generating} />
           </div>
+
+          {/* How many random presets — only when nothing specific is picked */}
+          {presetKeys.length === 0 && (
+            <div>
+              <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">How many presets?</label>
+              <div className="flex items-center gap-2">
+                {COUNT_OPTIONS.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setCount(n)}
+                    disabled={generating}
+                    className={`w-12 h-9 rounded-lg border text-[13px] font-medium transition-colors disabled:opacity-50 ${
+                      count === n ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={count}
+                  disabled={generating}
+                  onChange={(e) => setCount(Math.max(1, Math.min(100, Math.round(Number(e.target.value) || 1))))}
+                  className="flex-1 h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink text-center tabular-nums outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
+                />
+              </div>
+              <p className="text-[11px] text-ink-6 mt-1">
+                Picks {count === 1 ? 'one random preset' : `${count} random presets`} from all {total} and generates one slideshow each.
+                {count > total && ' Some presets repeat.'}
+              </p>
+            </div>
+          )}
+          {presetKeys.length > 0 && (
+            <p className="text-[11px] text-ink-6 -mt-2">
+              Generates exactly your {presetKeys.length} chosen preset{presetKeys.length === 1 ? '' : 's'} — one slideshow each.
+            </p>
+          )}
 
           {/* Pack (persona) */}
           <div>
@@ -174,7 +180,7 @@ export function GenerateModal({ generating, onClose, onGenerate }: GenerateModal
             onClick={submit}
             disabled={generating}
           >
-            {generating ? 'Generating…' : `Generate ${count}`}
+            {generating ? 'Generating…' : `Generate ${genCount}`}
           </Button>
         </div>
       </div>
