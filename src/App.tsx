@@ -178,12 +178,17 @@ export default function App() {
   // Verbatim clone presets (those carrying a `deck`) are dropped onto the queue
   // word-for-word with no model call; the rest are written by the model from
   // their own audience + style memory. Decks stream onto the queue as they land.
-  const generate = async (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender }) => {
+  const generate = async (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender; presetKeys?: string[] }) => {
     if (!activeProject) return;
     setError(null);
     setGenerating(true);
     try {
-      const picks = pickRandomPresets(getQuitPresets(opts.gender), opts.count);
+      // Narrow to the chosen presets if any were picked; otherwise draw from the
+      // whole catalog (the original random-from-everything behavior).
+      const all = getQuitPresets(opts.gender);
+      const keys = new Set(opts.presetKeys || []);
+      const pool = keys.size ? all.filter((p) => keys.has(p.key)) : all;
+      const picks = pickRandomPresets(pool, opts.count);
       for (const p of picks) {
         const shows = p.deck?.length
           ? buildFixedShows(p.deck, 1)

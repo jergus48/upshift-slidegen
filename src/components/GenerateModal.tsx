@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { X, Loader2, Sparkles } from 'lucide-react';
 import { Button } from './Button';
 import { PackPicker } from './PackPicker';
+import { PresetPicker } from './PresetPicker';
 import { GENDERS, getQuitPresets, type Gender } from '../lib/quitPresets';
 import type { CaptionStyle } from '../lib/captionStyle';
 
 interface GenerateModalProps {
   generating: boolean;
   onClose: () => void;
-  // Generate N random presets from the chosen pack — one deck each. Verbatim
-  // clone presets are dropped on verbatim; the rest are written by the model.
-  onGenerate: (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender }) => void;
+  // Generate N presets — one deck each. `presetKeys` narrows the pool to those
+  // specific presets (empty = draw from every preset at random). Verbatim clone
+  // presets are dropped on verbatim; the rest are written by the model.
+  onGenerate: (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender; presetKeys: string[] }) => void;
 }
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
@@ -21,9 +23,12 @@ export function GenerateModal({ generating, onClose, onGenerate }: GenerateModal
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>('app');
   const [packs, setPacks] = useState<string[]>([]);
   const [gender, setGender] = useState<Gender>('men');
+  const [presetKeys, setPresetKeys] = useState<string[]>([]);
   const total = getQuitPresets(gender).length;
+  // How many presets we're actually drawing from — the selected subset, or all.
+  const pool = presetKeys.length || total;
 
-  const submit = () => onGenerate({ count, length, packs, captionStyle, gender });
+  const submit = () => onGenerate({ count, length, packs, captionStyle, gender, presetKeys });
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={generating ? undefined : onClose}>
@@ -63,9 +68,17 @@ export function GenerateModal({ generating, onClose, onGenerate }: GenerateModal
               />
             </div>
             <p className="text-[11px] text-ink-6 mt-1">
-              Picks {count === 1 ? 'one random preset' : `${count} random presets`} from all {total} and generates one slideshow each.
-              {count > total && ' Some presets repeat.'}
+              {presetKeys.length
+                ? `Generates ${count} ${count === 1 ? 'slideshow' : 'slideshows'} drawn from your ${presetKeys.length} chosen preset${presetKeys.length === 1 ? '' : 's'}.`
+                : `Picks ${count === 1 ? 'one random preset' : `${count} random presets`} from all ${total} and generates one slideshow each.`}
+              {count > pool && ' Some presets repeat.'}
             </p>
+          </div>
+
+          {/* Which presets to draw from */}
+          <div>
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Presets</label>
+            <PresetPicker gender={gender} selected={presetKeys} onChange={setPresetKeys} disabled={generating} />
           </div>
 
           {/* Pack (persona) */}

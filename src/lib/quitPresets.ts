@@ -20,6 +20,9 @@ export const GENDERS: { key: Gender; label: string }[] = [
 export interface QuitPreset {
   key: string;
   label: string;
+  // Which family this preset belongs to, for grouping in the picker. Set at
+  // assembly time in getQuitPresets (see ALL_BUILDERS), not in each builder.
+  family?: string;
   niche: string;
   audience: string;
   styleMemory: string;
@@ -1170,12 +1173,18 @@ const selfBuilder = (s: SelfSpec): PresetBuilder => (g) => ({
     s.body,
 });
 
+// Tag a family's builders so every preset it produces carries `family` — used
+// to group the Generate preset-picker. Kept here (not in each builder) so the
+// three families stay a single source of truth.
+const withFamily = (builders: PresetBuilder[], family: string): PresetBuilder[] =>
+  builders.map((build) => (g: Gender) => ({ ...build(g), family }));
+
 // Quit-habit presets first, then the self-improvement family, then the viral
 // slideshow formats mined from top TikTok carousel accounts.
 const ALL_BUILDERS: PresetBuilder[] = [
-  ...BUILDERS,
-  ...SELF_SPECS.map(selfBuilder),
-  ...CLONE_SPECS.map(cloneBuilder),
+  ...withFamily(BUILDERS, 'Quit habits'),
+  ...withFamily(SELF_SPECS.map(selfBuilder), 'Self-improvement'),
+  ...withFamily(CLONE_SPECS.map(cloneBuilder), 'Viral formats'),
 ];
 
 // Build the preset list for a given pack. Defaults to the men's pack.
