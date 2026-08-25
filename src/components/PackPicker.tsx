@@ -2,12 +2,22 @@ import { useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
 import type { LibraryPack } from '../types';
 import { getMergedPacks } from '../lib/mergedLibrary';
-import { makeToken } from '../lib/subfolders';
+import { makeToken, parseToken } from '../lib/subfolders';
+
+// "Pack / subfolder" for the single-choice summary line.
+function subLabel(token: string): string {
+  const { pack, subfolder } = parseToken(token);
+  return subfolder ? `${pack} / ${subfolder}` : pack;
+}
 
 interface PackPickerProps {
   selected: string[];
   onChange: (next: string[]) => void;
   disabled?: boolean;
+  // Single-choice mode: picking a pack (or subfolder) REPLACES the selection
+  // instead of adding to it. Used by the Generate modal, where a leftover pack
+  // from a previous batch silently mixed two personas into one run.
+  single?: boolean;
 }
 
 // Aesthetic-pack picker with cover thumbnails. Used in the Generate modal and
@@ -16,15 +26,17 @@ interface PackPickerProps {
 // selects the whole pack; a pack+subfolder token selects one subfolder. A pack
 // with subfolders shows sub-chips under its tile so you can target e.g. just
 // "gym" instead of the whole pack.
-export function PackPicker({ selected, onChange, disabled }: PackPickerProps) {
+export function PackPicker({ selected, onChange, disabled, single }: PackPickerProps) {
   const [packs, setPacks] = useState<LibraryPack[] | null>(null);
 
   useEffect(() => {
     getMergedPacks().then(setPacks).catch(() => setPacks([]));
   }, []);
 
-  const toggle = (token: string) =>
-    onChange(selected.includes(token) ? selected.filter((x) => x !== token) : [...selected, token]);
+  const toggle = (token: string) => {
+    if (selected.includes(token)) return onChange(selected.filter((x) => x !== token));
+    onChange(single ? [token] : [...selected, token]);
+  };
 
   // "All" selects every whole-pack token (not the subfolder tokens, which would
   // be redundant); "None" clears everything.
@@ -35,10 +47,16 @@ export function PackPicker({ selected, onChange, disabled }: PackPickerProps) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] text-ink-6">
-          {selectedCount ? `${selectedCount} selected` : 'None — plain gradients'}
+          {selectedCount
+            ? single
+              ? subLabel(selected[0])
+              : `${selectedCount} selected`
+            : 'None — plain gradients'}
         </span>
         <div className="flex gap-2">
-          <button onClick={() => onChange(allTokens)} disabled={disabled} className="text-[11px] text-ink-5 hover:text-ink disabled:opacity-50">All</button>
+          {!single && (
+            <button onClick={() => onChange(allTokens)} disabled={disabled} className="text-[11px] text-ink-5 hover:text-ink disabled:opacity-50">All</button>
+          )}
           <button onClick={() => onChange([])} disabled={disabled} className="text-[11px] text-ink-5 hover:text-ink disabled:opacity-50">None</button>
         </div>
       </div>

@@ -18,6 +18,25 @@ const KEY = 'slidesmith:preset-appshots';
 
 type ShotMap = Record<string, string>; // `${presetKey}:${gender}` -> local id
 
+// Defaults shipped with the build (public/app-shots/manifest.json). These make
+// the screenshots show up for *every* user/browser (e.g. on Vercel) without
+// anyone uploading anything; a per-browser upload still overrides them.
+let defaults: ShotMap = {};
+export async function loadAppShotDefaults(): Promise<void> {
+  try {
+    const res = await fetch('/app-shots/manifest.json');
+    if (!res.ok) return;
+    const json = (await res.json()) as { shots?: Record<string, string> };
+    const shots = json.shots || {};
+    defaults = Object.fromEntries(
+      Object.entries(shots).map(([k, file]) => [k, file.startsWith('/') ? file : `/app-shots/${file}`])
+    );
+    notify();
+  } catch {
+    /* no bundled defaults — uploads still work */
+  }
+}
+
 type Listener = () => void;
 const listeners = new Set<Listener>();
 const notify = () => listeners.forEach((l) => l());
@@ -49,12 +68,13 @@ const mapKey = (presetKey: string, gender: Gender) => `${presetKey}:${gender}`;
 // The stable `local:` ref to drop on the app slide for this preset+gender, or
 // undefined if the user hasn't uploaded one.
 export function getAppShotRef(presetKey: string, gender: Gender): string | undefined {
-  return read()[mapKey(presetKey, gender)];
+  const k = mapKey(presetKey, gender);
+  return read()[k] ?? defaults[k];
 }
 
 // Whole map, for the picker to show which presets already have shots.
 export function getAppShots(): ShotMap {
-  return read();
+  return { ...defaults, ...read() };
 }
 
 // Save (or replace) the screenshot for one preset+gender. `dataUrl` is a base64

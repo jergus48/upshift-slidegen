@@ -1,6 +1,7 @@
 import { Layers, Loader2, CheckCircle2, AlertCircle, Circle, X, Trash2, MousePointerClick } from 'lucide-react';
 import type { GenBatch } from '../lib/localBatches';
 import type { Slideshow } from '../types';
+import { parseToken } from '../lib/subfolders';
 
 interface BatchQueuePanelProps {
   batches: GenBatch[];
@@ -9,6 +10,17 @@ interface BatchQueuePanelProps {
   onSelectBatch: (id: string) => void;
   onRemoveBatch: (id: string) => void;
   onClearFinished: () => void;
+}
+
+// Readable "pack / subfolder" list for a batch's selection tokens.
+function packLabel(packs: string[]): string {
+  if (!packs.length) return 'No pack — gradients only';
+  return packs
+    .map((t) => {
+      const { pack, subfolder } = parseToken(t);
+      return subfolder ? `${pack} / ${subfolder}` : pack;
+    })
+    .join(', ');
 }
 
 // Right-hand log of generation batches. Running/queued batches show live
@@ -72,6 +84,12 @@ export function BatchQueuePanel({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[12px] font-medium text-ink truncate">{b.label}</span>
+                  </div>
+                  {/* The exact background packs this batch was enqueued with —
+                      each batch draws only from these, so a mixed-looking run is
+                      a mixed selection, and it's visible here per batch. */}
+                  <div className="text-[10px] text-ink-6 truncate" title={packLabel(b.packs)}>
+                    {packLabel(b.packs)}
                   </div>
                   <div className="text-[11px] text-ink-6 mt-0.5">
                     {b.status === 'running' && `Generating ${b.done}/${b.total}…`}

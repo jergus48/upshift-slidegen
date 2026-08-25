@@ -1,0 +1,25 @@
+{
+  "_comment": "Bundled default app-slide screenshots, shipped with the build so every user (incl. Vercel) gets them without uploading. Keys are `${presetKey}:${gender}`, values are file names in this folder. A user upload in their own browser still wins over these.",
+  "shots": {
+    "alcohol:men": "alcohol-men.jpg",
+    "alcohol:women": "alcohol-women.jpg",
+    "corn:men": "corn-men.jpg",
+    "corn:women": "corn-women.jpg",
+    "doomscrolling:men": "doomscrolling-men.jpg",
+    "doomscrolling:women": "doomscrolling-women.jpg",
+    "gambling:men": "gambling-men.jpg",
+    "gambling:women": "gambling-women.jpg",
+    "hobbies:men": "hobbies-men.jpg",
+    "hobbies:women": "hobbies-women.jpg",
+    "rebuild:men": "rebuild-men.jpg",
+    "rebuild:women": "rebuild-women.jpg",
+    "smoking:men": "smoking-men.jpg",
+    "smoking:women": "smoking-women.jpg",
+    "steps:men": "steps-men.jpg",
+    "steps:women": "steps-women.jpg",
+    "vaping:men": "vaping-men.jpg",
+    "vaping:women": "vaping-women.jpg",
+    "weed:men": "weed-men.jpg",
+    "weed:women": "weed-women.jpg"
+  }
+}

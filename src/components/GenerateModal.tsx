@@ -175,8 +175,9 @@ export function GenerateModal({ onClose, onEnqueue, batches }: GenerateModalProp
 
           {/* Packs */}
           <div>
-            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Background packs</label>
-            <PackPicker selected={packs} onChange={setPacks} />
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Background pack</label>
+            <p className="text-[11px] text-ink-6 mb-1.5">One pack (or one subfolder) per batch — picking another replaces it, so two batches can never share photos.</p>
+            <PackPicker selected={packs} onChange={setPacks} single />
           </div>
 
           {/* Queued/running batches — a live log inside the modal */}

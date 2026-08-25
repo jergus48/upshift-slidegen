@@ -50,6 +50,9 @@ function ShotSlot({
   disabled?: boolean;
 }) {
   const ref = getAppShots()[`${presetKey}:${gender}`];
+  // Bundled defaults (`/app-shots/…`) ship with the build and can't be removed
+  // from the UI — only a screenshot uploaded in this browser can.
+  const uploaded = !!ref && ref.startsWith('local:');
   const [src, setSrc] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -98,7 +101,7 @@ function ShotSlot({
         type="button"
         onClick={pick}
         disabled={disabled || busy}
-        title={src ? `${label} screenshot — click to replace` : `Upload ${label} app-slide screenshot`}
+        title={src ? `${label} screenshot${uploaded ? '' : ' (default)'} — click to replace` : `Upload ${label} app-slide screenshot`}
         className={`group relative w-11 h-16 rounded-md border overflow-hidden flex flex-col items-center justify-center transition-colors disabled:opacity-50 ${
           src ? 'border-ink' : 'border-dashed border-line hover:border-line-2'
         }`}
@@ -119,7 +122,7 @@ function ShotSlot({
           </span>
         )}
       </button>
-      {src && !busy && (
+      {src && uploaded && !busy && (
         <button
           type="button"
           onClick={remove}
