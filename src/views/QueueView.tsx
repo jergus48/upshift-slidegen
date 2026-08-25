@@ -4,6 +4,8 @@ import type { Slideshow } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { SlidePreview } from '../components/SlidePreview';
 import { BulkBackgroundTool } from '../components/BulkBackgroundTool';
+import { BatchQueuePanel } from '../components/BatchQueuePanel';
+import type { GenBatch } from '../lib/localBatches';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
 import { MusicChoiceModal } from '../components/MusicChoiceModal';
@@ -23,6 +25,10 @@ interface QueueViewProps {
   generating: boolean;
   canGenerate: boolean;
   selectedIds: string[];
+  batches: GenBatch[];
+  onSelectBatch: (id: string) => void;
+  onRemoveBatch: (id: string) => void;
+  onClearFinishedBatches: () => void;
   onGenerate: () => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
@@ -40,6 +46,10 @@ export function QueueView({
   generating,
   canGenerate,
   selectedIds,
+  batches,
+  onSelectBatch,
+  onRemoveBatch,
+  onClearFinishedBatches,
   onGenerate,
   onApprove,
   onReject,
@@ -178,6 +188,8 @@ export function QueueView({
         }
       />
 
+      <div className="flex-1 flex min-h-0">
+        <div className="flex-1 flex flex-col min-w-0">
       {slideshows.length === 0 ? (
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="text-center max-w-sm">
@@ -224,6 +236,16 @@ export function QueueView({
           </div>
         </div>
       )}
+        </div>
+        <BatchQueuePanel
+          batches={batches}
+          queue={slideshows}
+          selectedIds={selectedIds}
+          onSelectBatch={onSelectBatch}
+          onRemoveBatch={onRemoveBatch}
+          onClearFinished={onClearFinishedBatches}
+        />
+      </div>
 
       {askMusic && (
         <MusicChoiceModal

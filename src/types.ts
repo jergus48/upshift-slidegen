@@ -69,6 +69,10 @@ export interface Slideshow {
   slides: Slide[];
   createdAt: string;
   rationale: string;
+  // Which generation batch produced this show (see lib/localBatches.ts). Lets the
+  // Batch queue panel re-select a whole finished batch for export. Absent for
+  // manually-created or pre-batch slideshows.
+  batchId?: string;
 }
 
 export interface BrainState {

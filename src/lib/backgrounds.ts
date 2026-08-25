@@ -44,3 +44,18 @@ export function assignAppSlidePov(slideshows: Slideshow[], pool: LibraryImage[])
     return { ...show, slides };
   });
 }
+
+// Force a specific image reference onto every slideshow's app ("Upshift") slide.
+// Used for a per-preset, per-gender uploaded screenshot (see lib/presetScreenshots.ts),
+// which overrides the random POV shot. `ref` is a stable ref (a `local:…` id or
+// a `/library/…`/`data:` URL). Empty ref → slideshows unchanged.
+export function setAppSlideImage(slideshows: Slideshow[], ref?: string): Slideshow[] {
+  if (!ref) return slideshows;
+  return slideshows.map((show) => {
+    if (!show.slides.some((s) => isAppSlide(s.text))) return show;
+    const slides = show.slides.map((slide) =>
+      isAppSlide(slide.text) ? { ...slide, imageUrl: ref } : slide
+    );
+    return { ...show, slides };
+  });
+}

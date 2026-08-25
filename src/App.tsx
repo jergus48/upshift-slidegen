@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Menu } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { ScheduleModal } from './components/ScheduleModal';
@@ -24,10 +24,12 @@ import { BrainView } from './views/BrainView';
 import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
 import { loadQueue, saveQueue, recoverOrphanQueues } from './lib/localQueue';
+import { loadBatches, saveBatches, type GenBatch } from './lib/localBatches';
 import { getMergedLibrary } from './lib/mergedLibrary';
 import { tokenMatches } from './lib/subfolders';
 import { getHiddenPhotos } from './lib/hiddenPhotos';
-import { assignBackgrounds, assignAppSlidePov } from './lib/backgrounds';
+import { getAppShotRef } from './lib/presetScreenshots';
+import { assignBackgrounds, assignAppSlidePov, setAppSlideImage } from './lib/backgrounds';
 import { libraryRef } from './lib/imageSrc';
 import { getQuitPresets, type Gender } from './lib/quitPresets';
 import { buildFixedShows } from './lib/fixedDeck';
@@ -47,6 +49,7 @@ import type {
   ViewKey,
 } from './types';
 import type { CaptionStyle } from './lib/captionStyle';
+import type { EnqueueOpts } from './components/GenerateModal';
 
 export default function App() {
   // Config is assembled from two sources: API-key status (server) and the
@@ -62,6 +65,7 @@ export default function App() {
     () => (window.location.pathname === '/youtube' ? 'channels' : 'queue')
   );
   const [queue, setQueue] = useState<Slideshow[]>([]);
+  const [batches, setBatches] = useState<GenBatch[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [generating, setGenerating] = useState(false);
   const [scheduling, setScheduling] = useState<Slideshow | null>(null);
@@ -160,12 +164,17 @@ export default function App() {
   useEffect(() => {
     if (!activeProjectId) return;
     setQueue(loadQueue(activeProjectId));
+    setBatches(loadBatches(activeProjectId));
     setQueueProject(activeProjectId);
   }, [activeProjectId]);
 
   useEffect(() => {
     if (activeProjectId && queueProject === activeProjectId) saveQueue(activeProjectId, queue);
   }, [queue, queueProject, activeProjectId]);
+
+  useEffect(() => {
+    if (activeProjectId && queueProject === activeProjectId) saveBatches(activeProjectId, batches);
+  }, [batches, queueProject, activeProjectId]);
 
   // Pick `n` presets at random from the pack — unique while the pool lasts, then
   // wrapping if more are asked for than there are presets.
@@ -174,42 +183,112 @@ export default function App() {
     return Array.from({ length: Math.max(1, n) }, (_, i) => shuffled[i % shuffled.length]);
   };
 
-  // The generation path: pick N random presets and produce one deck each.
-  // Verbatim clone presets (those carrying a `deck`) are dropped onto the queue
-  // word-for-word with no model call; the rest are written by the model from
-  // their own audience + style memory. Decks stream onto the queue as they land.
-  const generate = async (opts: { count: number; length: 'short' | 'long'; packs: string[]; captionStyle: CaptionStyle; gender: Gender; presetKeys?: string[] }) => {
-    if (!activeProject) return;
+  // ── Batch queue ────────────────────────────────────────────────────────────
+  // Each "character" run (a gender + presets/count + packs + caption look) is
+  // enqueued as a batch. A background worker processes them one at a time so
+  // several can be stacked and generate progressively while the user reviews.
+
+  // Add a batch to the queue. The worker effect picks it up automatically.
+  const enqueueBatch = (opts: EnqueueOpts) => {
     setError(null);
-    setGenerating(true);
+    const label = buildBatchLabel(opts);
+    const batch: GenBatch = {
+      id: `b-${Date.now()}-${Math.round(Math.random() * 1e5)}`,
+      createdAt: new Date().toISOString(),
+      status: 'queued',
+      label,
+      gender: opts.gender,
+      presetKeys: opts.presetKeys,
+      count: opts.count,
+      length: opts.length,
+      packs: opts.packs,
+      captionStyle: opts.captionStyle,
+      total: opts.presetKeys.length || opts.count,
+      done: 0,
+      producedIds: [],
+    };
+    setBatches((bs) => [batch, ...bs]);
+  };
+
+  // Human label for the panel: "Men · 3 presets" or "Women · 5 random".
+  const buildBatchLabel = (opts: EnqueueOpts): string => {
+    const g = opts.gender === 'women' ? 'Women' : 'Men';
+    if (opts.presetKeys.length === 0) return `${g} · ${opts.count} random`;
+    if (opts.presetKeys.length === 1) {
+      const p = getQuitPresets(opts.gender).find((x) => x.key === opts.presetKeys[0]);
+      return `${g} · ${p?.label ?? '1 preset'}`;
+    }
+    return `${g} · ${opts.presetKeys.length} presets`;
+  };
+
+  // Only one batch runs at a time; this guards the worker from double-starting
+  // when `batches` updates mid-run (progress writes).
+  const batchRunning = useRef(false);
+
+  // Run one batch to completion: generate each preset's deck, decorate it,
+  // stream it onto the queue tagged with the batch id, and track progress.
+  const runBatch = useCallback(async (batch: GenBatch) => {
+    if (!activeProject || !workspace) return;
+    setBatches((bs) => bs.map((b) => (b.id === batch.id ? { ...b, status: 'running', done: 0 } : b)));
     try {
-      // If specific presets were picked, generate EXACTLY those — one deck each,
-      // nothing random added. Only when nothing is chosen do we draw `count`
-      // presets at random from the whole catalog (the original behavior).
-      const all = getQuitPresets(opts.gender);
-      const keys = new Set(opts.presetKeys || []);
-      const picks = keys.size
-        ? all.filter((p) => keys.has(p.key))
-        : pickRandomPresets(all, opts.count);
+      const all = getQuitPresets(batch.gender);
+      const keys = new Set(batch.presetKeys);
+      const picks = keys.size ? all.filter((p) => keys.has(p.key)) : pickRandomPresets(all, batch.count);
       for (const p of picks) {
         const shows = p.deck?.length
           ? buildFixedShows(p.deck, 1)
           : await api.generate({
               count: 1,
               slidesPerShow: p.slides,
-              length: opts.length,
-              model: workspace!.model,
+              length: batch.length,
+              model: workspace.model,
               brain: { ...activeProject.brain, audience: p.audience, styleMemory: p.styleMemory },
             });
-        const withBackgrounds = await decorateShows(shows, opts.packs, opts.gender, opts.captionStyle);
-        setQueue((q) => [...withBackgrounds, ...q]);
+        const decorated = await decorateShows(shows, batch.packs, batch.gender, batch.captionStyle, p.key);
+        const tagged = decorated.map((s) => ({ ...s, batchId: batch.id }));
+        setQueue((q) => [...tagged, ...q]);
+        setBatches((bs) =>
+          bs.map((b) =>
+            b.id === batch.id
+              ? { ...b, done: b.done + tagged.length, producedIds: [...b.producedIds, ...tagged.map((s) => s.id)] }
+              : b,
+          ),
+        );
       }
-      setGenerateOpen(false);
+      setBatches((bs) => bs.map((b) => (b.id === batch.id ? { ...b, status: 'done' } : b)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setGenerating(false);
+      const msg = e instanceof Error ? e.message : String(e);
+      setBatches((bs) => bs.map((b) => (b.id === batch.id ? { ...b, status: 'error', error: msg } : b)));
     }
+  }, [activeProject, workspace]);
+
+  // The worker: whenever no batch is running and one is queued, start it.
+  useEffect(() => {
+    if (batchRunning.current) return;
+    const next = batches.find((b) => b.status === 'queued');
+    if (!next) return;
+    batchRunning.current = true;
+    runBatch(next).finally(() => {
+      batchRunning.current = false;
+      // Nudge the effect to look for the next queued batch.
+      setBatches((bs) => [...bs]);
+    });
+  }, [batches, runBatch]);
+
+  // Select every still-present slideshow from a finished batch (for export).
+  const selectBatch = (batchId: string) => {
+    const batch = batches.find((b) => b.id === batchId);
+    if (!batch) return;
+    const ids = batch.producedIds.filter((id) => queue.some((s) => s.id === id));
+    setSelectedIds(ids);
+  };
+
+  const removeBatch = (batchId: string) => {
+    setBatches((bs) => bs.filter((b) => b.id !== batchId));
+  };
+
+  const clearFinishedBatches = () => {
+    setBatches((bs) => bs.filter((b) => b.status === 'queued' || b.status === 'running'));
   };
 
   // Assigns client-side backgrounds + the gendered POV shot on the app slide and
@@ -221,6 +300,7 @@ export default function App() {
     packs: string[],
     gender: Gender,
     captionStyle: CaptionStyle,
+    presetKey?: string,
   ) => {
     const library = await getMergedLibrary();
     // `packs` are selection tokens: a bare pack name (whole pack) or a
@@ -230,7 +310,11 @@ export default function App() {
     // it lands on the app ("Upshift") slide so it never has to be swapped by hand.
     const povPack = gender === 'women' ? activeProject!.povPackWomen : activeProject!.povPackMen;
     const povPool = povPack ? library.filter((i) => i.pack === povPack) : [];
-    return assignAppSlidePov(assignBackgrounds(slideshows, pool), povPool).map((show) => ({
+    // A per-preset, per-gender uploaded screenshot (if any) overrides the random
+    // POV shot on the app slide — the exact image the user wants for this preset.
+    const appShot = presetKey ? getAppShotRef(presetKey, gender) : undefined;
+    const withPov = setAppSlideImage(assignAppSlidePov(assignBackgrounds(slideshows, pool), povPool), appShot);
+    return withPov.map((show) => ({
       ...show,
       // Stamp the chosen caption look onto every slide so the preview and the
       // baked PNG both render it.
@@ -492,10 +576,14 @@ export default function App() {
         {activeView === 'queue' && (
           <QueueView
             slideshows={queue}
-            generating={generating}
+            generating={false}
             canGenerate={hasOpenrouter}
             onGenerate={() => setGenerateOpen(true)}
             selectedIds={selectedIds}
+            batches={batches}
+            onSelectBatch={selectBatch}
+            onRemoveBatch={removeBatch}
+            onClearFinishedBatches={clearFinishedBatches}
             onApprove={(id) => setScheduling(queue.find((s) => s.id === id) || null)}
             onReject={reject}
             onBulkReject={bulkReject}
@@ -589,9 +677,9 @@ export default function App() {
 
       {generateOpen && (
         <GenerateModal
-          generating={generating}
           onClose={() => setGenerateOpen(false)}
-          onGenerate={generate}
+          onEnqueue={enqueueBatch}
+          batches={batches}
         />
       )}
     </div>
