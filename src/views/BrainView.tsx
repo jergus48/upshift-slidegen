@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { BrainState, LibraryPack } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { GENDERS, getQuitPresets, type Gender } from '../lib/quitPresets';
+import { PresetScreenshots } from '../components/PresetScreenshots';
 import { getMergedPacks } from '../lib/mergedLibrary';
 import { MusicStartsEditor } from '../components/MusicStartsEditor';
 import { DownloadFoldersEditor } from '../components/DownloadFoldersEditor';
@@ -29,6 +30,10 @@ export function BrainView({ brain, onChange, povPackMen, povPackWomen, onChangeP
   const [gender, setGender] = useState<Gender>('men');
   const [packs, setPacks] = useState<LibraryPack[]>([]);
   const presets = getQuitPresets(gender);
+  // Only the quit-habit presets get a per-gender app-slide screenshot.
+  const quitHabitKeys = getQuitPresets('men')
+    .filter((p) => p.family === 'Quit habits')
+    .map((p) => p.key);
 
   useEffect(() => {
     getMergedPacks().then(setPacks).catch(() => setPacks([]));
@@ -98,6 +103,14 @@ export function BrainView({ brain, onChange, povPackMen, povPackWomen, onChangeP
                 />
               </Field>
             </div>
+          </Section>
+
+          {/* Per-preset app-slide screenshots (quit-habit presets only) */}
+          <Section
+            title="App-slide screenshots"
+            description="For each quit-habit preset, upload the exact phone screenshot for the app (Upshift) slide, per gender. When set, it lands on that preset's app slide instead of a random POV shot. Saved in this browser."
+          >
+            <PresetScreenshots presetKeys={quitHabitKeys} />
           </Section>
 
           {/* Niche & app */}

@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { X, Plus, Sparkles, Loader2, CheckCircle2, Circle, AlertCircle, ImageDown } from 'lucide-react';
+import { X, Plus, Sparkles, Loader2, CheckCircle2, Circle, AlertCircle } from 'lucide-react';
 import { Button } from './Button';
 import { PackPicker } from './PackPicker';
 import { PresetPicker } from './PresetPicker';
-import { PresetScreenshots } from './PresetScreenshots';
 import { GENDERS, getQuitPresets, type Gender } from '../lib/quitPresets';
 import type { CaptionStyle } from '../lib/captionStyle';
 import type { GenBatch } from '../lib/localBatches';
@@ -61,19 +60,6 @@ export function GenerateModal({ onClose, onEnqueue, batches }: GenerateModalProp
             <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Presets</label>
             <PresetPicker gender={gender} selected={presetKeys} onChange={setPresetKeys} />
           </div>
-
-          {/* Per-preset app-slide screenshots (only when specific presets picked) */}
-          {presetKeys.length > 0 && (
-            <div>
-              <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block flex items-center gap-1.5">
-                <ImageDown size={12} /> App-slide screenshots
-              </label>
-              <PresetScreenshots presetKeys={presetKeys} />
-              <p className="text-[11px] text-ink-6 mt-1">
-                Optional. Upload the exact phone screenshot for the app (Upshift) slide, per gender. Overrides the random POV shot for that preset.
-              </p>
-            </div>
-          )}
 
           {/* How many random presets — only when nothing specific is picked */}
           {presetKeys.length === 0 && (
