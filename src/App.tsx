@@ -9,6 +9,7 @@ import { LoginGate } from './components/LoginGate';
 import { QueueView } from './views/QueueView';
 import { CreateView } from './views/CreateView';
 import { PhotoPackView } from './views/PhotoPackView';
+import { CharactersView } from './views/CharactersView';
 import { LibraryView } from './views/LibraryView';
 import { RedditView } from './views/RedditView';
 import { ReplyView } from './views/ReplyView';
@@ -33,6 +34,8 @@ import { assignBackgrounds, assignAppSlidePov, setAppSlideImage } from './lib/ba
 import { libraryRef } from './lib/imageSrc';
 import { getQuitPresets, type Gender } from './lib/quitPresets';
 import { buildFixedShows } from './lib/fixedDeck';
+import { buildTransformationShows } from './lib/transformationDeck';
+import { getCharacters } from './lib/characters';
 import * as ws from './lib/localWorkspace';
 import * as api from './lib/api';
 import type {
@@ -369,6 +372,52 @@ export default function App() {
     }
   };
 
+  // Characters: before/after transformation decks. Every slide's photo comes
+  // from a package the user uploaded (character before/after + the two shared
+  // screenshots), so there's no model call and no background step — the deck is
+  // built client-side and dropped straight onto the queue.
+  const generateCharacterDecks = async (opts: {
+    characterIds: string[];
+    count: number;
+    streakKey?: string;
+    hookTemplate?: string;
+    captionStyle: CaptionStyle;
+  }) => {
+    setError(null);
+    setGenerating(true);
+    try {
+      const all = getCharacters();
+      const shows: Slideshow[] = [];
+      const failures: string[] = [];
+      for (const id of opts.characterIds) {
+        const character = all.find((c) => c.id === id);
+        if (!character) continue;
+        for (const result of buildTransformationShows(character, opts.count, {
+          streakKey: opts.streakKey,
+          hookTemplate: opts.hookTemplate,
+        })) {
+          if (result.show) shows.push(result.show);
+          else if (result.error && !failures.includes(result.error)) failures.push(result.error);
+        }
+      }
+      if (!shows.length) throw new Error(failures.join(' ') || 'Nothing to build.');
+      const withStyle = shows.map((show) => ({
+        ...show,
+        slides: show.slides.map((sl) => ({ ...sl, captionStyle: opts.captionStyle })),
+      }));
+      setQueue((q) => [...withStyle, ...q]);
+      // Auto-select the whole new batch so it's ready to download right away.
+      setSelectedIds((prev) => [...withStyle.map((s) => s.id), ...prev]);
+      setActiveView('queue');
+      if (failures.length) setError(failures.join(' '));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const reject = (id: string) => {
     setQueue((q) => q.filter((s) => s.id !== id));
   };
@@ -610,6 +659,9 @@ export default function App() {
             canGenerate={hasOpenrouter}
             onGenerate={generatePhotoPacks}
           />
+        )}
+        {activeView === 'characters' && (
+          <CharactersView generating={generating} onGenerate={generateCharacterDecks} />
         )}
         {activeView === 'library' && <LibraryView hasApify={hasApify} pinterestActor={config.pinterestActor} />}
         {activeView === 'reddit' && <RedditView canGenerate={hasOpenrouter} model={config.model} />}

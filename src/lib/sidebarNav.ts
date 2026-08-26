@@ -15,6 +15,7 @@ import {
   Wand2,
   Target,
   LayoutTemplate,
+  Users,
   MonitorPlay,
   TrendingUp,
 } from 'lucide-react';
@@ -38,6 +39,7 @@ export const NAV_GROUPS: Record<string, { label: string; icon: typeof LayoutGrid
 export const NAV: NavItem[] = [
   { key: 'queue', label: 'Queue', icon: LayoutGrid, badge: 'queue' },
   { key: 'photopack', label: 'Photo Packs', icon: LayoutTemplate },
+  { key: 'characters', label: 'Characters', icon: Users },
   { key: 'library', label: 'Library', icon: Images },
   { key: 'reddit', label: 'Reddit', icon: MessagesSquare, group: 'reddit' },
   { key: 'reply', label: 'Reply', icon: MessageSquare, group: 'reddit' },
