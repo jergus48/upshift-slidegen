@@ -11,7 +11,15 @@
 // The photos themselves stay in the normal library (bundled packs from the
 // server + this browser's scraped/uploaded ones), so a package is curated in the
 // Library view like every other pack, and a deck draws random images out of it.
+import { setPackHidden } from './hiddenPacks';
+
 const KEY = 'slidesmith:characters';
+
+// The blocked-🌽 and streak screenshots ship with the build as ordinary bundled
+// library packs (public/library/manifest.json), so the tool works out of the box
+// for every user/browser. These names are the defaults every package falls back
+// to; picking anything else in the UI overrides them for good.
+const DEFAULT_BLOCKED_PACK = 'Blocked 🌽';
 
 // ── Streaks ─────────────────────────────────────────────────────────────────
 // The durations a streak package can be filed under. `label` is what goes in the
@@ -21,17 +29,35 @@ export interface Streak {
   key: string;
   label: string;
   article: string;
+  // Bundled pack this duration falls back to when the user hasn't picked one.
+  defaultPack: string;
 }
 
+// The durations we actually ship screenshots for. Adding one here only makes it
+// selectable — it stays unusable until its package holds photos.
 export const STREAKS: Streak[] = [
-  { key: '7d', label: '7 days', article: '7 days' },
-  { key: '14d', label: '14 days', article: '14 days' },
-  { key: '30d', label: '30 days', article: '30 days' },
-  { key: '60d', label: '60 days', article: '60 days' },
-  { key: '90d', label: '90 days', article: '90 days' },
-  { key: '6mo', label: '6 months', article: '6 months' },
-  { key: '1y', label: '1 year', article: 'a year' },
+  { key: '30d', label: '30 days', article: '30 days', defaultPack: 'Upshift Streak 30' },
+  { key: '60d', label: '60 days', article: '60 days', defaultPack: 'Upshift Streak 60' },
+  { key: '100d', label: '100 days', article: '100 days', defaultPack: 'Upshift Streak 100' },
+  { key: '365d', label: '1 year', article: 'a year', defaultPack: 'Upshift Streak 365' },
 ];
+
+// Keep the bundled screenshot packs out of the background pickers — they're
+// proof slides, not backgrounds, and a streak screenshot behind a caption in
+// some other tool would be nonsense. Runs once per browser; a later un-hide in
+// the Library view is the user's call and is not undone.
+const HIDDEN_SEED_KEY = 'slidesmith:characters:packs-hidden';
+
+export function hideBundledPacksOnce(): void {
+  try {
+    if (localStorage.getItem(HIDDEN_SEED_KEY)) return;
+    setPackHidden(DEFAULT_BLOCKED_PACK, true);
+    for (const s of STREAKS) setPackHidden(s.defaultPack, true);
+    localStorage.setItem(HIDDEN_SEED_KEY, '1');
+  } catch {
+    /* storage unavailable — the packs just stay visible in the pickers */
+  }
+}
 
 export const streakByKey = (key: string): Streak | undefined => STREAKS.find((s) => s.key === key);
 
@@ -96,8 +122,10 @@ export function getCharacters(): Character[] {
   return read().characters;
 }
 
+// An explicit pick wins; otherwise the bundled pack, so the tool works before
+// anyone has chosen anything.
 export function getBlockedToken(): string {
-  return read().blockedToken;
+  return read().blockedToken || DEFAULT_BLOCKED_PACK;
 }
 
 export function setBlockedToken(token: string): void {
@@ -109,7 +137,7 @@ export function getStreakTokens(): Record<string, string> {
 }
 
 export function getStreakToken(streakKey: string): string {
-  return read().streakTokens[streakKey] || '';
+  return read().streakTokens[streakKey] || streakByKey(streakKey)?.defaultPack || '';
 }
 
 export function setStreakToken(streakKey: string, token: string): void {
@@ -124,7 +152,7 @@ export function setStreakToken(streakKey: string, token: string): void {
 // for, since every deck carries a streak slide.
 export function getUsableStreaks(): Streak[] {
   const tokens = read().streakTokens;
-  return STREAKS.filter((s) => !!tokens[s.key]);
+  return STREAKS.filter((s) => !!(tokens[s.key] || s.defaultPack));
 }
 
 // ── Characters ──────────────────────────────────────────────────────────────

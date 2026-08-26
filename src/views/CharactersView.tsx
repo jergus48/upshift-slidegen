@@ -6,7 +6,7 @@ import { IconButton } from '../components/IconButton';
 import { getMergedLibrary, getMergedPacks } from '../lib/mergedLibrary';
 import { makeToken } from '../lib/subfolders';
 import { HOOKS, fillHook, hookUsesStreak } from '../lib/transformationHooks';
-import { missingPieces, poolFor } from '../lib/transformationDeck';
+import { missingPieces, poolFor, usableStreaksIn } from '../lib/transformationDeck';
 import {
   STREAKS,
   getCharacters,
@@ -14,7 +14,7 @@ import {
   setBlockedToken,
   getStreakToken,
   setStreakToken,
-  getUsableStreaks,
+  hideBundledPacksOnce,
   addCharacter,
   renameCharacter,
   removeCharacter,
@@ -70,7 +70,7 @@ function PackageSelect({
           onChange={(e) => onChange(e.target.value)}
           className="flex-1 h-9 bg-card border border-line rounded-lg px-2.5 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
         >
-          <option value="">— pick a library pack —</option>
+          <option value="">— none —</option>
           {packs.map((p) => {
             const subs = p.subfolders || [];
             if (!subs.length) {
@@ -141,7 +141,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
   // "Reload library" pick up anything added in the Library view meanwhile.
   const loadLibrary = useCallback(
     () =>
-      Promise.all([getMergedLibrary(), getMergedPacks()])
+      Promise.all([getMergedLibrary(true), getMergedPacks(true)])
         .then(([imgs, ps]) => {
           setLibrary(imgs);
           setPacks(ps);
@@ -152,6 +152,9 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
   );
 
   useEffect(() => {
+    // The bundled screenshot packs are proof slides, not backgrounds — keep them
+    // out of the other tools' pickers the first time this view is opened.
+    hideBundledPacksOnce();
     loadLibrary();
   }, [loadLibrary]);
 
@@ -171,7 +174,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
   }, [rerender]);
 
   const blockedToken = getBlockedToken();
-  const usableStreaks = getUsableStreaks();
+  const usableStreaks = usableStreaksIn(library);
   const ready = characters.filter((c) => missingPieces(c, library).length === 0);
 
   const create = () => {
@@ -255,7 +258,8 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
             <div>
               <h2 className="text-[13px] font-semibold text-ink">Shared packages</h2>
               <p className="text-[11px] text-ink-6">
-                Picked once, reused by every character. Both are required — each deck carries one photo from each.
+                Picked once, reused by every character. Both ship with the app as bundled library packs, so this
+                works out of the box — pick a different pack to override.
               </p>
             </div>
 
@@ -274,8 +278,8 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
               </div>
               <p className="text-[11px] text-ink-6 mb-3">
                 The deck picks a random duration, then draws a screenshot from that duration's package — so the hook,
-                the “clean” lines and the screenshot always agree. Durations you leave empty are never picked. A single
-                streaks pack split into subfolders works well here.
+                the “clean” lines and the screenshot always agree. Each duration defaults to its bundled pack; clearing
+                one takes that duration out of the roll.
               </p>
               <div className="space-y-3">
                 {STREAKS.map((s) => (

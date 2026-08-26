@@ -387,9 +387,10 @@ export default function App() {
     setGenerating(true);
     try {
       const all = getCharacters();
-      // The packages are ordinary library packs, so the photos come from the same
-      // merged library everything else draws backgrounds from.
-      const library = await getMergedLibrary();
+      // The packages are ordinary library packs. Hidden ones are included on
+      // purpose: the bundled screenshot packs are hidden from the background
+      // pickers precisely because they're only ever used here.
+      const library = await getMergedLibrary(true);
       const shows: Slideshow[] = [];
       const failures: string[] = [];
       for (const id of opts.characterIds) {

@@ -61,6 +61,14 @@ export interface BuildResult {
   error?: string;
 }
 
+// The durations that can actually be rolled: a package is assigned AND it holds
+// photos. Without a library only the assignment is known.
+export function usableStreaksIn(library?: LibraryImage[]): Streak[] {
+  const assigned = getUsableStreaks();
+  if (!library) return assigned;
+  return assigned.filter((s) => poolFor(library, getStreakToken(s.key)).length > 0);
+}
+
 // Everything a deck needs before it can be built. Surfaced by the view so the
 // user is told exactly which package is missing rather than getting a broken deck.
 // `library` is optional: without it only the picks are checked, with it the
@@ -71,7 +79,7 @@ export function missingPieces(character: Character, library?: LibraryImage[]): s
   if (empty(character.beforeToken)) missing.push('a before package');
   if (empty(character.afterToken)) missing.push('an after package');
   if (empty(getBlockedToken())) missing.push('a blocked 🌽 package');
-  if (getUsableStreaks().length === 0) missing.push('an Upshift streak package');
+  if (usableStreaksIn(library).length === 0) missing.push('an Upshift streak package');
   return missing;
 }
 
@@ -85,7 +93,7 @@ export function buildTransformationShow(
 
   // The streak drives BOTH the hook's {X}/{A} and the "<streak> clean" lines and
   // which screenshot package is used, so one roll keeps the deck consistent.
-  const usable = getUsableStreaks();
+  const usable = usableStreaksIn(library);
   const streak: Streak = (opts.streakKey ? streakByKey(opts.streakKey) : undefined) ?? pick(usable)!;
 
   const beforePool = poolFor(library, character.beforeToken);
