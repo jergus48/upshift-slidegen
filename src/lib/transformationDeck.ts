@@ -4,9 +4,12 @@
 // The shape is fixed, the counts are not:
 //   2–3 × BEFORE   — all carrying the same hook line
 //   1   × AFTER    — "<streak> clean"
-//   1   × BLOCKED  — the 🌽-blocked screenshot, no caption
-//   1   × STREAK   — the Upshift streak screenshot, no caption
+//   1   × BLOCKED  — the 🌽-blocked screenshot
+//   1   × STREAK   — the Upshift streak screenshot
 //   1–2 × AFTER    — "<streak> clean"
+// Every slide from the first after onwards carries the same "<streak> clean"
+// line, the two proof slides included, so the claim stays on screen while the
+// viewer swipes through the evidence.
 // Both counts are rolled per deck, and every slot draws a fresh random image out
 // of its package, so a batch never comes out as the same deck twice.
 //
@@ -127,9 +130,10 @@ export function buildTransformationShow(
     // stays on screen while they swipe through the addict shots.
     ...beforeShots.map((img) => slide(hook, img)),
     slide(cleanLine, afterShots[0]),
-    // The two proof slides carry no caption; the screenshot IS the message.
-    slide('', blockedShot),
-    slide('', streakShot),
+    // The proof slides keep the same line — the screenshot backs up the claim
+    // rather than replacing it.
+    slide(cleanLine, blockedShot),
+    slide(cleanLine, streakShot),
     ...afterShots.slice(1).map((img) => slide(cleanLine, img)),
   ];
 

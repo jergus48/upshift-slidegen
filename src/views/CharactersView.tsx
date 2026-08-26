@@ -32,8 +32,8 @@ const COUNT_OPTIONS = [1, 3, 5, 10];
 const SHAPE = [
   { label: 'Before', hint: '2–3 slides, the hook on each' },
   { label: 'After', hint: '"<streak> clean"' },
-  { label: 'Blocked 🌽', hint: 'shared package, no caption' },
-  { label: 'Streak', hint: 'shared package, no caption' },
+  { label: 'Blocked 🌽', hint: 'shared package, same line' },
+  { label: 'Streak', hint: 'shared package, same line' },
   { label: 'After', hint: '1–2 more, same line' },
 ];
 
@@ -466,7 +466,9 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
                   </option>
                 ))}
               </select>
-              <p className="text-[11px] text-ink-6 mt-1">The same line goes on every before slide.</p>
+              <p className="text-[11px] text-ink-6 mt-1">
+                The same line goes on every before slide. Every slide after them carries “{`${previewStreak.label} clean`}”.
+              </p>
             </div>
 
             <div>
