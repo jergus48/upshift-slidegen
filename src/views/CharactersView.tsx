@@ -1,32 +1,29 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Trash2, Sparkles, Check, UserRound, ImagePlus, Shuffle } from 'lucide-react';
+import { Plus, Trash2, Sparkles, Check, UserRound, Images, Shuffle, RefreshCw } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
-import { resolveImageSrc } from '../lib/imageSrc';
+import { getMergedLibrary, getMergedPacks } from '../lib/mergedLibrary';
+import { makeToken } from '../lib/subfolders';
 import { HOOKS, fillHook, hookUsesStreak } from '../lib/transformationHooks';
-import { missingPieces } from '../lib/transformationDeck';
+import { missingPieces, poolFor } from '../lib/transformationDeck';
 import {
   STREAKS,
   getCharacters,
-  getBlockedShots,
-  getStreakShots,
+  getBlockedToken,
+  setBlockedToken,
+  getStreakToken,
+  setStreakToken,
   getUsableStreaks,
   addCharacter,
   renameCharacter,
   removeCharacter,
-  addCharacterPhotos,
-  removeCharacterPhoto,
-  addBlockedShots,
-  removeBlockedShot,
-  addStreakShots,
-  removeStreakShot,
-  isBundledShot,
+  setCharacterToken,
   subscribeCharacters,
-  loadStreakDefaults,
   type Character,
 } from '../lib/characters';
 import type { CaptionStyle } from '../lib/captionStyle';
+import type { LibraryImage, LibraryPack } from '../types';
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
 
@@ -35,95 +32,79 @@ const COUNT_OPTIONS = [1, 3, 5, 10];
 const SHAPE = [
   { label: 'Before', hint: '2–3 slides, the hook on each' },
   { label: 'After', hint: '"<streak> clean"' },
-  { label: 'Blocked 🌽', hint: 'shared screenshot, no caption' },
-  { label: 'Streak', hint: 'shared screenshot, no caption' },
+  { label: 'Blocked 🌽', hint: 'shared package, no caption' },
+  { label: 'Streak', hint: 'shared package, no caption' },
   { label: 'After', hint: '1–2 more, same line' },
 ];
 
-// Read picked files as data URLs — the shape addLocalImages wants.
-function readFiles(files: FileList | null): Promise<string[]> {
-  if (!files?.length) return Promise.resolve([]);
-  return Promise.all(
-    [...files].map(
-      (file) =>
-        new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result));
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(file);
-        })
-    )
-  );
-}
-
-// One thumbnail. Image refs are either a `local:` IndexedDB id (needs an async
-// object URL) or a plain `/streak-shots/…` path, so resolve before rendering.
-function Shot({ refId, onRemove }: { refId: string; onRemove?: () => void }) {
-  const [src, setSrc] = useState<string>();
-  useEffect(() => {
-    let alive = true;
-    resolveImageSrc(refId).then((s) => alive && setSrc(s));
-    return () => {
-      alive = false;
-    };
-  }, [refId]);
-  return (
-    <div className="group relative aspect-[9/16] rounded-lg overflow-hidden bg-raised">
-      {src && <img src={src} alt="" loading="lazy" className="w-full h-full object-cover" />}
-      {onRemove && (
-        <button
-          onClick={onRemove}
-          title="Remove"
-          className="absolute top-1 right-1 w-6 h-6 rounded-md flex items-center justify-center bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <Trash2 size={12} />
-        </button>
-      )}
-    </div>
-  );
-}
-
-// A labelled photo package: a grid of thumbnails plus an upload tile.
-function PhotoPackage({
+// Picks one library pack (or one of its subfolders) as a package, and previews a
+// few of the photos a deck would draw from it. Everything the app calls a
+// "package" here is just a normal library pack — curate it in the Library view.
+function PackageSelect({
   label,
   hint,
-  shots,
-  onAdd,
-  onRemove,
+  token,
+  packs,
+  library,
+  onChange,
 }: {
   label: string;
   hint: string;
-  shots: string[];
-  onAdd: (dataUrls: string[]) => void;
-  onRemove: (ref: string) => void;
+  token: string;
+  packs: LibraryPack[];
+  library: LibraryImage[];
+  onChange: (token: string) => void;
 }) {
+  const pool = poolFor(library, token);
   return (
     <div>
       <div className="flex items-baseline gap-2 mb-1.5">
         <span className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold">{label}</span>
-        <span className="text-[11px] text-ink-6">
-          {shots.length ? `${shots.length} photo${shots.length === 1 ? '' : 's'}` : hint}
+        <span className={`text-[11px] ${token && !pool.length ? 'text-amber-600' : 'text-ink-6'}`}>
+          {token ? `${pool.length} photo${pool.length === 1 ? '' : 's'} to draw from` : hint}
         </span>
       </div>
-      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-        {shots.map((ref) => (
-          <Shot key={ref} refId={ref} onRemove={isBundledShot(ref) ? undefined : () => onRemove(ref)} />
-        ))}
-        <label className="aspect-[9/16] rounded-lg border border-dashed border-line-2 flex flex-col items-center justify-center gap-1 text-ink-6 hover:text-ink-4 hover:border-ink-7 cursor-pointer">
-          <ImagePlus size={16} />
-          <span className="text-[10px]">Add</span>
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={async (e) => {
-              const urls = await readFiles(e.target.files);
-              e.target.value = '';
-              if (urls.length) onAdd(urls);
-            }}
-          />
-        </label>
+      <div className="flex items-center gap-2">
+        <select
+          value={token}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1 h-9 bg-card border border-line rounded-lg px-2.5 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
+        >
+          <option value="">— pick a library pack —</option>
+          {packs.map((p) => {
+            const subs = p.subfolders || [];
+            if (!subs.length) {
+              return (
+                <option key={p.name} value={makeToken(p.name)}>
+                  {p.name} ({p.count})
+                </option>
+              );
+            }
+            // A pack with subfolders offers the whole pack AND each subfolder,
+            // so a single "Upshift streaks" pack can be split per duration.
+            return (
+              <optgroup key={p.name} label={p.name}>
+                <option value={makeToken(p.name)}>Whole pack ({p.count})</option>
+                {subs.map((s) => (
+                  <option key={s.name} value={makeToken(p.name, s.name)}>
+                    {s.name} ({s.count})
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
+        </select>
+        <div className="flex gap-1 shrink-0">
+          {pool.slice(0, 4).map((img) => (
+            <img
+              key={img.id}
+              src={img.url}
+              alt=""
+              loading="lazy"
+              className="w-7 h-11 object-cover rounded-md bg-raised"
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -144,6 +125,9 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
   const [, bump] = useState(0);
   const rerender = useCallback(() => bump((n) => n + 1), []);
   const [characters, setCharacters] = useState<Character[]>(() => getCharacters());
+  const [library, setLibrary] = useState<LibraryImage[]>([]);
+  const [packs, setPacks] = useState<LibraryPack[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string[]>([]);
   const [newName, setNewName] = useState('');
   const [count, setCount] = useState(1);
@@ -153,21 +137,42 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  // Re-read on every store change, so uploads/deletes anywhere on the page
-  // refresh every package at once.
+  // The packages are ordinary library packs, so pull the library once and let
+  // "Reload library" pick up anything added in the Library view meanwhile.
+  const loadLibrary = useCallback(
+    () =>
+      Promise.all([getMergedLibrary(), getMergedPacks()])
+        .then(([imgs, ps]) => {
+          setLibrary(imgs);
+          setPacks(ps);
+        })
+        .catch(() => setError('Could not load the library.'))
+        .finally(() => setLoading(false)),
+    []
+  );
+
   useEffect(() => {
-    const sync = () => {
+    loadLibrary();
+  }, [loadLibrary]);
+
+  const reload = () => {
+    setLoading(true);
+    loadLibrary();
+  };
+
+  // Re-read on every store change, so a pick anywhere on the page refreshes
+  // every package summary at once.
+  useEffect(() => {
+    const unsub = subscribeCharacters(() => {
       setCharacters(getCharacters());
       rerender();
-    };
-    const unsub = subscribeCharacters(sync);
-    loadStreakDefaults();
+    });
     return unsub;
   }, [rerender]);
 
-  const blocked = getBlockedShots();
+  const blockedToken = getBlockedToken();
   const usableStreaks = getUsableStreaks();
-  const ready = characters.filter((c) => missingPieces(c).length === 0);
+  const ready = characters.filter((c) => missingPieces(c, library).length === 0);
 
   const create = () => {
     const c = addCharacter(newName);
@@ -199,8 +204,8 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
   };
 
   // What the hook/caption previews are rendered with: the locked streak, else
-  // the first one that has a screenshot, else "1 year" so the hook list is
-  // readable before anything has been uploaded.
+  // the first one with a package, else "1 year" so the hook list is readable
+  // before anything has been picked.
   const previewStreak =
     (streakKey ? STREAKS.find((s) => s.key === streakKey) : undefined) ??
     usableStreaks[0] ??
@@ -210,7 +215,18 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
     <>
       <ViewHeader
         title="Characters"
-        subtitle="Before/after transformation decks. Give a character their two photo packages, upload the two shared screenshots once, and every deck is assembled from them — no model call."
+        subtitle="Before/after transformation decks. Point each character at a before and an after library pack, pick the two shared packs once, and every deck draws its own random photos out of them."
+        right={
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<RefreshCw size={12} className={loading ? 'animate-spin' : ''} />}
+            onClick={reload}
+            disabled={loading}
+          >
+            Reload library
+          </Button>
+        }
       />
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-8">
@@ -229,7 +245,8 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
               ))}
             </div>
             <p className="text-[11px] text-ink-6 mt-2">
-              6–8 slides. The before/after counts are re-rolled per deck, so a batch never comes out identical.
+              6–8 slides. The before/after counts and every photo are re-rolled per deck, so a batch never comes out
+              identical.
             </p>
           </div>
 
@@ -238,35 +255,38 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
             <div>
               <h2 className="text-[13px] font-semibold text-ink">Shared packages</h2>
               <p className="text-[11px] text-ink-6">
-                Uploaded once, reused by every character. Both are required — each deck carries one of each.
+                Picked once, reused by every character. Both are required — each deck carries one photo from each.
               </p>
             </div>
 
-            <PhotoPackage
+            <PackageSelect
               label="Blocked 🌽"
-              hint="the blocked-site screenshot"
-              shots={blocked}
-              onAdd={(urls) => addBlockedShots(urls)}
-              onRemove={(ref) => removeBlockedShot(ref)}
+              hint="the blocked-site screenshots"
+              token={blockedToken}
+              packs={packs}
+              library={library}
+              onChange={setBlockedToken}
             />
 
             <div>
               <div className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5">
-                Upshift streak — filed by duration
+                Upshift streak — one package per duration
               </div>
               <p className="text-[11px] text-ink-6 mb-3">
-                File each screenshot under the streak it shows. The deck picks a random duration, then looks up a
-                matching screenshot — so the hook, the “clean” lines and the screenshot always agree.
+                The deck picks a random duration, then draws a screenshot from that duration's package — so the hook,
+                the “clean” lines and the screenshot always agree. Durations you leave empty are never picked. A single
+                streaks pack split into subfolders works well here.
               </p>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {STREAKS.map((s) => (
-                  <PhotoPackage
+                  <PackageSelect
                     key={s.key}
                     label={s.label}
-                    hint="no screenshot yet"
-                    shots={getStreakShots(s.key)}
-                    onAdd={(urls) => addStreakShots(s.key, urls)}
-                    onRemove={(ref) => removeStreakShot(s.key, ref)}
+                    hint="not used"
+                    token={getStreakToken(s.key)}
+                    packs={packs}
+                    library={library}
+                    onChange={(t) => setStreakToken(s.key, t)}
                   />
                 ))}
               </div>
@@ -298,13 +318,23 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
               <div className="bg-card border border-line rounded-xl p-8 text-center">
                 <UserRound size={20} className="mx-auto text-ink-6" />
                 <p className="text-[12px] text-ink-5 mt-2">
-                  Add a character, then give them a before and an after package.
+                  Add a character, then point them at a before and an after library pack.
+                </p>
+              </div>
+            )}
+
+            {packs.length === 0 && !loading && (
+              <div className="bg-card border border-line rounded-xl p-4 flex items-start gap-2">
+                <Images size={14} className="text-ink-5 mt-0.5" />
+                <p className="text-[12px] text-ink-5">
+                  The library is empty. Add packs in the Library view first — that's where the photos for these
+                  packages live.
                 </p>
               </div>
             )}
 
             {characters.map((c) => {
-              const missing = missingPieces(c);
+              const missing = missingPieces(c, library);
               const isSelected = selected.includes(c.id);
               return (
                 <div
@@ -338,19 +368,21 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
                     />
                   </div>
 
-                  <PhotoPackage
+                  <PackageSelect
                     label="Before"
                     hint="the addict shots"
-                    shots={c.before}
-                    onAdd={(urls) => addCharacterPhotos(c.id, 'before', urls)}
-                    onRemove={(ref) => removeCharacterPhoto(c.id, 'before', ref)}
+                    token={c.beforeToken}
+                    packs={packs}
+                    library={library}
+                    onChange={(t) => setCharacterToken(c.id, 'before', t)}
                   />
-                  <PhotoPackage
+                  <PackageSelect
                     label="After"
                     hint="the glow-up shots"
-                    shots={c.after}
-                    onAdd={(urls) => addCharacterPhotos(c.id, 'after', urls)}
-                    onRemove={(ref) => removeCharacterPhoto(c.id, 'after', ref)}
+                    token={c.afterToken}
+                    packs={packs}
+                    library={library}
+                    onChange={(t) => setCharacterToken(c.id, 'after', t)}
                   />
                 </div>
               );
@@ -407,8 +439,8 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
               </select>
               <p className="text-[11px] text-ink-6 mt-1">
                 {usableStreaks.length
-                  ? 'Only durations with a screenshot can be picked. The chosen one fills the hook and the “clean” lines.'
-                  : 'Upload at least one streak screenshot above — every deck needs one.'}
+                  ? 'Only durations with a package can be picked. The chosen one fills the hook and the “clean” lines.'
+                  : 'Give at least one duration a package above — every deck needs a streak slide.'}
               </p>
             </div>
 
@@ -425,14 +457,12 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
                 <option value="">Random per deck</option>
                 {HOOKS.map((h) => (
                   <option key={h} value={h}>
-                    {previewStreak ? fillHook(h, previewStreak) : h}
+                    {fillHook(h, previewStreak)}
                     {hookUsesStreak(h) ? ' ·  uses streak' : ''}
                   </option>
                 ))}
               </select>
-              <p className="text-[11px] text-ink-6 mt-1">
-                The same line goes on every before slide.
-              </p>
+              <p className="text-[11px] text-ink-6 mt-1">The same line goes on every before slide.</p>
             </div>
 
             <div>
@@ -459,7 +489,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
                         className="text-[17px] leading-none"
                         style={{ fontFamily: o.family, fontWeight: o.weight, color: '#fff', WebkitTextStroke: o.stroke, paintOrder: 'stroke fill' }}
                       >
-                        {previewStreak ? `${previewStreak.label} clean` : '1 year clean'}
+                        {`${previewStreak.label} clean`}
                       </span>
                     </div>
                     <div className="px-3 py-1.5 bg-card">
@@ -474,7 +504,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
             {selected.length > runnable.length && (
               <p className="text-[12px] text-amber-600">
                 {selected.length - runnable.length} selected character
-                {selected.length - runnable.length === 1 ? ' is' : 's are'} still missing photos and will be skipped.
+                {selected.length - runnable.length === 1 ? ' is' : 's are'} still missing a package and will be skipped.
               </p>
             )}
             {error && <p className="text-[12px] text-red-600">{error}</p>}
@@ -494,7 +524,9 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
                 onClick={submit}
                 disabled={generating || runnable.length === 0}
               >
-                {generating ? 'Building…' : `Generate ${runnable.length * count} deck${runnable.length * count === 1 ? '' : 's'}`}
+                {generating
+                  ? 'Building…'
+                  : `Generate ${runnable.length * count} deck${runnable.length * count === 1 ? '' : 's'}`}
               </Button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-// Builds the before/after transformation deck from a character's two photo
+// Builds the before/after transformation deck from a character's two library
 // packages plus the two shared ones (blocked 🌽 / Upshift streak).
 //
 // The shape is fixed, the counts are not:
@@ -7,23 +7,19 @@
 //   1   × BLOCKED  — the 🌽-blocked screenshot, no caption
 //   1   × STREAK   — the Upshift streak screenshot, no caption
 //   1–2 × AFTER    — "<streak> clean"
-// Both counts are rolled per deck, so a batch never comes out identical.
+// Both counts are rolled per deck, and every slot draws a fresh random image out
+// of its package, so a batch never comes out as the same deck twice.
 //
 // No model call is involved — every line is picked from lib/transformationHooks.ts,
 // so this is a pure client-side build, like lib/fixedDeck.ts.
-import type { Slideshow, Slide } from '../types';
+import type { Slideshow, Slide, LibraryImage } from '../types';
 import { HOOKS, fillHook } from './transformationHooks';
-import {
-  getBlockedShots,
-  getStreakShots,
-  getUsableStreaks,
-  streakByKey,
-  type Character,
-  type Streak,
-} from './characters';
+import { tokenMatches } from './subfolders';
+import { libraryRef } from './imageSrc';
+import { getBlockedToken, getStreakToken, getUsableStreaks, streakByKey, type Character, type Streak } from './characters';
 
-// Same gradient palette the rest of the app uses, so a slide whose pool ran dry
-// still renders on a real background instead of black.
+// Same gradient palette the rest of the app uses, so a caption still sits on a
+// real background if a package turns out to be empty.
 const PALETTE: [string, string][] = [
   ['#0f172a', '#1e293b'],
   ['#1a1a2e', '#16213e'],
@@ -37,8 +33,9 @@ function pick<T>(arr: T[]): T | undefined {
   return arr.length ? arr[Math.floor(Math.random() * arr.length)] : undefined;
 }
 
-// `n` distinct random items, preferring not to repeat. Falls back to repeats
-// only when the pool is smaller than `n` (2 before photos still make a deck).
+// `n` random images from a pool, preferring not to repeat within one deck.
+// Falls back to repeats only when the pool is smaller than `n` — two photos in
+// a package still make a deck.
 function pickDistinct<T>(arr: T[], n: number): T[] {
   if (!arr.length) return [];
   const shuffled = [...arr].sort(() => Math.random() - 0.5);
@@ -46,6 +43,11 @@ function pickDistinct<T>(arr: T[], n: number): T[] {
 }
 
 const randInt = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
+
+// Every image in the library that a selection token covers.
+export function poolFor(library: LibraryImage[], token: string): LibraryImage[] {
+  return token ? library.filter((img) => tokenMatches(token, img)) : [];
+}
 
 export interface BuildOptions {
   // Lock the deck to one streak. Omitted/empty = a random usable streak per deck.
@@ -60,45 +62,54 @@ export interface BuildResult {
 }
 
 // Everything a deck needs before it can be built. Surfaced by the view so the
-// user is told exactly which package is empty rather than getting a broken deck.
-export function missingPieces(character: Character): string[] {
+// user is told exactly which package is missing rather than getting a broken deck.
+// `library` is optional: without it only the picks are checked, with it the
+// packages are also checked for actually holding photos.
+export function missingPieces(character: Character, library?: LibraryImage[]): string[] {
   const missing: string[] = [];
-  if (character.before.length < 1) missing.push('before photos');
-  if (character.after.length < 1) missing.push('after photos');
-  if (getBlockedShots().length < 1) missing.push('a blocked 🌽 screenshot');
-  if (getUsableStreaks().length < 1) missing.push('an Upshift streak screenshot');
+  const empty = (token: string) => !token || (library ? poolFor(library, token).length === 0 : false);
+  if (empty(character.beforeToken)) missing.push('a before package');
+  if (empty(character.afterToken)) missing.push('an after package');
+  if (empty(getBlockedToken())) missing.push('a blocked 🌽 package');
+  if (getUsableStreaks().length === 0) missing.push('an Upshift streak package');
   return missing;
 }
 
-export function buildTransformationShow(character: Character, opts: BuildOptions = {}): BuildResult {
-  const missing = missingPieces(character);
+export function buildTransformationShow(
+  character: Character,
+  library: LibraryImage[],
+  opts: BuildOptions = {}
+): BuildResult {
+  const missing = missingPieces(character, library);
   if (missing.length) return { error: `${character.name} is missing ${missing.join(', ')}.` };
 
-  // The streak drives BOTH the hook's {X}/{A} and the "<streak> clean" lines, so
-  // one roll keeps the whole deck internally consistent.
+  // The streak drives BOTH the hook's {X}/{A} and the "<streak> clean" lines and
+  // which screenshot package is used, so one roll keeps the deck consistent.
   const usable = getUsableStreaks();
-  const streak: Streak =
-    (opts.streakKey ? streakByKey(opts.streakKey) : undefined) ?? pick(usable)!;
-  const streakShot = pick(getStreakShots(streak.key));
-  const blockedShot = pick(getBlockedShots());
-  if (!streakShot || !blockedShot) return { error: 'The shared screenshot packages are empty.' };
+  const streak: Streak = (opts.streakKey ? streakByKey(opts.streakKey) : undefined) ?? pick(usable)!;
+
+  const beforePool = poolFor(library, character.beforeToken);
+  const afterPool = poolFor(library, character.afterToken);
+  const blockedShot = pick(poolFor(library, getBlockedToken()));
+  const streakShot = pick(poolFor(library, getStreakToken(streak.key)));
+  if (!blockedShot || !streakShot)
+    return { error: `The shared packages have no photos for ${streak.label}.` };
 
   const hook = fillHook(opts.hookTemplate ?? pick(HOOKS)!, streak);
   const cleanLine = `${streak.label} clean`;
 
-  const beforeCount = randInt(2, 3);
-  const tailAfterCount = randInt(1, 2);
-  const beforeShots = pickDistinct(character.before, beforeCount);
-  const afterShots = pickDistinct(character.after, 1 + tailAfterCount);
+  const beforeShots = pickDistinct(beforePool, randInt(2, 3));
+  const afterShots = pickDistinct(afterPool, 1 + randInt(1, 2));
 
   const stamp = Date.now();
   const rand = Math.random().toString(36).slice(2, 7);
   const [from, to] = PALETTE[Math.floor(Math.random() * PALETTE.length)];
   let n = 0;
-  const slide = (text: string, imageUrl: string): Slide => ({
+  const slide = (text: string, img: LibraryImage): Slide => ({
     id: `slide-${stamp}-${n++}-${rand}`,
     text,
-    imageUrl,
+    // Persist the stable reference, not the (session-scoped) object URL.
+    imageUrl: libraryRef(img),
     bgFrom: from,
     bgTo: to,
   });
@@ -131,8 +142,11 @@ export function buildTransformationShow(character: Character, opts: BuildOptions
 // and slide counts, so a batch of five is five different decks.
 export function buildTransformationShows(
   character: Character,
+  library: LibraryImage[],
   count: number,
   opts: BuildOptions = {}
 ): BuildResult[] {
-  return Array.from({ length: Math.max(1, count) }, () => buildTransformationShow(character, opts));
+  return Array.from({ length: Math.max(1, count) }, () =>
+    buildTransformationShow(character, library, opts)
+  );
 }

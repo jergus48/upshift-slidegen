@@ -372,10 +372,10 @@ export default function App() {
     }
   };
 
-  // Characters: before/after transformation decks. Every slide's photo comes
-  // from a package the user uploaded (character before/after + the two shared
-  // screenshots), so there's no model call and no background step — the deck is
-  // built client-side and dropped straight onto the queue.
+  // Characters: before/after transformation decks. Every slide's photo is drawn
+  // at random from a library pack the user assigned (character before/after +
+  // the two shared packs), so there's no model call and no background step — the
+  // deck is built client-side and dropped straight onto the queue.
   const generateCharacterDecks = async (opts: {
     characterIds: string[];
     count: number;
@@ -387,12 +387,15 @@ export default function App() {
     setGenerating(true);
     try {
       const all = getCharacters();
+      // The packages are ordinary library packs, so the photos come from the same
+      // merged library everything else draws backgrounds from.
+      const library = await getMergedLibrary();
       const shows: Slideshow[] = [];
       const failures: string[] = [];
       for (const id of opts.characterIds) {
         const character = all.find((c) => c.id === id);
         if (!character) continue;
-        for (const result of buildTransformationShows(character, opts.count, {
+        for (const result of buildTransformationShows(character, library, opts.count, {
           streakKey: opts.streakKey,
           hookTemplate: opts.hookTemplate,
         })) {

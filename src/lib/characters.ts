@@ -1,28 +1,21 @@
 // Characters for the before/after transformation tool.
 //
-// A "character" is one face with two photo packages: BEFORE shots (the addict
+// A "character" is one face with two library packages: BEFORE shots (the addict
 // look) and AFTER shots (the glow-up). On top of those, two packages are shared
-// by every character: the "🌽 blocked" screenshot and the Upshift streak
-// screenshot. A deck is assembled from those four pools — see transformationDeck.ts.
+// by every character: the "🌽 blocked" screenshots and the Upshift streak
+// screenshots — the latter picked per streak duration, so the screenshot always
+// matches the number in the text.
 //
-// Storage mirrors lib/presetScreenshots.ts: the image BYTES go into the local
-// library's IndexedDB (so slides resolve them through the normal `local:` id
-// path, see imageSrc.ts) under packs that are auto-hidden from the background
-// pickers, while the mapping character → image ids lives in localStorage.
-import { addLocalImages, removeLocalImage } from './localLibrary';
-import { setPackHidden } from './hiddenPacks';
-
+// Nothing is stored here but SELECTION TOKENS (see lib/subfolders.ts): a bare
+// pack name selects the whole pack, a pack+subfolder token selects one subfolder.
+// The photos themselves stay in the normal library (bundled packs from the
+// server + this browser's scraped/uploaded ones), so a package is curated in the
+// Library view like every other pack, and a deck draws random images out of it.
 const KEY = 'slidesmith:characters';
 
-// Pack names the bytes are filed under. Hidden from the pickers so they never
-// pollute background selection; still visible/deletable in the Library view.
-const packForCharacter = (id: string, kind: 'before' | 'after') => `Character ${id} · ${kind}`;
-const BLOCKED_PACK = 'Blocked 🌽 screenshots';
-const STREAK_PACK = 'Upshift streak screenshots';
-
 // ── Streaks ─────────────────────────────────────────────────────────────────
-// The durations a streak screenshot can be filed under. `label` is what goes in
-// the deck text ("1 year clean"); `article` is the same duration phrased for the
+// The durations a streak package can be filed under. `label` is what goes in the
+// deck text ("1 year clean"); `article` is the same duration phrased for the
 // hooks that read "quit lust for a year".
 export interface Streak {
   key: string;
@@ -45,38 +38,17 @@ export const streakByKey = (key: string): Streak | undefined => STREAKS.find((s)
 export interface Character {
   id: string;
   name: string;
-  before: string[]; // local image ids
-  after: string[];
+  beforeToken: string; // library selection token, '' = not picked yet
+  afterToken: string;
 }
 
 interface Store {
   characters: Character[];
-  blocked: string[]; // shared "🌽 blocked" screenshots
-  streaks: Record<string, string[]>; // streak key → uploaded screenshot ids
+  blockedToken: string;
+  streakTokens: Record<string, string>; // streak key → library selection token
 }
 
-// ── Bundled streak screenshots ──────────────────────────────────────────────
-// Shipped with the build (public/streak-shots/manifest.json), so the streak pack
-// works for every user/browser without anyone uploading anything. Per-browser
-// uploads are added on top, not instead.
-let streakDefaults: Record<string, string[]> = {};
-
-export async function loadStreakDefaults(): Promise<void> {
-  try {
-    const res = await fetch('/streak-shots/manifest.json');
-    if (!res.ok) return;
-    const json = (await res.json()) as { shots?: Record<string, string[]> };
-    streakDefaults = Object.fromEntries(
-      Object.entries(json.shots || {}).map(([k, files]) => [
-        k,
-        (files || []).map((f) => (f.startsWith('/') ? f : `/streak-shots/${f}`)),
-      ])
-    );
-    notify();
-  } catch {
-    /* no bundled defaults — uploads still work */
-  }
-}
+const EMPTY: Store = { characters: [], blockedToken: '', streakTokens: {} };
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -90,21 +62,24 @@ export function subscribeCharacters(fn: Listener): () => void {
 function read(): Store {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || 'null') as Partial<Store> | null;
-    if (!raw) return { characters: [], blocked: [], streaks: {} };
+    if (!raw) return { ...EMPTY, characters: [], streakTokens: {} };
     return {
       characters: Array.isArray(raw.characters)
         ? raw.characters.map((c) => ({
             id: String(c.id),
             name: String(c.name || ''),
-            before: Array.isArray(c.before) ? c.before.map(String) : [],
-            after: Array.isArray(c.after) ? c.after.map(String) : [],
+            beforeToken: String(c.beforeToken || ''),
+            afterToken: String(c.afterToken || ''),
           }))
         : [],
-      blocked: Array.isArray(raw.blocked) ? raw.blocked.map(String) : [],
-      streaks: raw.streaks && typeof raw.streaks === 'object' ? (raw.streaks as Record<string, string[]>) : {},
+      blockedToken: String(raw.blockedToken || ''),
+      streakTokens:
+        raw.streakTokens && typeof raw.streakTokens === 'object'
+          ? (raw.streakTokens as Record<string, string>)
+          : {},
     };
   } catch {
-    return { characters: [], blocked: [], streaks: {} };
+    return { ...EMPTY, characters: [], streakTokens: {} };
   }
 }
 
@@ -112,7 +87,7 @@ function write(store: Store): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(store));
   } catch {
-    /* storage full/unavailable — the mapping just won't persist */
+    /* storage full/unavailable — the picks just won't persist */
   }
   notify();
 }
@@ -121,20 +96,35 @@ export function getCharacters(): Character[] {
   return read().characters;
 }
 
-export function getBlockedShots(): string[] {
-  return read().blocked;
+export function getBlockedToken(): string {
+  return read().blockedToken;
 }
 
-// Bundled defaults first, then this browser's uploads.
-export function getStreakShots(streakKey: string): string[] {
+export function setBlockedToken(token: string): void {
+  write({ ...read(), blockedToken: token });
+}
+
+export function getStreakTokens(): Record<string, string> {
+  return read().streakTokens;
+}
+
+export function getStreakToken(streakKey: string): string {
+  return read().streakTokens[streakKey] || '';
+}
+
+export function setStreakToken(streakKey: string, token: string): void {
   const store = read();
-  return [...(streakDefaults[streakKey] || []), ...(store.streaks[streakKey] || [])];
+  const next = { ...store.streakTokens };
+  if (token) next[streakKey] = token;
+  else delete next[streakKey];
+  write({ ...store, streakTokens: next });
 }
 
-// Streaks that actually have at least one screenshot — the only ones a deck can
-// be built for, since every deck carries a streak slide.
+// Durations that have a package assigned — the only ones a deck can be built
+// for, since every deck carries a streak slide.
 export function getUsableStreaks(): Streak[] {
-  return STREAKS.filter((s) => getStreakShots(s.key).length > 0);
+  const tokens = read().streakTokens;
+  return STREAKS.filter((s) => !!tokens[s.key]);
 }
 
 // ── Characters ──────────────────────────────────────────────────────────────
@@ -143,8 +133,8 @@ export function addCharacter(name: string): Character {
   const character: Character = {
     id: `ch-${Date.now()}-${Math.round(Math.random() * 1e4)}`,
     name: name.trim() || `Character ${store.characters.length + 1}`,
-    before: [],
-    after: [],
+    beforeToken: '',
+    afterToken: '',
   };
   write({ ...store, characters: [...store.characters, character] });
   return character;
@@ -158,89 +148,19 @@ export function renameCharacter(id: string, name: string): void {
   });
 }
 
-// Drops the character AND its photo bytes — nothing else references them.
-export async function removeCharacter(id: string): Promise<void> {
+// Only the character is dropped — the library packs it pointed at are untouched,
+// since other characters (or other tools) may be using them.
+export function removeCharacter(id: string): void {
   const store = read();
-  const character = store.characters.find((c) => c.id === id);
   write({ ...store, characters: store.characters.filter((c) => c.id !== id) });
-  for (const imgId of [...(character?.before || []), ...(character?.after || [])]) {
-    await removeLocalImage(imgId).catch(() => undefined);
-  }
 }
 
-// Add photos to one of a character's two packages. `dataUrls` are base64 data
-// URLs read from the files the user picked.
-export async function addCharacterPhotos(
-  id: string,
-  kind: 'before' | 'after',
-  dataUrls: string[]
-): Promise<void> {
-  const pack = packForCharacter(id, kind);
-  const added = await addLocalImages(pack, dataUrls, 'uploaded');
-  setPackHidden(pack, true);
-  if (!added.length) return;
+// Point one of a character's two packages at a library pack/subfolder.
+export function setCharacterToken(id: string, kind: 'before' | 'after', token: string): void {
+  const field = kind === 'before' ? 'beforeToken' : 'afterToken';
   const store = read();
   write({
     ...store,
-    characters: store.characters.map((c) =>
-      c.id === id ? { ...c, [kind]: [...c[kind], ...added.map((a) => a.id)] } : c
-    ),
+    characters: store.characters.map((c) => (c.id === id ? { ...c, [field]: token } : c)),
   });
 }
-
-export async function removeCharacterPhoto(
-  id: string,
-  kind: 'before' | 'after',
-  imgId: string
-): Promise<void> {
-  const store = read();
-  write({
-    ...store,
-    characters: store.characters.map((c) =>
-      c.id === id ? { ...c, [kind]: c[kind].filter((x) => x !== imgId) } : c
-    ),
-  });
-  await removeLocalImage(imgId).catch(() => undefined);
-}
-
-// ── Shared packages ─────────────────────────────────────────────────────────
-export async function addBlockedShots(dataUrls: string[]): Promise<void> {
-  const added = await addLocalImages(BLOCKED_PACK, dataUrls, 'uploaded');
-  setPackHidden(BLOCKED_PACK, true);
-  if (!added.length) return;
-  const store = read();
-  write({ ...store, blocked: [...store.blocked, ...added.map((a) => a.id)] });
-}
-
-export async function removeBlockedShot(imgId: string): Promise<void> {
-  const store = read();
-  write({ ...store, blocked: store.blocked.filter((x) => x !== imgId) });
-  await removeLocalImage(imgId).catch(() => undefined);
-}
-
-export async function addStreakShots(streakKey: string, dataUrls: string[]): Promise<void> {
-  const added = await addLocalImages(STREAK_PACK, dataUrls, 'uploaded');
-  setPackHidden(STREAK_PACK, true);
-  if (!added.length) return;
-  const store = read();
-  write({
-    ...store,
-    streaks: {
-      ...store.streaks,
-      [streakKey]: [...(store.streaks[streakKey] || []), ...added.map((a) => a.id)],
-    },
-  });
-}
-
-export async function removeStreakShot(streakKey: string, imgId: string): Promise<void> {
-  const store = read();
-  write({
-    ...store,
-    streaks: { ...store.streaks, [streakKey]: (store.streaks[streakKey] || []).filter((x) => x !== imgId) },
-  });
-  await removeLocalImage(imgId).catch(() => undefined);
-}
-
-// Bundled shots are files under public/, not IndexedDB rows — the view must not
-// offer a delete button for them.
-export const isBundledShot = (ref: string) => !ref.startsWith('local:');
