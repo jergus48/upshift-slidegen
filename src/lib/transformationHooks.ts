@@ -28,7 +28,7 @@ export const HOOKS: string[] = [
   'What quitting 🌽 does to your face',
   'How I went from 🌽addict to married in 1 year',
   'My mom caught me g00ning at 2am...',
-  'POV: Your triple your test in {X} (I quit 🌽)',
+  'POV: You triple your test in {X} (I quit 🌽)',
   'Watching p*rn 17x per day vs....',
   'Watching 🌽  17x per day vs....',
   'Watching p*rn 12x per day vs....',
