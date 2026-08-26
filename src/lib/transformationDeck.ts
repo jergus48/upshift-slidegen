@@ -17,6 +17,7 @@
 // so this is a pure client-side build, like lib/fixedDeck.ts.
 import type { Slideshow, Slide, LibraryImage } from '../types';
 import { HOOKS, fillHook } from './transformationHooks';
+import { pickCaption } from './transformationCaptions';
 import { tokenMatches } from './subfolders';
 import { libraryRef } from './imageSrc';
 import { getBlockedToken, getStreakToken, getUsableStreaks, streakByKey, type Character, type Streak } from './characters';
@@ -108,6 +109,9 @@ export function buildTransformationShow(
 
   const hook = fillHook(opts.hookTemplate ?? pick(HOOKS)!, streak);
   const cleanLine = `${streak.label} clean`;
+  // The post's own caption/hashtags — short, and rolled per deck so a batch
+  // doesn't publish the same line five times.
+  const { caption, hashtags } = pickCaption(streak);
 
   const beforeShots = pickDistinct(beforePool, randInt(2, 3));
   const afterShots = pickDistinct(afterPool, 1 + randInt(1, 2));
@@ -141,8 +145,8 @@ export function buildTransformationShow(
     show: {
       id: `q-${stamp}-${rand}`,
       hook,
-      caption: '',
-      hashtags: [],
+      caption,
+      hashtags,
       rationale: `${character.name} · ${streak.label} · ${beforeShots.length} before / ${afterShots.length} after`,
       createdAt: new Date(stamp).toISOString(),
       slides,
