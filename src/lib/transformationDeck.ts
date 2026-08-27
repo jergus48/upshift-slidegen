@@ -11,14 +11,16 @@
 // Every slide from the first after onwards carries the same "<streak> clean"
 // line, the two proof slides included, so the claim stays on screen while the
 // viewer swipes through the evidence.
-// Both counts are rolled per deck, and every slot draws a fresh random image out
-// of its package, so a batch never comes out as the same deck twice.
+// Both counts are rolled per deck, and every slot draws a fresh image out of its
+// package — dealt from a bag shared by the whole batch (see lib/dealer.ts), so a
+// run of ten uses everything available before it reuses anything.
 //
 // No model call is involved — every line is picked from lib/transformationHooks.ts,
 // so this is a pure client-side build, like lib/fixedDeck.ts.
 import type { Slideshow, Slide, LibraryImage } from '../types';
 import { HOOKS, fillHook } from './transformationHooks';
-import { pickCaption } from './transformationCaptions';
+import { makeCaptionPicker, type CaptionPicker } from './transformationCaptions';
+import { makeDealer, makeWeightedDealer, type Dealer } from './dealer';
 import { tokenMatches } from './subfolders';
 import { libraryRef } from './imageSrc';
 import {
@@ -42,34 +44,6 @@ const PALETTE: [string, string][] = [
   ['#26120a', '#1a0c06'],
 ];
 
-function pick<T>(arr: T[]): T | undefined {
-  return arr.length ? arr[Math.floor(Math.random() * arr.length)] : undefined;
-}
-
-// `n` random images from a pool, preferring not to repeat within one deck.
-// Falls back to repeats only when the pool is smaller than `n` — two photos in
-// a package still make a deck.
-function pickDistinct<T>(arr: T[], n: number): T[] {
-  if (!arr.length) return [];
-  const shuffled = [...arr].sort(() => Math.random() - 0.5);
-  return Array.from({ length: n }, (_, i) => shuffled[i % shuffled.length]);
-}
-
-// Picks a streak by its `weight` rather than uniformly, so the shorter durations
-// can be made rarer without dropping them from the roll. Falls back to the last
-// entry only if the weights round to nothing.
-function pickWeighted(streaks: Streak[]): Streak | undefined {
-  if (!streaks.length) return undefined;
-  const total = streaks.reduce((sum, s) => sum + Math.max(0, s.weight), 0);
-  if (total <= 0) return streaks[Math.floor(Math.random() * streaks.length)];
-  let roll = Math.random() * total;
-  for (const s of streaks) {
-    roll -= Math.max(0, s.weight);
-    if (roll < 0) return s;
-  }
-  return streaks[streaks.length - 1];
-}
-
 const randInt = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
 
 // Every image in the library that a selection token covers.
@@ -77,11 +51,70 @@ export function poolFor(library: LibraryImage[], token: string): LibraryImage[] 
   return token ? library.filter((img) => tokenMatches(token, img)) : [];
 }
 
+// ── Spreading a batch ───────────────────────────────────────────────────────
+// Every "random per deck" choice is dealt out of a shuffled bag rather than
+// drawn independently (see lib/dealer.ts), and the bags are held HERE, on a
+// batch — so ten decks work through the hooks, the captions and the photos
+// before repeating any of them, instead of landing on the same screenshot five
+// times. One batch per character per run; a single deck builds a throwaway one,
+// which is the old behaviour.
+interface Batch {
+  variant: string;
+  hooks: Dealer<string>;
+  streaks: Dealer<Streak>;
+  before: Dealer<LibraryImage>;
+  after: Dealer<LibraryImage>;
+  blocked: Dealer<LibraryImage>;
+  // One bag per duration, built on first use — a deck only ever touches the
+  // package of the streak it rolled.
+  streakShots: Map<string, Dealer<LibraryImage>>;
+  caption: CaptionPicker;
+}
+
+function makeBatch(character: Character, library: LibraryImage[]): Batch {
+  const variant = variantOf(character);
+  return {
+    variant,
+    hooks: makeDealer(HOOKS),
+    // Weighted, so the long streaks still dominate — but weighted WITHOUT
+    // replacement, so they dominate across the batch instead of clumping.
+    streaks: makeWeightedDealer(usableStreaksIn(library, variant), (s) => s.weight),
+    before: makeDealer(poolFor(library, character.beforeToken)),
+    after: makeDealer(poolFor(library, character.afterToken)),
+    blocked: makeDealer(poolFor(library, getBlockedToken(variant))),
+    streakShots: new Map(),
+    caption: makeCaptionPicker(),
+  };
+}
+
+function streakShotsFor(batch: Batch, library: LibraryImage[], streakKey: string): Dealer<LibraryImage> {
+  let dealer = batch.streakShots.get(streakKey);
+  if (!dealer) {
+    dealer = makeDealer(poolFor(library, getStreakToken(batch.variant, streakKey)));
+    batch.streakShots.set(streakKey, dealer);
+  }
+  return dealer;
+}
+
+// `n` images off a dealer, not repeating within the one deck unless the package
+// is too small to avoid it — two photos in a package still make a deck.
+function deal(dealer: Dealer<LibraryImage>, n: number): LibraryImage[] {
+  const out: LibraryImage[] = [];
+  for (let i = 0; i < n; i++) {
+    const img = dealer.next(out);
+    if (img) out.push(img);
+  }
+  return out;
+}
+
 export interface BuildOptions {
   // Lock the deck to one streak. Omitted/empty = a random usable streak per deck.
   streakKey?: string;
   // Lock the hook line (an entry of HOOKS, token included). Omitted = random.
   hookTemplate?: string;
+  // The shared bags this deck deals from. Set by buildTransformationShows for
+  // every deck in a run; omitted for a one-off build, which then gets its own.
+  batch?: Batch;
 }
 
 export interface BuildResult {
@@ -122,26 +155,23 @@ export function buildTransformationShow(
 
   // The streak drives BOTH the hook's {X}/{A} and the "<streak> clean" lines and
   // which screenshot package is used, so one roll keeps the deck consistent.
-  const variant = variantOf(character);
-  const usable = usableStreaksIn(library, variant);
+  const batch = opts.batch ?? makeBatch(character, library);
   const streak: Streak =
-    (opts.streakKey ? streakByKey(opts.streakKey) : undefined) ?? pickWeighted(usable)!;
+    (opts.streakKey ? streakByKey(opts.streakKey) : undefined) ?? batch.streaks.next()!;
 
-  const beforePool = poolFor(library, character.beforeToken);
-  const afterPool = poolFor(library, character.afterToken);
-  const blockedShot = pick(poolFor(library, getBlockedToken(variant)));
-  const streakShot = pick(poolFor(library, getStreakToken(variant, streak.key)));
+  const blockedShot = batch.blocked.next();
+  const streakShot = streakShotsFor(batch, library, streak.key).next();
   if (!blockedShot || !streakShot)
     return { error: `The shared packages have no photos for ${streak.label}.` };
 
-  const hook = fillHook(opts.hookTemplate ?? pick(HOOKS)!, streak);
+  const hook = fillHook(opts.hookTemplate ?? batch.hooks.next()!, streak);
   const cleanLine = `${streak.label} clean`;
-  // The post's own caption/hashtags — short, and rolled per deck so a batch
-  // doesn't publish the same line five times.
-  const { caption, hashtags } = pickCaption(streak);
+  // The post's own caption/hashtags — short, and dealt so a batch works through
+  // the lines instead of publishing the same one five times.
+  const { caption, hashtags } = batch.caption(streak);
 
-  const beforeShots = pickDistinct(beforePool, randInt(2, 3));
-  const afterShots = pickDistinct(afterPool, 1 + randInt(1, 2));
+  const beforeShots = deal(batch.before, randInt(2, 3));
+  const afterShots = deal(batch.after, 1 + randInt(1, 2));
 
   const stamp = Date.now();
   const rand = Math.random().toString(36).slice(2, 7);
@@ -182,14 +212,16 @@ export function buildTransformationShow(
 }
 
 // Build several decks at once. Each one re-rolls its own hook, streak, photos
-// and slide counts, so a batch of five is five different decks.
+// and slide counts — but off SHARED bags, so a batch of five is five different
+// decks rather than five independent rolls that happen to collide.
 export function buildTransformationShows(
   character: Character,
   library: LibraryImage[],
   count: number,
   opts: BuildOptions = {}
 ): BuildResult[] {
+  const batch = makeBatch(character, library);
   return Array.from({ length: Math.max(1, count) }, () =>
-    buildTransformationShow(character, library, opts)
+    buildTransformationShow(character, library, { ...opts, batch })
   );
 }

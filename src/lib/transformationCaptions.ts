@@ -4,6 +4,7 @@
 // one line under the post, not a second version of it. Same token substitution
 // as the hooks ({X} = "100 days", {A} = "a year"), and the same content rule —
 // never the literal word, always 🌽.
+import { makeDealer, shuffled } from './dealer';
 import type { Streak } from './characters';
 
 const CAPTIONS: string[] = [
@@ -49,21 +50,23 @@ const ROTATING_TAGS = [
   'monkmode',
 ];
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
 function fill(template: string, streak: Streak): string {
   return template.replace(/\{X\}/g, streak.label).replace(/\{A\}/g, streak.article);
 }
 
-// One caption + 4 hashtags for a deck, rolled fresh each time so a batch doesn't
-// post the same line five times. Hashtags are stored WITHOUT the '#' — the
-// scheduler adds it (see BulkScheduleModal).
-export function pickCaption(streak: Streak): { caption: string; hashtags: string[] } {
-  const rotating = [...ROTATING_TAGS].sort(() => Math.random() - 0.5).slice(0, 2);
-  return {
-    caption: fill(pick(CAPTIONS), streak),
-    hashtags: [...CORE_TAGS, ...rotating],
-  };
+export interface CaptionPicker {
+  (streak: Streak): { caption: string; hashtags: string[] };
+}
+
+// One caption + 4 hashtags per deck. The returned picker deals captions out of a
+// shuffled bag, so a batch works through every line before reusing one instead
+// of posting the same sentence five times. Make ONE picker per batch — a fresh
+// one per deck is just an independent random pick again. Hashtags are stored
+// WITHOUT the '#' — the scheduler adds it (see BulkScheduleModal).
+export function makeCaptionPicker(): CaptionPicker {
+  const captions = makeDealer(CAPTIONS);
+  return (streak) => ({
+    caption: fill(captions.next() ?? CAPTIONS[0], streak),
+    hashtags: [...CORE_TAGS, ...shuffled(ROTATING_TAGS).slice(0, 2)],
+  });
 }
