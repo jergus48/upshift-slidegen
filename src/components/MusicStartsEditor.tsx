@@ -93,6 +93,12 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
     setTimeout(() => setSavedFlash(false), 1200);
   };
 
+  // The point shown for a track: the one saved in this browser, else the
+  // default pinned in the manifest (listAllTracks already merges the two into
+  // start/drop, but `starts` holds the fresher value right after a save).
+  const pointOf = (t: MusicListItem): number | undefined =>
+    starts[t.file] ?? (mode === 'drop' ? t.drop : t.start);
+
   const clearStart = (file: string) => {
     savePoint(file, null);
     setStarts(readAll());
@@ -159,9 +165,9 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
                 <div className="text-[12px] font-medium text-ink truncate">{prettyName(loaded)}</div>
                 <div className="text-[11px] text-ink-5">
                   {fmt(time)} / {fmt(duration)}
-                  {starts[loaded.file] != null && (
+                  {pointOf(loaded) != null && (
                     <span className="ml-2 text-ink-4">
-                      · {copy.at} {fmt(starts[loaded.file])}
+                      · {copy.at} {fmt(pointOf(loaded)!)}
                     </span>
                   )}
                 </div>
@@ -191,11 +197,11 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
                 <Flag size={13} />
                 {savedFlash ? 'Saved!' : `Set ${copy.verb} = ${fmt(time)}`}
               </button>
-              {starts[loaded.file] != null && (
+              {pointOf(loaded) != null && (
                 <>
                   <button
                     type="button"
-                    onClick={() => load(loaded, starts[loaded.file])}
+                    onClick={() => load(loaded, pointOf(loaded))}
                     className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-3 hover:bg-raised hover:text-ink-2 transition-colors"
                   >
                     <Play size={13} /> {copy.preview}
@@ -225,7 +231,7 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
           gender="male"
           tracks={male}
           loaded={loaded}
-          starts={starts}
+          pointOf={pointOf}
           busy={busy}
           onPlay={load}
           onRemove={removeTrack}
@@ -236,7 +242,7 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
           gender="female"
           tracks={female}
           loaded={loaded}
-          starts={starts}
+          pointOf={pointOf}
           busy={busy}
           onPlay={load}
           onRemove={removeTrack}
@@ -252,7 +258,7 @@ function TrackColumn({
   gender,
   tracks,
   loaded,
-  starts,
+  pointOf,
   busy,
   onPlay,
   onRemove,
@@ -262,7 +268,8 @@ function TrackColumn({
   gender: MusicGender;
   tracks: MusicListItem[];
   loaded: MusicListItem | null;
-  starts: Record<string, number>;
+  // Point shown per track: saved in this browser, else the manifest default.
+  pointOf: (t: MusicListItem) => number | undefined;
   busy: boolean;
   onPlay: (t: MusicListItem, seekTo?: number) => void;
   onRemove: (t: MusicListItem) => void;
@@ -301,7 +308,7 @@ function TrackColumn({
         )}
         {tracks.map((t) => {
           const active = loaded?.file === t.file;
-          const start = starts[t.file];
+          const start = pointOf(t);
           return (
             <div
               key={t.file}
