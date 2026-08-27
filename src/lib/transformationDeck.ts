@@ -201,6 +201,10 @@ export function buildTransformationShow(
   return {
     show: {
       id: `q-${stamp}-${rand}`,
+      // Flags the deck for the video exporter: after slides hold longer and the
+      // music drop is timed to the before→after cut (see lib/render.ts).
+      kind: 'characters',
+      beforeSlides: beforeShots.length,
       hook,
       caption,
       hashtags,

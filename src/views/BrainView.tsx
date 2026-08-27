@@ -178,6 +178,14 @@ export function BrainView({ brain, onChange, povPackMen, povPackWomen, onChangeP
           >
             <MusicStartsEditor />
           </Section>
+
+          {/* Characters music drop points */}
+          <Section
+            title="Characters music"
+            description="Same tracks, different rule. Here you pin the DROP — the second that must be heard the moment a Characters video cuts from the before slides to the after ones. The exporter starts the song exactly that far ahead of the cut, so the drop always lands on the switch (whether the deck has 2 or 3 before slides). Only used for Characters decks; everything else uses the start points above."
+          >
+            <MusicStartsEditor mode="drop" />
+          </Section>
         </div>
       </div>
     </>

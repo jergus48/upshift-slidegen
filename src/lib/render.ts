@@ -324,11 +324,17 @@ const TRANSITION_MS = 240; // quick horizontal slide from one slide to the next
 const READ_BASE_MS = 650; // floor: even a one-word slide stays up this long
 const READ_PER_WORD_MS = 180; // added reading time per word
 const READ_MAX_MS = 4500; // cap so a wordy slide can't stall forever
+// The after half of a Characters deck reads 50% slower per word than the before
+// half: those slides carry the payoff (the clean line, the blocked/streak proof
+// shots) and want dwelling on, while the before slides just repeat the hook.
+const AFTER_PACE = 1.5;
 
-// How long slide `text` should stay on screen: a base plus reading time per word.
-function readingHoldMs(text: string): number {
+// How long slide `text` should stay on screen: a base plus reading time per
+// word. `pace` stretches only the per-word part (and its cap) — the floor is the
+// same for every slide.
+function readingHoldMs(text: string, pace = 1): number {
   const words = cleanCaption(text || '').trim().split(/\s+/).filter(Boolean).length;
-  return Math.min(READ_MAX_MS, READ_BASE_MS + words * READ_PER_WORD_MS);
+  return Math.min(READ_MAX_MS * pace, READ_BASE_MS + words * READ_PER_WORD_MS * pace);
 }
 
 // Smooth acceleration/deceleration for the slide transition.
@@ -425,6 +431,10 @@ interface VideoScene {
   canvas: HTMLCanvasElement;
   drawAt: (t: number) => void;
   total: number;
+  // For a Characters before/after deck: how far into the clip (ms) the first
+  // after slide lands, i.e. the cut the music drop has to hit. Undefined for
+  // every other deck, which just opens on the drop instead.
+  cutAt?: number;
 }
 
 async function prepareVideoScene(show: Slideshow): Promise<VideoScene> {
@@ -436,7 +446,19 @@ async function prepareVideoScene(show: Slideshow): Promise<VideoScene> {
   canvas.height = H;
   const ctx = canvas.getContext('2d')!;
 
-  const holds = show.slides.map((s) => readingHoldMs(s.text));
+  // A Characters deck paces its after slides slower (see AFTER_PACE); anything
+  // else runs at the normal pace throughout.
+  const beforeCount =
+    show.kind === 'characters' ? Math.min(show.beforeSlides ?? 0, show.slides.length) : 0;
+  const holds = show.slides.map((s, i) =>
+    readingHoldMs(s.text, beforeCount > 0 && i >= beforeCount ? AFTER_PACE : 1)
+  );
+  // Where the before half ends: every before hold plus the transitions between
+  // and out of them, so the first after slide is fully on screen at `cutAt`.
+  const cutAt =
+    beforeCount > 0 && beforeCount < show.slides.length
+      ? holds.slice(0, beforeCount).reduce((n, d) => n + d, 0) + beforeCount * TRANSITION_MS
+      : undefined;
   // Total = every hold plus one transition between each adjacent pair.
   const total = holds.reduce((n, d) => n + d, 0) + Math.max(0, imgs.length - 1) * TRANSITION_MS;
 
@@ -462,7 +484,7 @@ async function prepareVideoScene(show: Slideshow): Promise<VideoScene> {
     ctx.drawImage(imgs[imgs.length - 1], 0, 0, W, H); // past the end — hold the last frame
   };
 
-  return { canvas, drawAt, total };
+  return { canvas, drawAt, total, cutAt };
 }
 
 // Decode + resolve a music track down to what an encoder needs: the raw buffer
@@ -471,12 +493,19 @@ async function prepareVideoScene(show: Slideshow): Promise<VideoScene> {
 async function resolveMusic(
   ctx: BaseAudioContext,
   music: MusicTrack,
+  cutAt?: number,
 ): Promise<{ buffer: AudioBuffer; offset: number } | null> {
   const buffer = await loadAudioBuffer(ctx as AudioContext, music.url);
   if (!buffer) return null;
-  // Start on the drop: pinned `start` if given, else auto-detect the first
-  // high-energy point. Clamp so we never start past the end (≥2s of runway).
-  const wanted = music.start ?? detectDropOffset(buffer);
+  // Characters decks (cutAt set, drop pinned) don't open on the drop — they
+  // START the many seconds of before-half ahead of it, so the drop lands exactly
+  // on the before→after cut. If the drop sits earlier in the song than the
+  // before half is long, there's nothing to rewind into, so it opens at 0:00 and
+  // the drop simply arrives a little after the cut.
+  const wanted =
+    cutAt != null && music.drop != null
+      ? music.drop - cutAt / 1000
+      : music.start ?? detectDropOffset(buffer);
   const offset = Math.max(0, Math.min(wanted, Math.max(0, buffer.duration - 2)));
   return { buffer, offset };
 }
@@ -543,7 +572,7 @@ async function renderSlideshowVideoWebCodecs(
   const videoConfig = await pickAvcConfig();
   if (!videoConfig) throw new Error('No supported H.264 config for WebCodecs.');
 
-  const { canvas, drawAt, total } = await prepareVideoScene(show);
+  const { canvas, drawAt, total, cutAt } = await prepareVideoScene(show);
   const frameDurUs = Math.round(1_000_000 / VIDEO_FPS);
   const frameCount = Math.max(1, Math.round((total / 1000) * VIDEO_FPS));
 
@@ -565,7 +594,7 @@ async function renderSlideshowVideoWebCodecs(
       throw new Error('AudioEncoder unavailable — fall back for music.');
     }
     const decodeCtx = new AudioCtxCtor();
-    const resolved = await resolveMusic(decodeCtx, music);
+    const resolved = await resolveMusic(decodeCtx, music, cutAt);
     await decodeCtx.close();
     if (resolved) {
       const { buffer, offset } = resolved;
@@ -693,7 +722,7 @@ async function renderSlideshowVideoRealtime(show: Slideshow, music?: MusicTrack 
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('Video export needs a browser with MediaRecorder support.');
   }
-  const { canvas, drawAt, total } = await prepareVideoScene(show);
+  const { canvas, drawAt, total, cutAt } = await prepareVideoScene(show);
 
   // Capture in MANUAL mode: captureStream(0) means the browser emits a frame ONLY
   // when we call requestFrame(). This is deliberate — passing a frame rate instead
@@ -733,13 +762,12 @@ async function renderSlideshowVideoRealtime(show: Slideshow, music?: MusicTrack 
   let musicOffset = 0; // seconds into the track where playback should begin
   if (music?.url && AudioCtx) {
     audioCtx = new AudioCtx();
-    const buffer = await loadAudioBuffer(audioCtx, music.url);
-    if (buffer) {
-      // Start on the drop: use the manifest's pinned `start` if given, else
-      // auto-detect the first high-energy point. Clamp so we never start past
-      // the end (leave ≥2s of runway).
-      const wanted = music.start ?? detectDropOffset(buffer);
-      musicOffset = Math.max(0, Math.min(wanted, Math.max(0, buffer.duration - 2)));
+    // Same resolution as the WebCodecs path: open on the drop, or — for a
+    // Characters deck — far enough ahead of it that the drop lands on the cut.
+    const resolved = await resolveMusic(audioCtx, music, cutAt);
+    if (resolved) {
+      const { buffer } = resolved;
+      musicOffset = resolved.offset;
 
       const dest = audioCtx.createMediaStreamDestination();
       const gain = audioCtx.createGain();

@@ -69,6 +69,14 @@ export interface Slideshow {
   slides: Slide[];
   createdAt: string;
   rationale: string;
+  // Marks a Characters before/after deck (lib/transformationDeck.ts). The video
+  // exporter treats these differently: the after slides linger 50% longer per
+  // word, and the soundtrack is aligned so its DROP lands on the before→after
+  // cut instead of opening the clip. Absent on every other kind of slideshow.
+  kind?: 'characters';
+  // How many leading slides are the "before" half. Only meaningful with
+  // kind: 'characters'; it's what the drop alignment counts back from.
+  beforeSlides?: number;
   // Which generation batch produced this show (see lib/localBatches.ts). Lets the
   // Batch queue panel re-select a whole finished batch for export. Absent for
   // manually-created or pre-batch slideshows.

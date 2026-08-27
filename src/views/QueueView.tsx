@@ -301,6 +301,16 @@ function SlideshowCard({ slideshow, selected, destId, onToggleSelect, onApprove,
         <label className="absolute top-2 left-2 z-10 w-6 h-6 rounded-md bg-card/90 border border-line flex items-center justify-center cursor-pointer shadow-sm">
           <input type="checkbox" checked={selected} onChange={onToggleSelect} className="cursor-pointer" />
         </label>
+        {slideshow.kind === 'characters' && (
+          // The exporter paces and scores these decks differently (slower after
+          // slides, music drop on the cut) — worth seeing at a glance in the queue.
+          <span
+            title={`Characters deck — ${slideshow.beforeSlides ?? 0} before slides, after slides hold 50% longer, music drop lands on the cut`}
+            className="absolute top-2 right-2 z-10 rounded-md bg-card/90 border border-line px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-ink-4 shadow-sm"
+          >
+            Characters
+          </span>
+        )}
         <div className="grid grid-cols-6 gap-1.5">
           {slideshow.slides.map((slide) => (
             <SlidePreview key={slide.id} slide={slide} />

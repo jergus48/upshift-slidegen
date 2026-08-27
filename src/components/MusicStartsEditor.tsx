@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Play, Pause, Flag, RotateCcw, Music, Trash2, Plus, EyeOff, Loader2 } from 'lucide-react';
 import { listAllTracks, type MusicListItem, type MusicGender } from '../lib/music';
 import { getAllStarts, setStart } from '../lib/musicStarts';
+import { getAllDrops, setDrop } from '../lib/musicDrops';
 import { addLocalTrack, removeLocalTrack, hideTrack } from '../lib/localMusic';
 
 // Strip the extension and any leading "artist -" noise for a compact label.
@@ -16,10 +17,35 @@ function fmt(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+// What a pinned second means, and how it reads in the UI. 'start' is the normal
+// exporter behaviour (playback opens there); 'drop' is the Characters mode,
+// where the second is the moment that has to be HEARD on the before→after cut —
+// the exporter starts the track that far ahead of it (see lib/musicDrops.ts).
+export type PointMode = 'start' | 'drop';
+
+const COPY = {
+  start: {
+    verb: 'start',
+    at: 'starts at',
+    hint: 'Pick a track below, scrub to the drop, then hit “Set start”.',
+    preview: 'Preview from start',
+  },
+  drop: {
+    verb: 'drop',
+    at: 'drop at',
+    hint: 'Pick a track below, scrub to the drop, then hit “Set drop”.',
+    preview: 'Preview from drop',
+  },
+} as const;
+
 // The "Video music" dashboard: audition every track, pin the exact second each
 // starts from in exported videos, and add/remove tracks locally. Saved per-track
 // in the browser; overrides the manifest start and the exporter's auto-detection.
-export function MusicStartsEditor() {
+// With mode="drop" the same UI pins Characters drop points instead.
+export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {}) {
+  const copy = COPY[mode];
+  const readAll = mode === 'drop' ? getAllDrops : getAllStarts;
+  const savePoint = mode === 'drop' ? setDrop : setStart;
   const [tracks, setTracks] = useState<MusicListItem[]>([]);
   const [loaded, setLoaded] = useState<MusicListItem | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -31,7 +57,7 @@ export function MusicStartsEditor() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const reload = () => {
-    setStarts(getAllStarts());
+    setStarts(readAll());
     return listAllTracks().then(setTracks).catch(() => setTracks([]));
   };
 
@@ -59,15 +85,15 @@ export function MusicStartsEditor() {
 
   const saveHere = () => {
     if (!loaded) return;
-    setStart(loaded.file, time);
-    setStarts(getAllStarts());
+    savePoint(loaded.file, time);
+    setStarts(readAll());
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1200);
   };
 
   const clearStart = (file: string) => {
-    setStart(file, null);
-    setStarts(getAllStarts());
+    savePoint(file, null);
+    setStarts(readAll());
   };
 
   const addFiles = async (gender: MusicGender, files: FileList | null) => {
@@ -131,7 +157,9 @@ export function MusicStartsEditor() {
                 <div className="text-[11px] text-ink-5">
                   {fmt(time)} / {fmt(duration)}
                   {starts[loaded.file] != null && (
-                    <span className="ml-2 text-ink-4">· starts at {fmt(starts[loaded.file])}</span>
+                    <span className="ml-2 text-ink-4">
+                      · {copy.at} {fmt(starts[loaded.file])}
+                    </span>
                   )}
                 </div>
               </div>
@@ -158,7 +186,7 @@ export function MusicStartsEditor() {
                 className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-ink text-bg text-[12px] font-medium hover:bg-ink-hover transition-colors"
               >
                 <Flag size={13} />
-                {savedFlash ? 'Saved!' : `Set start = ${fmt(time)}`}
+                {savedFlash ? 'Saved!' : `Set ${copy.verb} = ${fmt(time)}`}
               </button>
               {starts[loaded.file] != null && (
                 <>
@@ -167,7 +195,7 @@ export function MusicStartsEditor() {
                     onClick={() => load(loaded, starts[loaded.file])}
                     className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-3 hover:bg-raised hover:text-ink-2 transition-colors"
                   >
-                    <Play size={13} /> Preview from start
+                    <Play size={13} /> {copy.preview}
                   </button>
                   <button
                     type="button"
@@ -182,7 +210,7 @@ export function MusicStartsEditor() {
           </>
         ) : (
           <div className="flex items-center gap-2 text-[12px] text-ink-5 py-1">
-            <Music size={14} /> Pick a track below, scrub to the drop, then hit “Set start”.
+            <Music size={14} /> {copy.hint}
           </div>
         )}
       </div>

@@ -16,6 +16,7 @@
 // When "start" is omitted the exporter auto-detects the first high-energy point.
 
 import { getStart } from './musicStarts';
+import { getDrop } from './musicDrops';
 import { listLocalTracks, objectUrlForLocalTrack, getHidden } from './localMusic';
 
 export type MusicGender = 'male' | 'female';
@@ -34,6 +35,10 @@ interface MusicManifest {
 export interface MusicTrack {
   url: string;
   start?: number;
+  // The second of the track that must be heard on the before→after cut of a
+  // Characters deck. Set in the Brain "Characters music" editor; the exporter
+  // starts the song this far ahead of that cut instead of at `start`.
+  drop?: number;
 }
 
 let manifestPromise: Promise<MusicManifest> | null = null;
@@ -77,6 +82,8 @@ export interface MusicListItem {
   file: string;
   url: string;
   start?: number;
+  // The user's saved Characters drop point, if any (see lib/musicDrops.ts).
+  drop?: number;
   name?: string;
   local?: boolean;
 }
@@ -92,11 +99,25 @@ export async function listAllTracks(): Promise<MusicListItem[]> {
       const file = typeof entry === 'string' ? entry : entry.file;
       if (hidden.has(file)) continue;
       const manifestStart = typeof entry === 'string' ? undefined : entry.start;
-      out.push({ gender, file, url: trackUrl(m, gender, file), start: getStart(file) ?? manifestStart });
+      out.push({
+        gender,
+        file,
+        url: trackUrl(m, gender, file),
+        start: getStart(file) ?? manifestStart,
+        drop: getDrop(file),
+      });
     }
   }
   for (const t of await listLocalTracks()) {
-    out.push({ gender: t.gender, file: t.id, url: t.url, start: getStart(t.id), name: t.name, local: true });
+    out.push({
+      gender: t.gender,
+      file: t.id,
+      url: t.url,
+      start: getStart(t.id),
+      drop: getDrop(t.id),
+      name: t.name,
+      local: true,
+    });
   }
   return out;
 }
@@ -110,6 +131,7 @@ interface Candidate {
   file: string;
   url: string;
   start?: number;
+  drop?: number;
 }
 
 // The pickable pool for a gender: bundled manifest tracks (minus hidden) plus
@@ -123,12 +145,17 @@ async function poolFor(gender: MusicGender): Promise<Candidate[]> {
     const file = typeof entry === 'string' ? entry : entry.file;
     if (hidden.has(file)) continue;
     const manifestStart = typeof entry === 'string' ? undefined : entry.start;
-    pool.push({ file, url: trackUrl(m, gender, file), start: effectiveStart(file, manifestStart) });
+    pool.push({
+      file,
+      url: trackUrl(m, gender, file),
+      start: effectiveStart(file, manifestStart),
+      drop: getDrop(file),
+    });
   }
   for (const t of await listLocalTracks()) {
     if (t.gender !== gender) continue;
     const url = (await objectUrlForLocalTrack(t.id)) ?? t.url;
-    pool.push({ file: t.id, url, start: getStart(t.id) });
+    pool.push({ file: t.id, url, start: getStart(t.id), drop: getDrop(t.id) });
   }
   return pool;
 }
@@ -138,5 +165,5 @@ export async function pickMusicTrack(gender: MusicGender): Promise<MusicTrack | 
   const pool = await poolFor(gender);
   if (!pool.length) return null;
   const c = pool[Math.floor(Math.random() * pool.length)];
-  return { url: c.url, start: c.start };
+  return { url: c.url, start: c.start, drop: c.drop };
 }
