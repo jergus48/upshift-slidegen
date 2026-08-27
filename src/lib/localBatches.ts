@@ -1,28 +1,42 @@
 // The generation-batch queue lives in the browser, keyed per project (like the
-// slideshow queue in localQueue.ts). Each batch is one "character" run — a
-// gender + a set of presets (or a random count) + background packs + caption
-// look — that the App's background worker processes one at a time. A batch
-// records the slideshow ids it produced so the Queue's Batch panel can
-// re-select a whole finished batch for export.
+// slideshow queue in localQueue.ts). Every run that drops a group of decks on
+// the queue is logged here so the Queue's Batch panel can re-select the whole
+// group later for export:
+//   'presets'    — a quit-preset run the App's worker processes one at a time
+//                  (several can be stacked and generate progressively);
+//   'photos'     — a Photo Packs run;
+//   'characters' — a Characters before/after run.
+// Only 'presets' runs are queued and worked; the other two are built in one go
+// and land already 'done'.
 import type { Gender } from './quitPresets';
 import type { CaptionStyle } from './captionStyle';
 
 export type BatchStatus = 'queued' | 'running' | 'done' | 'error';
 
+export type BatchKind = 'presets' | 'photos' | 'characters';
+
 export interface GenBatch {
   id: string;
   createdAt: string;
   status: BatchStatus;
+  // What produced this batch. Absent on batches saved before kinds existed —
+  // those were all preset runs.
+  kind?: BatchKind;
   // Human label for the panel, e.g. "Men · 3 presets" — built at enqueue time.
   label: string;
-  // The run config. `presetKeys` empty → draw `count` random presets; otherwise
-  // generate exactly those presets (one deck each), and `count` is ignored.
-  gender: Gender;
-  presetKeys: string[];
-  count: number;
-  length: 'short' | 'long';
+  // Second line in the panel. Preset runs show their background packs; the
+  // other kinds set this instead (character names, pack overrides…).
+  subtitle?: string;
+  // Background packs — preset runs only.
   packs: string[];
-  captionStyle: CaptionStyle;
+  // The preset-run config, unset on the other kinds. `presetKeys` empty → draw
+  // `count` random presets; otherwise generate exactly those presets (one deck
+  // each), and `count` is ignored.
+  gender?: Gender;
+  presetKeys?: string[];
+  count?: number;
+  length?: 'short' | 'long';
+  captionStyle?: CaptionStyle;
   // Progress: how many decks this batch expects vs. how many have landed.
   total: number;
   done: number;
@@ -30,6 +44,19 @@ export interface GenBatch {
   // if the user removes some; the panel intersects with the live queue).
   producedIds: string[];
   error?: string;
+}
+
+// A preset run, with the config the worker needs guaranteed present.
+export type PresetBatch = GenBatch & {
+  gender: Gender;
+  presetKeys: string[];
+  count: number;
+  length: 'short' | 'long';
+  captionStyle: CaptionStyle;
+};
+
+export function isPresetBatch(b: GenBatch): b is PresetBatch {
+  return (b.kind ?? 'presets') === 'presets' && b.gender != null && b.presetKeys != null;
 }
 
 const KEY_PREFIX = 'slidesmith:batches:';

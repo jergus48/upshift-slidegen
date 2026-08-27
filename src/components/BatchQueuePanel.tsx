@@ -23,6 +23,12 @@ function packLabel(packs: string[]): string {
     .join(', ');
 }
 
+// Second line for a batch: preset runs list the background packs they drew
+// from; Photo Packs / Characters runs carry their own subtitle.
+function subLabel(b: GenBatch): string {
+  return b.subtitle ?? packLabel(b.packs);
+}
+
 // Right-hand log of generation batches. Running/queued batches show live
 // progress; a finished batch is clickable to select all of its slideshows in the
 // queue (ready to download or schedule). Only mounts when there's at least one
@@ -88,8 +94,8 @@ export function BatchQueuePanel({
                   {/* The exact background packs this batch was enqueued with —
                       each batch draws only from these, so a mixed-looking run is
                       a mixed selection, and it's visible here per batch. */}
-                  <div className="text-[10px] text-ink-6 truncate" title={packLabel(b.packs)}>
-                    {packLabel(b.packs)}
+                  <div className="text-[10px] text-ink-6 truncate" title={subLabel(b)}>
+                    {subLabel(b)}
                   </div>
                   <div className="text-[11px] text-ink-6 mt-0.5">
                     {b.status === 'running' && `Generating ${b.done}/${b.total}…`}

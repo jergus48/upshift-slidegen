@@ -25,7 +25,7 @@ import { BrainView } from './views/BrainView';
 import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
 import { loadQueue, saveQueue, recoverOrphanQueues } from './lib/localQueue';
-import { loadBatches, saveBatches, type GenBatch } from './lib/localBatches';
+import { loadBatches, saveBatches, isPresetBatch, type GenBatch, type PresetBatch } from './lib/localBatches';
 import { getMergedLibrary } from './lib/mergedLibrary';
 import { tokenMatches } from './lib/subfolders';
 import { getHiddenPhotos } from './lib/hiddenPhotos';
@@ -199,6 +199,7 @@ export default function App() {
       id: `b-${Date.now()}-${Math.round(Math.random() * 1e5)}`,
       createdAt: new Date().toISOString(),
       status: 'queued',
+      kind: 'presets',
       label,
       gender: opts.gender,
       presetKeys: opts.presetKeys,
@@ -230,7 +231,7 @@ export default function App() {
 
   // Run one batch to completion: generate each preset's deck, decorate it,
   // stream it onto the queue tagged with the batch id, and track progress.
-  const runBatch = useCallback(async (batch: GenBatch) => {
+  const runBatch = useCallback(async (batch: PresetBatch) => {
     if (!activeProject || !workspace) return;
     setBatches((bs) => bs.map((b) => (b.id === batch.id ? { ...b, status: 'running', done: 0 } : b)));
     try {
@@ -268,7 +269,7 @@ export default function App() {
   // The worker: whenever no batch is running and one is queued, start it.
   useEffect(() => {
     if (batchRunning.current) return;
-    const next = batches.find((b) => b.status === 'queued');
+    const next = batches.filter(isPresetBatch).find((b) => b.status === 'queued');
     if (!next) return;
     batchRunning.current = true;
     runBatch(next).finally(() => {
@@ -328,6 +329,28 @@ export default function App() {
   // Photo packs: the server returns whole slideshows with real R2 photos already
   // on every slide (no client-side background step). We only stamp the chosen
   // caption look, push them onto the queue, and jump to the Queue to review.
+  // Log a finished one-shot run (Photo Packs, Characters) in the batch panel and
+  // tag its decks, so clicking the entry re-selects exactly this group later.
+  // Preset runs don't go through here — the worker logs those as it generates.
+  const logFinishedBatch = (kind: 'photos' | 'characters', label: string, subtitle: string, shows: Slideshow[]): Slideshow[] => {
+    const id = `b-${Date.now()}-${Math.round(Math.random() * 1e5)}`;
+    const tagged = shows.map((s) => ({ ...s, batchId: id }));
+    const batch: GenBatch = {
+      id,
+      createdAt: new Date().toISOString(),
+      status: 'done',
+      kind,
+      label,
+      subtitle,
+      packs: [],
+      total: tagged.length,
+      done: tagged.length,
+      producedIds: tagged.map((s) => s.id),
+    };
+    setBatches((bs) => [batch, ...bs]);
+    return tagged;
+  };
+
   const generatePhotoPacks = async (opts: { count: number; captionStyle: CaptionStyle; coverPack?: string; appPack?: string; hookStyle?: string }) => {
     if (!activeProject) return;
     setError(null);
@@ -360,9 +383,18 @@ export default function App() {
           return { ...sl, imageUrl, captionStyle: opts.captionStyle };
         }),
       }));
-      setQueue((q) => [...withStyle, ...q]);
+      const overrides = [opts.coverPack && `cover: ${opts.coverPack}`, opts.appPack && `app: ${opts.appPack}`]
+        .filter(Boolean)
+        .join(', ');
+      const tagged = logFinishedBatch(
+        'photos',
+        `Photo packs · ${withStyle.length} deck${withStyle.length === 1 ? '' : 's'}`,
+        overrides || 'Server-picked photos',
+        withStyle,
+      );
+      setQueue((q) => [...tagged, ...q]);
       // Auto-select the whole new batch so it's ready to download right away.
-      setSelectedIds((prev) => [...withStyle.map((s) => s.id), ...prev]);
+      setSelectedIds((prev) => [...tagged.map((s) => s.id), ...prev]);
       setActiveView('queue');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -409,9 +441,18 @@ export default function App() {
         ...show,
         slides: show.slides.map((sl) => ({ ...sl, captionStyle: opts.captionStyle })),
       }));
-      setQueue((q) => [...withStyle, ...q]);
+      const names = opts.characterIds
+        .map((id) => all.find((c) => c.id === id)?.name)
+        .filter((n): n is string => !!n);
+      const tagged = logFinishedBatch(
+        'characters',
+        `Characters · ${withStyle.length} deck${withStyle.length === 1 ? '' : 's'}`,
+        names.join(', ') || 'Characters',
+        withStyle,
+      );
+      setQueue((q) => [...tagged, ...q]);
       // Auto-select the whole new batch so it's ready to download right away.
-      setSelectedIds((prev) => [...withStyle.map((s) => s.id), ...prev]);
+      setSelectedIds((prev) => [...tagged.map((s) => s.id), ...prev]);
       setActiveView('queue');
       if (failures.length) setError(failures.join(' '));
     } catch (e) {
