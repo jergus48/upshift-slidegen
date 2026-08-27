@@ -526,7 +526,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
               </select>
               <p className="text-[11px] text-ink-6 mt-1">
                 {usableStreaks.length
-                  ? 'Only durations with a package can be picked. The chosen one fills the hook and the “clean” lines.'
+                  ? 'Only durations with a package can be picked. The chosen one fills the hook and the “clean” lines. Left random, the longer streaks come up far more often — roughly 42% a year, 33% 100 days, 17% 60 days, 8% 30 days.'
                   : 'Give at least one duration a package above — every deck needs a streak slide.'}
               </p>
             </div>

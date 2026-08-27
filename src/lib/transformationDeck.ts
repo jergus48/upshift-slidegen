@@ -55,6 +55,21 @@ function pickDistinct<T>(arr: T[], n: number): T[] {
   return Array.from({ length: n }, (_, i) => shuffled[i % shuffled.length]);
 }
 
+// Picks a streak by its `weight` rather than uniformly, so the shorter durations
+// can be made rarer without dropping them from the roll. Falls back to the last
+// entry only if the weights round to nothing.
+function pickWeighted(streaks: Streak[]): Streak | undefined {
+  if (!streaks.length) return undefined;
+  const total = streaks.reduce((sum, s) => sum + Math.max(0, s.weight), 0);
+  if (total <= 0) return streaks[Math.floor(Math.random() * streaks.length)];
+  let roll = Math.random() * total;
+  for (const s of streaks) {
+    roll -= Math.max(0, s.weight);
+    if (roll < 0) return s;
+  }
+  return streaks[streaks.length - 1];
+}
+
 const randInt = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
 
 // Every image in the library that a selection token covers.
@@ -109,7 +124,8 @@ export function buildTransformationShow(
   // which screenshot package is used, so one roll keeps the deck consistent.
   const variant = variantOf(character);
   const usable = usableStreaksIn(library, variant);
-  const streak: Streak = (opts.streakKey ? streakByKey(opts.streakKey) : undefined) ?? pick(usable)!;
+  const streak: Streak =
+    (opts.streakKey ? streakByKey(opts.streakKey) : undefined) ?? pickWeighted(usable)!;
 
   const beforePool = poolFor(library, character.beforeToken);
   const afterPool = poolFor(library, character.afterToken);

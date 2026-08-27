@@ -76,21 +76,27 @@ export const variantOf = (c: { skin?: string; gender?: string }): string =>
 // The durations a streak package can be filed under. `label` is what goes in the
 // deck text ("1 year clean"); `article` is the same duration phrased for the
 // hooks that read "quit lust for a year"; `packBase` is the bundled pack name
-// before the variant suffix.
+// before the variant suffix; `weight` is how often the duration comes up when a
+// deck rolls one at random — relative to the other durations, not a percentage.
 export interface Streak {
   key: string;
   label: string;
   article: string;
   packBase: string;
+  weight: number;
 }
 
 // The durations we actually ship screenshots for. Adding one here only makes it
 // selectable — it stays unusable until its package holds photos.
+// The longer the streak the harder the flex, so the weights climb with the
+// duration: 1 year and 100 days carry the roll, 60 days is occasional and 30
+// days is rare — still in the mix, just not what most decks come out as.
+// Roughly 8% / 17% / 33% / 42% when all four have a package.
 export const STREAKS: Streak[] = [
-  { key: '30d', label: '30 days', article: '30 days', packBase: 'Upshift Streak 30' },
-  { key: '60d', label: '60 days', article: '60 days', packBase: 'Upshift Streak 60' },
-  { key: '100d', label: '100 days', article: '100 days', packBase: 'Upshift Streak 100' },
-  { key: '365d', label: '1 year', article: 'a year', packBase: 'Upshift Streak 365' },
+  { key: '30d', label: '30 days', article: '30 days', packBase: 'Upshift Streak 30', weight: 1 },
+  { key: '60d', label: '60 days', article: '60 days', packBase: 'Upshift Streak 60', weight: 2 },
+  { key: '100d', label: '100 days', article: '100 days', packBase: 'Upshift Streak 100', weight: 4 },
+  { key: '365d', label: '1 year', article: 'a year', packBase: 'Upshift Streak 365', weight: 5 },
 ];
 
 // The blocked-🌽 and streak screenshots ship with the build as ordinary bundled
