@@ -9,6 +9,12 @@ import { HOOKS, fillHook, hookUsesStreak } from '../lib/transformationHooks';
 import { missingPieces, poolFor, usableStreaksIn } from '../lib/transformationDeck';
 import {
   STREAKS,
+  SKINS,
+  GENDERS,
+  VARIANTS,
+  variantOf,
+  variantLabel,
+  setCharacterLook,
   getCharacters,
   getBlockedToken,
   setBlockedToken,
@@ -20,6 +26,7 @@ import {
   removeCharacter,
   setCharacterToken,
   subscribeCharacters,
+  type Variant,
   type Character,
 } from '../lib/characters';
 import type { CaptionStyle } from '../lib/captionStyle';
@@ -110,6 +117,41 @@ function PackageSelect({
   );
 }
 
+// One of the two look dimensions (skin / gender) as a small segmented control.
+// The pair decides which variant of the shared proof packages a character draws.
+function LookSelect({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { key: string; label: string }[];
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5">{label}</div>
+      <div className="flex gap-1.5">
+        {options.map((o) => (
+          <button
+            key={o.key}
+            onClick={() => onChange(o.key)}
+            className={`flex-1 h-9 rounded-lg border text-[12px] font-medium transition-colors ${
+              value === o.key
+                ? 'border-ink bg-ink text-bg'
+                : 'border-line bg-card text-ink-5 hover:border-line-2'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface CharactersViewProps {
   generating: boolean;
   onGenerate: (opts: {
@@ -134,6 +176,9 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
   const [streakKey, setStreakKey] = useState(''); // '' = random per deck
   const [hookTemplate, setHookTemplate] = useState(''); // '' = random per deck
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>('app');
+  // Which variant's shared packages the panel above is editing. Purely a view
+  // concern — a deck always uses its own character's variant.
+  const [editVariant, setEditVariant] = useState<string>(VARIANTS[0].key);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
@@ -173,8 +218,11 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
     return unsub;
   }, [rerender]);
 
-  const blockedToken = getBlockedToken();
-  const usableStreaks = usableStreaksIn(library);
+  const blockedToken = getBlockedToken(editVariant);
+  // The streak dropdown below covers whatever the selected characters can
+  // actually roll; with nothing selected it falls back to the edited variant.
+  const streakVariants = characters.filter((c) => selected.includes(c.id)).map(variantOf);
+  const usableStreaks = usableStreaksIn(library, streakVariants[0] ?? editVariant);
   const ready = characters.filter((c) => missingPieces(c, library).length === 0);
 
   const create = () => {
@@ -218,7 +266,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
     <>
       <ViewHeader
         title="Characters"
-        subtitle="Before/after transformation decks. Point each character at a before and an after library pack, pick the two shared packs once, and every deck draws its own random photos out of them."
+        subtitle="Before/after transformation decks. Give each character a look and a before/after library pack, pick the shared proof packs once per look, and every deck draws its own random photos out of them."
         right={
           <Button
             variant="secondary"
@@ -258,9 +306,26 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
             <div>
               <h2 className="text-[13px] font-semibold text-ink">Shared packages</h2>
               <p className="text-[11px] text-ink-6">
-                Picked once, reused by every character. Both ship with the app as bundled library packs, so this
-                works out of the box — pick a different pack to override.
+                One set per skin and gender, so the hand in a proof screenshot matches the character it is shown
+                with. Each character picks its own look further down. Only the variants we ship screenshots for
+                come filled in — the rest read “0 photos” until you add packs under those names in the Library.
               </p>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {VARIANTS.map((v: Variant) => (
+                <button
+                  key={v.key}
+                  onClick={() => setEditVariant(v.key)}
+                  className={`h-8 px-3 rounded-lg border text-[12px] font-medium transition-colors ${
+                    editVariant === v.key
+                      ? 'border-ink bg-ink text-bg'
+                      : 'border-line bg-card text-ink-5 hover:border-line-2'
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
             </div>
 
             <PackageSelect
@@ -269,7 +334,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
               token={blockedToken}
               packs={packs}
               library={library}
-              onChange={setBlockedToken}
+              onChange={(t) => setBlockedToken(editVariant, t)}
             />
 
             <div>
@@ -287,10 +352,10 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
                     key={s.key}
                     label={s.label}
                     hint="not used"
-                    token={getStreakToken(s.key)}
+                    token={getStreakToken(editVariant, s.key)}
                     packs={packs}
                     library={library}
-                    onChange={(t) => setStreakToken(s.key, t)}
+                    onChange={(t) => setStreakToken(editVariant, s.key, t)}
                   />
                 ))}
               </div>
@@ -371,6 +436,24 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
                       onClick={() => removeCharacter(c.id)}
                     />
                   </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <LookSelect
+                      label="Skin"
+                      options={SKINS}
+                      value={c.skin}
+                      onChange={(skin) => setCharacterLook(c.id, { skin })}
+                    />
+                    <LookSelect
+                      label="Gender"
+                      options={GENDERS}
+                      value={c.gender}
+                      onChange={(gender) => setCharacterLook(c.id, { gender })}
+                    />
+                  </div>
+                  <p className="text-[11px] text-ink-6 -mt-2">
+                    Proof slides come from the “{variantLabel(c.skin, c.gender)}” shared packages above.
+                  </p>
 
                   <PackageSelect
                     label="Before"

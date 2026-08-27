@@ -1,5 +1,6 @@
 // Builds the before/after transformation deck from a character's two library
-// packages plus the two shared ones (blocked 🌽 / Upshift streak).
+// packages plus the two shared ones (blocked 🌽 / Upshift streak), taken from the
+// set matching the character's skin/gender variant.
 //
 // The shape is fixed, the counts are not:
 //   2–3 × BEFORE   — all carrying the same hook line
@@ -20,7 +21,15 @@ import { HOOKS, fillHook } from './transformationHooks';
 import { pickCaption } from './transformationCaptions';
 import { tokenMatches } from './subfolders';
 import { libraryRef } from './imageSrc';
-import { getBlockedToken, getStreakToken, getUsableStreaks, streakByKey, type Character, type Streak } from './characters';
+import {
+  getBlockedToken,
+  getStreakToken,
+  getUsableStreaks,
+  streakByKey,
+  variantOf,
+  type Character,
+  type Streak,
+} from './characters';
 
 // Same gradient palette the rest of the app uses, so a caption still sits on a
 // real background if a package turns out to be empty.
@@ -65,12 +74,12 @@ export interface BuildResult {
   error?: string;
 }
 
-// The durations that can actually be rolled: a package is assigned AND it holds
-// photos. Without a library only the assignment is known.
-export function usableStreaksIn(library?: LibraryImage[]): Streak[] {
-  const assigned = getUsableStreaks();
+// The durations that can actually be rolled for one variant: a package is
+// assigned AND it holds photos. Without a library only the assignment is known.
+export function usableStreaksIn(library: LibraryImage[] | undefined, variant: string): Streak[] {
+  const assigned = getUsableStreaks(variant);
   if (!library) return assigned;
-  return assigned.filter((s) => poolFor(library, getStreakToken(s.key)).length > 0);
+  return assigned.filter((s) => poolFor(library, getStreakToken(variant, s.key)).length > 0);
 }
 
 // Everything a deck needs before it can be built. Surfaced by the view so the
@@ -80,10 +89,11 @@ export function usableStreaksIn(library?: LibraryImage[]): Streak[] {
 export function missingPieces(character: Character, library?: LibraryImage[]): string[] {
   const missing: string[] = [];
   const empty = (token: string) => !token || (library ? poolFor(library, token).length === 0 : false);
+  const variant = variantOf(character);
   if (empty(character.beforeToken)) missing.push('a before package');
   if (empty(character.afterToken)) missing.push('an after package');
-  if (empty(getBlockedToken())) missing.push('a blocked 🌽 package');
-  if (usableStreaksIn(library).length === 0) missing.push('an Upshift streak package');
+  if (empty(getBlockedToken(variant))) missing.push('a blocked 🌽 package');
+  if (usableStreaksIn(library, variant).length === 0) missing.push('an Upshift streak package');
   return missing;
 }
 
@@ -97,13 +107,14 @@ export function buildTransformationShow(
 
   // The streak drives BOTH the hook's {X}/{A} and the "<streak> clean" lines and
   // which screenshot package is used, so one roll keeps the deck consistent.
-  const usable = usableStreaksIn(library);
+  const variant = variantOf(character);
+  const usable = usableStreaksIn(library, variant);
   const streak: Streak = (opts.streakKey ? streakByKey(opts.streakKey) : undefined) ?? pick(usable)!;
 
   const beforePool = poolFor(library, character.beforeToken);
   const afterPool = poolFor(library, character.afterToken);
-  const blockedShot = pick(poolFor(library, getBlockedToken()));
-  const streakShot = pick(poolFor(library, getStreakToken(streak.key)));
+  const blockedShot = pick(poolFor(library, getBlockedToken(variant)));
+  const streakShot = pick(poolFor(library, getStreakToken(variant, streak.key)));
   if (!blockedShot || !streakShot)
     return { error: `The shared packages have no photos for ${streak.label}.` };
 

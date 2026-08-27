@@ -211,70 +211,77 @@
       ]
     },
     {
-      "slug": "blocked-corn",
-      "name": "Blocked 🌽",
-      "description": "Phone screenshots of a blocked site — the proof slide in a Characters deck.",
+      "slug": "blocked-corn-white-male",
+      "name": "Blocked 🌽 (White male)",
+      "description": "Phone screenshots of a blocked site, held by a white male — the proof slide in a Characters deck.",
       "images": [
-        "blocked-corn/01.jpg",
-        "blocked-corn/02.jpg",
-        "blocked-corn/03.jpg",
-        "blocked-corn/04.jpg",
-        "blocked-corn/05.jpg",
-        "blocked-corn/06.jpg",
-        "blocked-corn/07.jpg",
-        "blocked-corn/08.jpg",
-        "blocked-corn/09.jpg"
+        "blocked-corn-white-male/01.jpg",
+        "blocked-corn-white-male/02.jpg",
+        "blocked-corn-white-male/03.jpg",
+        "blocked-corn-white-male/04.jpg",
+        "blocked-corn-white-male/05.jpg",
+        "blocked-corn-white-male/06.jpg",
+        "blocked-corn-white-male/07.jpg",
+        "blocked-corn-white-male/08.jpg",
+        "blocked-corn-white-male/09.jpg",
+        "blocked-corn-white-male/10.jpg"
       ]
     },
     {
-      "slug": "upshift-streak-30",
-      "name": "Upshift Streak 30",
-      "description": "Upshift streak screenshots showing 30 days — the streak slide in a Characters deck.",
+      "slug": "upshift-streak-30-white-male",
+      "name": "Upshift Streak 30 (White male)",
+      "description": "Upshift streak screenshots showing 30 days, held by a white male — the streak slide in a Characters deck.",
       "images": [
-        "upshift-streak-30/01.jpg",
-        "upshift-streak-30/02.jpg",
-        "upshift-streak-30/03.jpg",
-        "upshift-streak-30/04.jpg"
+        "upshift-streak-30-white-male/01.jpg",
+        "upshift-streak-30-white-male/02.jpg",
+        "upshift-streak-30-white-male/03.jpg",
+        "upshift-streak-30-white-male/04.jpg",
+        "upshift-streak-30-white-male/05.jpg",
+        "upshift-streak-30-white-male/06.jpg",
+        "upshift-streak-30-white-male/07.jpg"
       ]
     },
     {
-      "slug": "upshift-streak-60",
-      "name": "Upshift Streak 60",
-      "description": "Upshift streak screenshots showing 60 days — the streak slide in a Characters deck.",
+      "slug": "upshift-streak-60-white-male",
+      "name": "Upshift Streak 60 (White male)",
+      "description": "Upshift streak screenshots showing 60 days, held by a white male — the streak slide in a Characters deck.",
       "images": [
-        "upshift-streak-60/01.jpg",
-        "upshift-streak-60/02.jpg",
-        "upshift-streak-60/03.jpg",
-        "upshift-streak-60/04.jpg"
+        "upshift-streak-60-white-male/01.jpg",
+        "upshift-streak-60-white-male/02.jpg",
+        "upshift-streak-60-white-male/03.jpg",
+        "upshift-streak-60-white-male/04.jpg",
+        "upshift-streak-60-white-male/05.jpg",
+        "upshift-streak-60-white-male/06.jpg",
+        "upshift-streak-60-white-male/07.jpg"
       ]
     },
     {
-      "slug": "upshift-streak-100",
-      "name": "Upshift Streak 100",
-      "description": "Upshift streak screenshots showing 100 days — the streak slide in a Characters deck.",
+      "slug": "upshift-streak-100-white-male",
+      "name": "Upshift Streak 100 (White male)",
+      "description": "Upshift streak screenshots showing 100 days, held by a white male — the streak slide in a Characters deck.",
       "images": [
-        "upshift-streak-100/01.jpg",
-        "upshift-streak-100/02.jpg",
-        "upshift-streak-100/03.jpg",
-        "upshift-streak-100/04.jpg",
-        "upshift-streak-100/05.jpg"
+        "upshift-streak-100-white-male/01.jpg",
+        "upshift-streak-100-white-male/02.jpg",
+        "upshift-streak-100-white-male/03.jpg",
+        "upshift-streak-100-white-male/04.jpg",
+        "upshift-streak-100-white-male/05.jpg",
+        "upshift-streak-100-white-male/06.jpg",
+        "upshift-streak-100-white-male/07.jpg"
       ]
     },
     {
-      "slug": "upshift-streak-365",
-      "name": "Upshift Streak 365",
-      "description": "Upshift streak screenshots showing a full year — the streak slide in a Characters deck.",
+      "slug": "upshift-streak-365-white-male",
+      "name": "Upshift Streak 365 (White male)",
+      "description": "Upshift streak screenshots showing a full year, held by a white male — the streak slide in a Characters deck.",
       "images": [
-        "upshift-streak-365/01.jpg",
-        "upshift-streak-365/02.jpg",
-        "upshift-streak-365/03.jpg",
-        "upshift-streak-365/04.jpg",
-        "upshift-streak-365/05.jpg",
-        "upshift-streak-365/06.jpg",
-        "upshift-streak-365/07.jpg",
-        "upshift-streak-365/08.jpg",
-        "upshift-streak-365/09.jpg",
-        "upshift-streak-365/10.jpg"
+        "upshift-streak-365-white-male/01.jpg",
+        "upshift-streak-365-white-male/02.jpg",
+        "upshift-streak-365-white-male/03.jpg",
+        "upshift-streak-365-white-male/04.jpg",
+        "upshift-streak-365-white-male/05.jpg",
+        "upshift-streak-365-white-male/06.jpg",
+        "upshift-streak-365-white-male/07.jpg",
+        "upshift-streak-365-white-male/08.jpg"
       ]
     }
   ]
