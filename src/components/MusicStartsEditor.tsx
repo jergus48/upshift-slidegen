@@ -3,7 +3,7 @@ import { Play, Pause, Flag, RotateCcw, Music, Trash2, Plus, EyeOff, Loader2 } fr
 import { listAllTracks, type MusicListItem, type MusicGender } from '../lib/music';
 import { getAllStarts, setStart } from '../lib/musicStarts';
 import { getAllDrops, setDrop } from '../lib/musicDrops';
-import { addLocalTrack, removeLocalTrack, hideTrack } from '../lib/localMusic';
+import { addLocalTrack, removeLocalTrack, hideTrack, type MusicScope } from '../lib/localMusic';
 
 // Strip the extension and any leading "artist -" noise for a compact label.
 function prettyName(t: MusicListItem): string {
@@ -44,6 +44,8 @@ const COPY = {
 // With mode="drop" the same UI pins Characters drop points instead.
 export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {}) {
   const copy = COPY[mode];
+  // Each editor is its own library: hiding a song here must not touch the other.
+  const scope: MusicScope = mode === 'drop' ? 'characters' : 'video';
   const readAll = mode === 'drop' ? getAllDrops : getAllStarts;
   const savePoint = mode === 'drop' ? setDrop : setStart;
   const [tracks, setTracks] = useState<MusicListItem[]>([]);
@@ -58,7 +60,7 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
 
   const reload = () => {
     setStarts(readAll());
-    return listAllTracks().then(setTracks).catch(() => setTracks([]));
+    return listAllTracks(scope).then(setTracks).catch(() => setTracks([]));
   };
 
   useEffect(() => {
@@ -114,9 +116,10 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
   };
 
   const removeTrack = async (t: MusicListItem) => {
-    // Local uploads are deleted; bundled tracks are hidden for this browser.
-    if (t.local) await removeLocalTrack(t.file);
-    else hideTrack(t.file);
+    // Only the video library deletes an upload for real; everywhere else the
+    // track is just hidden from THIS library, in this browser.
+    if (t.local && scope === 'video') await removeLocalTrack(t.file);
+    else hideTrack(t.file, scope);
     clearStart(t.file);
     if (loaded?.file === t.file) {
       audioRef.current?.pause();

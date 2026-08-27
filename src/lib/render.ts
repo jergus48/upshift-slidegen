@@ -893,12 +893,15 @@ export async function downloadSlideshowsVideo(
 
   // Each video gets its own randomly-picked track from the chosen pool, so a
   // batch doesn't all share one song. No pool / empty pool → silent video.
-  const trackFor = async () => (music ? await pickMusicTrack(music) : null);
+  // Characters decks draw from the Characters music library, everything else
+  // from the video one — they hide tracks independently.
+  const trackFor = async (show: Slideshow) =>
+    music ? await pickMusicTrack(music, show.kind === 'characters' ? 'characters' : 'video') : null;
 
   // Single selection → one plain video file plus its metadata sidecar.
   if (shows.length === 1) {
     onProgress?.(0, 1);
-    const blob = await renderSlideshowVideo(shows[0], await trackFor());
+    const blob = await renderSlideshowVideo(shows[0], await trackFor(shows[0]));
     onProgress?.(1, 1);
     const base = slugify(shows[0].hook || shows[0].caption || shows[0].id);
     const videoName = `${base}.${extForMime(blob.type)}`;
@@ -945,7 +948,7 @@ export async function downloadSlideshowsVideo(
     }
     usedNames.add(name);
 
-    const blob = await renderSlideshowVideo(show, await trackFor());
+    const blob = await renderSlideshowVideo(show, await trackFor(show));
     const videoName = `${name}.${extForMime(blob.type)}`;
     const videoBytes = new Uint8Array(await blob.arrayBuffer());
     const metaBytes = new TextEncoder().encode(videoMetaJson(show));

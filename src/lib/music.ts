@@ -17,7 +17,9 @@
 
 import { getStart } from './musicStarts';
 import { getDrop } from './musicDrops';
-import { listLocalTracks, objectUrlForLocalTrack, getHidden } from './localMusic';
+import { listLocalTracks, objectUrlForLocalTrack, getHidden, type MusicScope } from './localMusic';
+
+export type { MusicScope };
 
 export type MusicGender = 'male' | 'female';
 
@@ -68,8 +70,8 @@ function trackUrl(m: MusicManifest, gender: MusicGender, file: string): string {
 }
 
 // True if the chosen pool has at least one playable track (bundled or local).
-export async function hasMusic(gender: MusicGender): Promise<boolean> {
-  return (await poolFor(gender)).length > 0;
+export async function hasMusic(gender: MusicGender, scope: MusicScope = 'video'): Promise<boolean> {
+  return (await poolFor(gender, scope)).length > 0;
 }
 
 // A track a caller can display and audition. `file` is the stable id used to
@@ -88,11 +90,12 @@ export interface MusicListItem {
   local?: boolean;
 }
 
-// Every track across both pools — bundled (minus any hidden) plus the user's
-// local uploads — for the Brain "Video music" editor.
-export async function listAllTracks(): Promise<MusicListItem[]> {
+// Every track across both pools — bundled plus the user's local uploads, minus
+// the ones hidden in THIS library — for the Brain music editors. "Video music"
+// and "Characters music" hide independently (scope).
+export async function listAllTracks(scope: MusicScope = 'video'): Promise<MusicListItem[]> {
   const m = await loadManifest();
-  const hidden = getHidden();
+  const hidden = getHidden(scope);
   const out: MusicListItem[] = [];
   for (const gender of ['male', 'female'] as const) {
     for (const entry of m[gender] ?? []) {
@@ -109,6 +112,7 @@ export async function listAllTracks(): Promise<MusicListItem[]> {
     }
   }
   for (const t of await listLocalTracks()) {
+    if (hidden.has(t.id)) continue;
     out.push({
       gender: t.gender,
       file: t.id,
@@ -137,9 +141,9 @@ interface Candidate {
 // The pickable pool for a gender: bundled manifest tracks (minus hidden) plus
 // the user's local uploads for that gender. Local URLs are minted fresh from the
 // stored blob at pick time (object URLs don't survive a reload).
-async function poolFor(gender: MusicGender): Promise<Candidate[]> {
+async function poolFor(gender: MusicGender, scope: MusicScope = 'video'): Promise<Candidate[]> {
   const m = await loadManifest();
-  const hidden = getHidden();
+  const hidden = getHidden(scope);
   const pool: Candidate[] = [];
   for (const entry of m[gender] ?? []) {
     const file = typeof entry === 'string' ? entry : entry.file;
@@ -153,7 +157,7 @@ async function poolFor(gender: MusicGender): Promise<Candidate[]> {
     });
   }
   for (const t of await listLocalTracks()) {
-    if (t.gender !== gender) continue;
+    if (t.gender !== gender || hidden.has(t.id)) continue;
     const url = (await objectUrlForLocalTrack(t.id)) ?? t.url;
     pool.push({ file: t.id, url, start: getStart(t.id), drop: getDrop(t.id) });
   }
@@ -161,8 +165,8 @@ async function poolFor(gender: MusicGender): Promise<Candidate[]> {
 }
 
 // A random track from the pool, or null if the pool is empty/unconfigured.
-export async function pickMusicTrack(gender: MusicGender): Promise<MusicTrack | null> {
-  const pool = await poolFor(gender);
+export async function pickMusicTrack(gender: MusicGender, scope: MusicScope = 'video'): Promise<MusicTrack | null> {
+  const pool = await poolFor(gender, scope);
   if (!pool.length) return null;
   const c = pool[Math.floor(Math.random() * pool.length)];
   return { url: c.url, start: c.start, drop: c.drop };

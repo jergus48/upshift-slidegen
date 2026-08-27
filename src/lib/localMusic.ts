@@ -122,12 +122,23 @@ export async function removeLocalTrack(id: string): Promise<void> {
   }
 }
 
-// ── Hidden bundled tracks (localStorage) ─────────────────────────────────────
-const HIDDEN_KEY = 'slidesmith:musicHidden';
+// ── Hidden tracks, per library (localStorage) ────────────────────────────────
+// "Video music" and "Characters music" are two separate libraries over the same
+// files: hiding a song in one must NOT hide it in the other. So each keeps its
+// own hidden set. In the Characters library a *local* upload is only hidden too
+// (its bytes stay in IndexedDB) — deleting it there would rip it out of the
+// video library as well. Only the video library deletes for real.
+export type MusicScope = 'video' | 'characters';
 
-export function getHidden(): Set<string> {
+// The video key keeps its original name so existing hidden lists survive.
+const HIDDEN_KEYS: Record<MusicScope, string> = {
+  video: 'slidesmith:musicHidden',
+  characters: 'slidesmith:musicHiddenCharacters',
+};
+
+export function getHidden(scope: MusicScope = 'video'): Set<string> {
   try {
-    const raw = localStorage.getItem(HIDDEN_KEY);
+    const raw = localStorage.getItem(HIDDEN_KEYS[scope]);
     const arr = raw ? (JSON.parse(raw) as string[]) : [];
     return new Set(Array.isArray(arr) ? arr : []);
   } catch {
@@ -135,22 +146,22 @@ export function getHidden(): Set<string> {
   }
 }
 
-function writeHidden(set: Set<string>): void {
+function writeHidden(scope: MusicScope, set: Set<string>): void {
   try {
-    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
+    localStorage.setItem(HIDDEN_KEYS[scope], JSON.stringify([...set]));
   } catch {
     /* storage unavailable */
   }
 }
 
-export function hideTrack(file: string): void {
-  const set = getHidden();
+export function hideTrack(file: string, scope: MusicScope = 'video'): void {
+  const set = getHidden(scope);
   set.add(file);
-  writeHidden(set);
+  writeHidden(scope, set);
 }
 
-export function unhideTrack(file: string): void {
-  const set = getHidden();
+export function unhideTrack(file: string, scope: MusicScope = 'video'): void {
+  const set = getHidden(scope);
   set.delete(file);
-  writeHidden(set);
+  writeHidden(scope, set);
 }
