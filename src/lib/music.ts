@@ -23,13 +23,37 @@ export type { MusicScope };
 
 export type MusicGender = 'male' | 'female';
 
-// A track is either a bare filename/URL or an object with an explicit start.
-type MusicEntry = string | { file: string; start?: number };
+// A track is either a bare filename/URL or an object with an explicit start
+// (and, for the Characters pools, an explicit drop).
+type MusicEntry = string | { file: string; start?: number; drop?: number };
 
 interface MusicManifest {
   base?: string;
   male?: MusicEntry[];
   female?: MusicEntry[];
+  // Optional Characters-only pools. When present, Characters decks draw from
+  // these instead of male/female — the two libraries are curated separately.
+  // The files still live under /music/<gender>/.
+  charactersMale?: MusicEntry[];
+  charactersFemale?: MusicEntry[];
+}
+
+// The manifest entries a library draws from: the Characters pool when the
+// manifest defines one, else the plain gender pool.
+function entriesFor(m: MusicManifest, gender: MusicGender, scope: MusicScope): MusicEntry[] {
+  if (scope === 'characters') {
+    const chars = gender === 'male' ? m.charactersMale : m.charactersFemale;
+    if (chars) return chars;
+  }
+  return m[gender] ?? [];
+}
+
+function entryStart(entry: MusicEntry): number | undefined {
+  return typeof entry === 'string' ? undefined : entry.start;
+}
+
+function entryDrop(entry: MusicEntry): number | undefined {
+  return typeof entry === 'string' ? undefined : entry.drop;
 }
 
 // Resolved track handed to the exporter: where to fetch it and, if pinned in the
@@ -98,16 +122,15 @@ export async function listAllTracks(scope: MusicScope = 'video'): Promise<MusicL
   const hidden = getHidden(scope);
   const out: MusicListItem[] = [];
   for (const gender of ['male', 'female'] as const) {
-    for (const entry of m[gender] ?? []) {
+    for (const entry of entriesFor(m, gender, scope)) {
       const file = typeof entry === 'string' ? entry : entry.file;
       if (hidden.has(file)) continue;
-      const manifestStart = typeof entry === 'string' ? undefined : entry.start;
       out.push({
         gender,
         file,
         url: trackUrl(m, gender, file),
-        start: getStart(file) ?? manifestStart,
-        drop: getDrop(file),
+        start: getStart(file) ?? entryStart(entry),
+        drop: getDrop(file) ?? entryDrop(entry),
       });
     }
   }
@@ -145,15 +168,14 @@ async function poolFor(gender: MusicGender, scope: MusicScope = 'video'): Promis
   const m = await loadManifest();
   const hidden = getHidden(scope);
   const pool: Candidate[] = [];
-  for (const entry of m[gender] ?? []) {
+  for (const entry of entriesFor(m, gender, scope)) {
     const file = typeof entry === 'string' ? entry : entry.file;
     if (hidden.has(file)) continue;
-    const manifestStart = typeof entry === 'string' ? undefined : entry.start;
     pool.push({
       file,
       url: trackUrl(m, gender, file),
-      start: effectiveStart(file, manifestStart),
-      drop: getDrop(file),
+      start: effectiveStart(file, entryStart(entry)),
+      drop: getDrop(file) ?? entryDrop(entry),
     });
   }
   for (const t of await listLocalTracks()) {
