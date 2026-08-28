@@ -41,7 +41,8 @@ const SHAPE = [
   { label: 'After', hint: '"<streak> clean"' },
   { label: 'Blocked 🌽', hint: 'shared package, same line' },
   { label: 'Streak', hint: 'shared package, same line' },
-  { label: 'After', hint: '1–2 more, same line' },
+  { label: 'After', hint: '0–1 more, same line' },
+  { label: 'With girlfriend', hint: 'the closing slide, same line' },
 ];
 
 // Picks one library pack (or one of its subfolders) as a package, and previews a
@@ -287,7 +288,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
             <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-2 block">
               The order
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
               {SHAPE.map((s, i) => (
                 <div key={i} className="bg-card border border-line rounded-xl px-3 py-2">
                   <div className="text-[12px] font-medium text-ink">{s.label}</div>
@@ -296,7 +297,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
               ))}
             </div>
             <p className="text-[11px] text-ink-6 mt-2">
-              6–8 slides. The before/after counts and every photo are re-rolled per deck, so a batch never comes out
+              6–8 slides, always ending on the girlfriend shot. The before/after counts and every photo are re-rolled per deck, so a batch never comes out
               identical.
             </p>
           </div>
@@ -470,6 +471,14 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
                     packs={packs}
                     library={library}
                     onChange={(t) => setCharacterToken(c.id, 'after', t)}
+                  />
+                  <PackageSelect
+                    label="With girlfriend"
+                    hint="the closing shot"
+                    token={c.girlfriendToken}
+                    packs={packs}
+                    library={library}
+                    onChange={(t) => setCharacterToken(c.id, 'girlfriend', t)}
                   />
                 </div>
               );

@@ -7,7 +7,8 @@
 //   1   × AFTER    — "<streak> clean"
 //   1   × BLOCKED  — the 🌽-blocked screenshot
 //   1   × STREAK   — the Upshift streak screenshot
-//   1–2 × AFTER    — "<streak> clean"
+//   0–1 × AFTER    — "<streak> clean"
+//   1   × GIRLFRIEND — the closing shot, same line
 // Every slide from the first after onwards carries the same "<streak> clean"
 // line, the two proof slides included, so the claim stays on screen while the
 // viewer swipes through the evidence.
@@ -64,6 +65,7 @@ interface Batch {
   streaks: Dealer<Streak>;
   before: Dealer<LibraryImage>;
   after: Dealer<LibraryImage>;
+  girlfriend: Dealer<LibraryImage>;
   blocked: Dealer<LibraryImage>;
   // One bag per duration, built on first use — a deck only ever touches the
   // package of the streak it rolled.
@@ -81,6 +83,7 @@ function makeBatch(character: Character, library: LibraryImage[]): Batch {
     streaks: makeWeightedDealer(usableStreaksIn(library, variant), (s) => s.weight),
     before: makeDealer(poolFor(library, character.beforeToken)),
     after: makeDealer(poolFor(library, character.afterToken)),
+    girlfriend: makeDealer(poolFor(library, character.girlfriendToken)),
     blocked: makeDealer(poolFor(library, getBlockedToken(variant))),
     streakShots: new Map(),
     caption: makeCaptionPicker(),
@@ -140,6 +143,7 @@ export function missingPieces(character: Character, library?: LibraryImage[]): s
   const variant = variantOf(character);
   if (empty(character.beforeToken)) missing.push('a before package');
   if (empty(character.afterToken)) missing.push('an after package');
+  if (empty(character.girlfriendToken)) missing.push('a girlfriend package');
   if (empty(getBlockedToken(variant))) missing.push('a blocked 🌽 package');
   if (usableStreaksIn(library, variant).length === 0) missing.push('an Upshift streak package');
   return missing;
@@ -164,6 +168,11 @@ export function buildTransformationShow(
   if (!blockedShot || !streakShot)
     return { error: `The shared packages have no photos for ${streak.label}.` };
 
+  // The deck always closes on the girlfriend shot, so it is drawn up front —
+  // missingPieces already guaranteed the package holds photos.
+  const girlfriendShot = batch.girlfriend.next();
+  if (!girlfriendShot) return { error: `${character.name} has no girlfriend photos.` };
+
   const hook = fillHook(opts.hookTemplate ?? batch.hooks.next()!, streak);
   const cleanLine = `${streak.label} clean`;
   // The post's own caption/hashtags — short, and dealt so a batch works through
@@ -171,7 +180,9 @@ export function buildTransformationShow(
   const { caption, hashtags } = batch.caption(streak);
 
   const beforeShots = deal(batch.before, randInt(2, 3));
-  const afterShots = deal(batch.after, 1 + randInt(1, 2));
+  // One after shot before the proof slides, then 0–1 more after them; the
+  // closing slide is the girlfriend shot rather than another after photo.
+  const afterShots = deal(batch.after, 1 + randInt(0, 1));
 
   const stamp = Date.now();
   const rand = Math.random().toString(36).slice(2, 7);
@@ -196,6 +207,8 @@ export function buildTransformationShow(
     slide(cleanLine, blockedShot),
     slide(cleanLine, streakShot),
     ...afterShots.slice(1).map((img) => slide(cleanLine, img)),
+    // The closer: same line, the payoff shot.
+    slide(cleanLine, girlfriendShot),
   ];
 
   return {
@@ -208,7 +221,7 @@ export function buildTransformationShow(
       hook,
       caption,
       hashtags,
-      rationale: `${character.name} · ${streak.label} · ${beforeShots.length} before / ${afterShots.length} after`,
+      rationale: `${character.name} · ${streak.label} · ${beforeShots.length} before / ${afterShots.length} after + girlfriend`,
       createdAt: new Date(stamp).toISOString(),
       slides,
     },

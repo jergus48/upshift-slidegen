@@ -153,6 +153,9 @@ export interface Character {
   gender: string;
   beforeToken: string; // library selection token, '' = not picked yet
   afterToken: string;
+  // The closing slide: a shot of the character with their girlfriend. It takes
+  // the place of the last after photo, so every deck ends on the same beat.
+  girlfriendToken: string;
 }
 
 interface Store {
@@ -210,6 +213,7 @@ function read(): Store {
           gender: str(c.gender) || DEFAULT_GENDER,
           beforeToken: String(c.beforeToken || ''),
           afterToken: String(c.afterToken || ''),
+          girlfriendToken: String(c.girlfriendToken || ''),
         }))
       : [];
 
@@ -297,6 +301,7 @@ export function addCharacter(name: string): Character {
     gender: DEFAULT_GENDER,
     beforeToken: '',
     afterToken: '',
+    girlfriendToken: '',
   };
   write({ ...store, characters: [...store.characters, character] });
   return character;
@@ -331,9 +336,14 @@ export function setCharacterLook(id: string, look: { skin?: string; gender?: str
   });
 }
 
-// Point one of a character's two packages at a library pack/subfolder.
-export function setCharacterToken(id: string, kind: 'before' | 'after', token: string): void {
-  const field = kind === 'before' ? 'beforeToken' : 'afterToken';
+// Point one of a character's own packages at a library pack/subfolder.
+export function setCharacterToken(
+  id: string,
+  kind: 'before' | 'after' | 'girlfriend',
+  token: string
+): void {
+  const field =
+    kind === 'before' ? 'beforeToken' : kind === 'after' ? 'afterToken' : 'girlfriendToken';
   const store = read();
   write({
     ...store,
