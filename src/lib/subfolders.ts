@@ -111,3 +111,21 @@ export function tokenMatches(token: string, img: { pack: string; subfolder?: str
   if (t.subfolder === null) return true;
   return (img.subfolder || null) === t.subfolder;
 }
+
+// Move a pack's whole subfolder registry to a new pack name (used when a pack
+// is renamed). Merges into the destination's list if it already has entries.
+export function renamePackSubfolders(from: string, to: string): void {
+  const clean = to.trim();
+  if (!clean || clean === from) return;
+  const reg = read();
+  const list = reg[from];
+  if (!list?.length) return;
+  const existing = reg[clean] || [];
+  const merged = [...existing];
+  for (const s of list) {
+    if (!merged.some((e) => e.toLowerCase() === s.toLowerCase())) merged.push(s);
+  }
+  reg[clean] = merged;
+  delete reg[from];
+  write(reg);
+}

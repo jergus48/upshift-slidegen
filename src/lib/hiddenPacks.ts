@@ -47,3 +47,12 @@ export function subscribeHiddenPacks(fn: Listener): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
+
+// Carry the hidden flag over when a pack is renamed.
+export function renameHiddenPack(from: string, to: string): void {
+  const set = read();
+  if (!set.has(from)) return;
+  set.delete(from);
+  set.add(to.trim());
+  write(set);
+}

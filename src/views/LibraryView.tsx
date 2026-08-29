@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { Loader2, Download, Trash2, Upload, Eye, EyeOff, FolderPlus, X } from 'lucide-react';
+import { Loader2, Download, Trash2, Upload, Eye, EyeOff, FolderPlus, X, Pencil, Check } from 'lucide-react';
 import type { LibraryImage } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { scrapePinterest } from '../lib/api';
 import { getMergedLibrary } from '../lib/mergedLibrary';
-import { addLocalImages, removeLocalImage, setImageSubfolder, moveSubfolderImages } from '../lib/localLibrary';
-import { getHiddenPacks, setPackHidden } from '../lib/hiddenPacks';
-import { getSubfolders, addSubfolder, removeSubfolder } from '../lib/subfolders';
+import { addLocalImages, removeLocalImage, setImageSubfolder, moveSubfolderImages, renameLocalPack } from '../lib/localLibrary';
+import { getHiddenPacks, setPackHidden, renameHiddenPack } from '../lib/hiddenPacks';
+import { getSubfolders, addSubfolder, removeSubfolder, renamePackSubfolders } from '../lib/subfolders';
 import { createZip, dataUrlToBytes, type ZipEntry } from '../lib/zip';
 
 // Filter sentinels for the subfolder view within a pack.
@@ -99,6 +99,9 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
   const [newSub, setNewSub] = useState<Record<string, string>>({});
   const [addingSub, setAddingSub] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
+  // Pack being renamed, and the draft name in its input.
+  const [renamingPack, setRenamingPack] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
 
   // Show every pack here (including hidden ones) so they can be un-hidden.
   const load = () => getMergedLibrary(true).then(setImages).catch((e) => setError(e.message));
@@ -125,6 +128,32 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setScraping(false);
+    }
+  };
+
+  // Rename a pack: re-tag its local images, then carry the hidden flag and the
+  // subfolder registry over to the new name. Bundled images can't move (they're
+  // static files), so a pack with any bundled image isn't renameable at all.
+  const commitRename = async (from: string) => {
+    const to = renameDraft.trim();
+    setRenamingPack(null);
+    if (!to || to === from) return;
+    setError(null);
+    setNote(null);
+    try {
+      const moved = await renameLocalPack(from, to);
+      if (!moved) return;
+      renameHiddenPack(from, to);
+      renamePackSubfolders(from, to);
+      setViewSub((m) => {
+        const { [from]: prev, ...rest } = m;
+        return prev ? { ...rest, [to]: prev } : rest;
+      });
+      setHidden(getHiddenPacks());
+      setNote(`Renamed "${from}" to "${to}".`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -358,6 +387,9 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
                 // Subfolders exist only for the user's own (local) images — the
                 // bundled aesthetic packs are read-only and can't be re-organised.
                 const isLocal = imgs.some((i) => i.source !== 'bundled');
+                // Renaming re-tags image records, which only exist for local
+                // images — a pack holding any bundled file can't be renamed.
+                const isRenameable = imgs.every((i) => i.source !== 'bundled');
                 const present = new Set<string>();
                 for (const i of imgs) if (i.subfolder) present.add(i.subfolder);
                 const subNames = [...new Set([...getSubfolders(pack), ...present])].sort((a, b) => a.localeCompare(b));
@@ -393,8 +425,43 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
                 return (
                 <div key={pack}>
                   <div className="flex items-baseline gap-3 mb-3">
-                    <h2 className="text-[13px] font-semibold text-ink uppercase tracking-widest">{pack}</h2>
+                    {renamingPack === pack ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          autoFocus
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitRename(pack);
+                            if (e.key === 'Escape') setRenamingPack(null);
+                          }}
+                          onBlur={() => commitRename(pack)}
+                          placeholder="Pack name"
+                          className="h-7 w-56 bg-card border border-line rounded-lg px-2.5 text-[13px] text-ink placeholder:text-ink-6 outline-none focus:border-ink-7"
+                        />
+                        <button
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => commitRename(pack)}
+                          aria-label="Save pack name"
+                          className="text-ink-5 hover:text-ink transition-colors"
+                          title="Save"
+                        >
+                          <Check size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <h2 className="text-[13px] font-semibold text-ink uppercase tracking-widest">{pack}</h2>
+                    )}
                     <span className="text-[11px] text-ink-6">{imgs.length}</span>
+                    {isRenameable && renamingPack !== pack && (
+                      <button
+                        onClick={() => { setRenameDraft(pack); setRenamingPack(pack); }}
+                        className="flex items-center gap-1 text-[11px] text-ink-5 hover:text-ink transition-colors"
+                        title="Rename this pack"
+                      >
+                        <Pencil size={12} /> Rename
+                      </button>
+                    )}
                     <button
                       onClick={() => downloadPack(pack, imgs)}
                       disabled={downloading !== null || !imgs.length}

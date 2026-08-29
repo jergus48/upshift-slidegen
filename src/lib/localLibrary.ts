@@ -169,3 +169,22 @@ export async function removeLocalImage(id: string): Promise<void> {
     urlCache.delete(id);
   }
 }
+
+// Rename a pack: re-tag every local image in `from` to `to`. Bundled packs
+// aren't touched (they're static files, not records here), so renaming a pack
+// that mixes bundled and local images only moves the local ones. Renaming onto
+// an existing pack name merges into it. Returns how many images moved.
+export async function renameLocalPack(from: string, to: string): Promise<number> {
+  const clean = to.trim();
+  if (!clean || clean === from) return 0;
+  const records = await getAllRecords();
+  let moved = 0;
+  for (const r of records) {
+    if (r.pack !== from) continue;
+    r.pack = clean;
+    await putRecord(r);
+    moved++;
+  }
+  if (moved) blobCache = null;
+  return moved;
+}
