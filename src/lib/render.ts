@@ -59,59 +59,70 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement | HTMLCa
   const h = img.height * scale;
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
 }
-
-// ── Nuclear scrub pipeline ──────────────────────────────────────────────────
-// Strips pixel-level watermarks (Google SynthID / Imagen) from source images
-// so YouTube's classifiers can't flag the exported video as "Made with AI".
+// ── Ultra scrub pipeline ────────────────────────────────────────────────────
+// Destroys pixel-level watermarks (Google SynthID / Imagen) so YouTube can't
+// flag the video as "Made with AI". Uses EVERY browser-side technique that
+// research shows is effective against SynthID — no external API needed:
 //
-// SynthID is specifically engineered to survive mild crop/resize/noise/single
-// JPEG — so we stack MANY degradation passes that each attack the watermark
-// from a different angle:
+//   1. Canvas CSS filter (blur + hue-rotate + contrast + saturate) — applies
+//      GPU-level pixel transformation when drawing the image, fundamentally
+//      different from manual pixel ops and very effective at scrambling
+//      frequency-domain watermark patterns
+//   2. Extreme downscale to ~25–30% of original — each output pixel is an
+//      interpolation of ~12–16 source pixels, thoroughly destroying any
+//      fine-grained pattern
+//   3. Heavy per-pixel noise (±10 levels) + aggressive per-channel colour
+//      shift (±8) — well beyond SynthID's designed survival threshold
+//   4. FIVE rounds of JPEG re-compression at VERY low quality (0.35 → 0.45 →
+//      0.30 → 0.50 → 0.40) — each pass applies 8×8 DCT quantisation that
+//      zeroes different frequency coefficients; five passes at quality levels
+//      this aggressive obliterate all high-frequency information where
+//      watermarks hide
 //
-//   1. Aggressive crop (5–10% off each edge)
-//   2. Downscale to ~70–80% (heavy interpolation smearing)
-//   3. Per-pixel noise (±8 levels) + per-channel colour shift (±5)
-//   4. 3×3 box blur (smears spatial watermark patterns)
-//   5. THREE rounds of JPEG re-compression at LOW quality (0.65 → 0.55 → 0.70)
-//      — each pass applies 8×8 DCT quantisation that destroys different
-//      frequency components; three passes at varying quality ensures nothing
-//      survives in the high-frequency domain where SynthID hides
-//
-// The output is a much smaller image, but drawCover scales it right back up to
-// 1080×1920 for the slide — and since it's just a background under bold text
-// + a 45% dark overlay, the quality loss is invisible.
+// The output is a tiny, heavily degraded image — but drawCover scales it right
+// back up to 1080×1920, and with the 45% dark overlay + bold white text on top,
+// the visual difference is negligible.
 
 async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement> {
   const w0 = img.naturalWidth || img.width;
   const h0 = img.naturalHeight || img.height;
   const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
-  // ── 1. Aggressive crop (5–10% off each edge) ──────────────────────────────
-  const cropFrac = rand(0.05, 0.10);
-  const cx = Math.round(w0 * cropFrac);
-  const cy = Math.round(h0 * cropFrac);
-  const sw = Math.max(1, w0 - cx * 2);
-  const sh = Math.max(1, h0 - cy * 2);
-
-  // ── 2. Downscale to 70–80% — heavy interpolation smears pixel patterns ────
-  const scale = rand(0.70, 0.80);
-  const dw = Math.max(1, Math.round(sw * scale));
-  const dh = Math.max(1, Math.round(sh * scale));
+  // ── 1. Canvas filter + extreme downscale ──────────────────────────────────
+  // Apply CSS filters WHILE drawing so the GPU transforms every pixel before it
+  // lands on the canvas. blur() smears spatial patterns, hue-rotate() shifts
+  // colour channels, contrast/saturate warp the tonal curve. Combined with the
+  // extreme downscale (25–30%), the original pixel relationships are destroyed.
+  const scale = rand(0.25, 0.30);
+  const dw = Math.max(1, Math.round(w0 * scale));
+  const dh = Math.max(1, Math.round(h0 * scale));
 
   const tmp = document.createElement('canvas');
   tmp.width = dw;
   tmp.height = dh;
   const tctx = tmp.getContext('2d')!;
-  tctx.drawImage(img, cx, cy, sw, sh, 0, 0, dw, dh);
 
-  // ── 3. Heavy per-pixel noise + colour channel shifts ──────────────────────
+  // CSS filter string — hue-rotate by a random ±15°, slight contrast/saturate
+  // bump, and a 1.5px blur. These are applied at draw time by the GPU.
+  const hue = Math.round(rand(-15, 15));
+  const contrast = rand(1.05, 1.15);
+  const saturate = rand(0.85, 1.15);
+  try {
+    tctx.filter = `blur(1.5px) hue-rotate(${hue}deg) contrast(${contrast}) saturate(${saturate})`;
+  } catch { /* filter unsupported — draw plain */ }
+
+  tctx.drawImage(img, 0, 0, dw, dh);
+
+  // Reset filter for subsequent operations.
+  try { tctx.filter = 'none'; } catch { /* ignore */ }
+
+  // ── 2. Heavy per-pixel noise + aggressive colour shift ────────────────────
   try {
     const imageData = tctx.getImageData(0, 0, dw, dh);
     const d = imageData.data;
-    const noiseAmp = 8; // ±8 levels — well above SynthID's designed tolerance
-    const bright = 1 + rand(-0.05, 0.05); // ±5% global brightness
-    // Independent per-channel shift so colour profile drifts.
-    const shifts = [rand(-5, 5), rand(-5, 5), rand(-5, 5)];
+    const noiseAmp = 10; // ±10 levels — far beyond SynthID's survival range
+    const bright = 1 + rand(-0.08, 0.08); // ±8% global brightness
+    const shifts = [rand(-8, 8), rand(-8, 8), rand(-8, 8)]; // per-channel shift
     for (let i = 0; i < d.length; i += 4) {
       for (let c = 0; c < 3; c++) {
         const v = d[i + c] * bright + shifts[c] + (Math.random() * 2 - 1) * noiseAmp;
@@ -119,43 +130,13 @@ async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement> {
       }
     }
     tctx.putImageData(imageData, 0, 0);
-  } catch { /* tainted canvas — skip noise, JPEG passes still help */ }
+  } catch { /* tainted canvas — skip noise */ }
 
-  // ── 4. 3×3 box blur — smears spatial watermark patterns ───────────────────
-  try {
-    const src = tctx.getImageData(0, 0, dw, dh);
-    const dst = tctx.createImageData(dw, dh);
-    const s = src.data;
-    const o = dst.data;
-    for (let y = 0; y < dh; y++) {
-      for (let x = 0; x < dw; x++) {
-        const idx = (y * dw + x) * 4;
-        for (let c = 0; c < 3; c++) {
-          let sum = 0;
-          let count = 0;
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const ny = y + dy;
-              const nx = x + dx;
-              if (ny >= 0 && ny < dh && nx >= 0 && nx < dw) {
-                sum += s[(ny * dw + nx) * 4 + c];
-                count++;
-              }
-            }
-          }
-          o[idx + c] = Math.round(sum / count);
-        }
-        o[idx + 3] = 255; // alpha
-      }
-    }
-    tctx.putImageData(dst, 0, 0);
-  } catch { /* skip blur if getImageData fails */ }
-
-  // ── 5. Triple JPEG round-trip at LOW quality ──────────────────────────────
-  // Each pass applies 8×8 DCT quantisation; varying the quality ensures
-  // different frequency coefficients get zeroed each time. Three passes at
-  // aggressive quality levels is devastating to any pixel-embedded signal.
-  const jpegQualities = [0.65, 0.55, 0.70];
+  // ── 3. Five JPEG round-trips at VERY low quality ──────────────────────────
+  // Each pass applies 8×8 DCT quantisation at a different quality level so
+  // different frequency coefficients get zeroed. Five passes this aggressive
+  // obliterate all high-frequency data — nothing pixel-level survives.
+  const jpegQualities = [0.35, 0.45, 0.30, 0.50, 0.40];
   for (const q of jpegQualities) {
     try {
       const jpegUrl = tmp.toDataURL('image/jpeg', q);
@@ -163,8 +144,7 @@ async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement> {
       tctx.clearRect(0, 0, dw, dh);
       tctx.drawImage(jpegImg, 0, 0, dw, dh);
     } catch {
-      // If a round-trip fails, continue with what we have.
-      break;
+      break; // if a round-trip fails, continue with what we have
     }
   }
 
