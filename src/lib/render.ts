@@ -59,40 +59,63 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement | HTMLCa
   const h = img.height * scale;
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
 }
-// ── Ultra scrub pipeline ────────────────────────────────────────────────────
+// ── SynthID scrub pipeline ──────────────────────────────────────────────────
 // Destroys pixel-level watermarks (Google SynthID / Imagen) so YouTube can't
-// flag the video as "Made with AI". Uses EVERY browser-side technique that
-// research shows is effective against SynthID — no external API needed:
+// flag the video as "Made with AI".
 //
-//   1. Canvas CSS filter (blur + hue-rotate + contrast + saturate) — applies
-//      GPU-level pixel transformation when drawing the image, fundamentally
-//      different from manual pixel ops and very effective at scrambling
-//      frequency-domain watermark patterns
-//   2. Extreme downscale to ~25–30% of original — each output pixel is an
-//      interpolation of ~12–16 source pixels, thoroughly destroying any
-//      fine-grained pattern
-//   3. Heavy per-pixel noise (±10 levels) + aggressive per-channel colour
-//      shift (±8) — well beyond SynthID's designed survival threshold
-//   4. FIVE rounds of JPEG re-compression at VERY low quality (0.35 → 0.45 →
-//      0.30 → 0.50 → 0.40) — each pass applies 8×8 DCT quantisation that
-//      zeroes different frequency coefficients; five passes at quality levels
-//      this aggressive obliterate all high-frequency information where
-//      watermarks hide
-//
-// The output is a tiny, heavily degraded image — but drawCover scales it right
-// back up to 1080×1920, and with the 45% dark overlay + bold white text on top,
-// the visual difference is negligible.
+// Strategy (two-tier):
+//   1. SERVER-SIDE (preferred): Calls /api/scrub which runs `noai-watermark` —
+//      a diffusion-based regeneration tool that properly scrambles frequency-
+//      domain watermarks. This is the industry-standard approach and is far
+//      more effective than any canvas-level trick.
+//   2. BROWSER-SIDE fallback: If the server tool isn't installed or fails, we
+//      fall back to aggressive canvas transforms: CSS filter, extreme
+//      downscale, heavy noise, and 5× JPEG re-compression.
 
-async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement> {
+// Cached probe: null = not checked, true/false after first check.
+let _serverScrubAvailable: boolean | null = null;
+
+async function tryServerScrub(img: HTMLImageElement): Promise<HTMLImageElement | null> {
+  // Probe once whether the server has noai-watermark installed.
+  if (_serverScrubAvailable === null) {
+    try {
+      const r = await fetch('/api/scrub/status');
+      const j = await r.json();
+      _serverScrubAvailable = !!j.available;
+    } catch {
+      _serverScrubAvailable = false;
+    }
+  }
+  if (!_serverScrubAvailable) return null;
+
+  // Convert the image to a base64 data URL to send to the server.
+  try {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth || img.width;
+    c.height = img.naturalHeight || img.height;
+    const cx = c.getContext('2d')!;
+    cx.drawImage(img, 0, 0);
+    const dataUrl = c.toDataURL('image/png');
+
+    const res = await fetch('/api/scrub', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    const json = await res.json();
+    if (json.ok && json.image) {
+      return await loadImage(json.image);
+    }
+  } catch { /* server scrub failed — fall through to browser fallback */ }
+  return null;
+}
+
+async function browserScrubFallback(img: HTMLImageElement): Promise<HTMLCanvasElement> {
   const w0 = img.naturalWidth || img.width;
   const h0 = img.naturalHeight || img.height;
   const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
-  // ── 1. Canvas filter + extreme downscale ──────────────────────────────────
-  // Apply CSS filters WHILE drawing so the GPU transforms every pixel before it
-  // lands on the canvas. blur() smears spatial patterns, hue-rotate() shifts
-  // colour channels, contrast/saturate warp the tonal curve. Combined with the
-  // extreme downscale (25–30%), the original pixel relationships are destroyed.
+  // Extreme downscale to 25–30%.
   const scale = rand(0.25, 0.30);
   const dw = Math.max(1, Math.round(w0 * scale));
   const dh = Math.max(1, Math.round(h0 * scale));
@@ -102,27 +125,24 @@ async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement> {
   tmp.height = dh;
   const tctx = tmp.getContext('2d')!;
 
-  // CSS filter string — hue-rotate by a random ±15°, slight contrast/saturate
-  // bump, and a 1.5px blur. These are applied at draw time by the GPU.
+  // CSS filters: blur + hue-rotate + contrast + saturate.
   const hue = Math.round(rand(-15, 15));
   const contrast = rand(1.05, 1.15);
   const saturate = rand(0.85, 1.15);
   try {
     tctx.filter = `blur(1.5px) hue-rotate(${hue}deg) contrast(${contrast}) saturate(${saturate})`;
-  } catch { /* filter unsupported — draw plain */ }
+  } catch { /* filter unsupported */ }
 
   tctx.drawImage(img, 0, 0, dw, dh);
-
-  // Reset filter for subsequent operations.
   try { tctx.filter = 'none'; } catch { /* ignore */ }
 
-  // ── 2. Heavy per-pixel noise + aggressive colour shift ────────────────────
+  // Heavy noise + colour shift.
   try {
     const imageData = tctx.getImageData(0, 0, dw, dh);
     const d = imageData.data;
-    const noiseAmp = 10; // ±10 levels — far beyond SynthID's survival range
-    const bright = 1 + rand(-0.08, 0.08); // ±8% global brightness
-    const shifts = [rand(-8, 8), rand(-8, 8), rand(-8, 8)]; // per-channel shift
+    const noiseAmp = 10;
+    const bright = 1 + rand(-0.08, 0.08);
+    const shifts = [rand(-8, 8), rand(-8, 8), rand(-8, 8)];
     for (let i = 0; i < d.length; i += 4) {
       for (let c = 0; c < 3; c++) {
         const v = d[i + c] * bright + shifts[c] + (Math.random() * 2 - 1) * noiseAmp;
@@ -130,12 +150,9 @@ async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement> {
       }
     }
     tctx.putImageData(imageData, 0, 0);
-  } catch { /* tainted canvas — skip noise */ }
+  } catch { /* tainted canvas */ }
 
-  // ── 3. Five JPEG round-trips at VERY low quality ──────────────────────────
-  // Each pass applies 8×8 DCT quantisation at a different quality level so
-  // different frequency coefficients get zeroed. Five passes this aggressive
-  // obliterate all high-frequency data — nothing pixel-level survives.
+  // 5× JPEG round-trips at very low quality.
   const jpegQualities = [0.35, 0.45, 0.30, 0.50, 0.40];
   for (const q of jpegQualities) {
     try {
@@ -144,11 +161,20 @@ async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement> {
       tctx.clearRect(0, 0, dw, dh);
       tctx.drawImage(jpegImg, 0, 0, dw, dh);
     } catch {
-      break; // if a round-trip fails, continue with what we have
+      break;
     }
   }
 
   return tmp;
+}
+
+async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement | HTMLImageElement> {
+  // Try server-side diffusion scrub first (much more effective).
+  const serverResult = await tryServerScrub(img);
+  if (serverResult) return serverResult;
+
+  // Fall back to browser-side aggressive transforms.
+  return browserScrubFallback(img);
 }
 
 export async function renderSlide(slide: Slide): Promise<string> {
