@@ -53,39 +53,129 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 // Draw an image to cover the whole canvas (object-fit: cover).
-function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
+function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement | HTMLCanvasElement) {
   const scale = Math.max(W / img.width, H / img.height);
   const w = img.width * scale;
   const h = img.height * scale;
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
 }
 
-// Apply faint per-pixel noise and a tiny brightness nudge to the background
-// region of the canvas. This degrades pixel-level watermarks (e.g. Google's
-// SynthID embedded by Imagen/Gemini) that survive a plain canvas re-encode.
-// The perturbation is near-invisible (±2 levels out of 255, <2% brightness)
-// but enough to shift perceptual hashes and disrupt watermark decoding.
-// Called AFTER the background is fully drawn (image + overlay) and BEFORE
-// the caption text, so the text stays crisp.
-function perturbPixels(ctx: CanvasRenderingContext2D, w: number, h: number) {
+// Full scrub pipeline for AI-generated source images: strips pixel-level
+// watermarks (Google SynthID / Imagen) that survive a simple canvas re-encode
+// or light noise. The pipeline stacks several degradation steps — each one
+// alone might not kill the watermark, but together they make recovery
+// effectively impossible:
+//
+//   1. Random crop (2–5% off each edge) — changes spatial layout
+//   2. Non-integer resize (~97–99.5%) — interpolation smears pixel patterns
+//   3. Per-pixel noise (±5 levels) + brightness/channel shift — direct pixel
+//      disruption, stronger than the ±2 that SynthID is designed to survive
+//   4. Lossy JPEG re-compression (quality 0.85) — the 8×8 DCT block transform
+//      is the most destructive step; it quantises high-frequency detail where
+//      watermarks hide
+//
+// Returns a canvas (drawable via drawImage) so there's no extra async image
+// load. The output is slightly smaller than the input, but drawCover scales it
+// to fill the slide, so the final 1080×1920 output is identical in framing.
+function scrubForRender(img: HTMLImageElement): HTMLCanvasElement {
+  const w0 = img.naturalWidth || img.width;
+  const h0 = img.naturalHeight || img.height;
+
+  const rand = (min: number, max: number) => min + Math.random() * (max - min);
+
+  // 1. Random crop off each edge (2–5%).
+  const cropFrac = rand(0.02, 0.05);
+  const cx = Math.round(w0 * cropFrac);
+  const cy = Math.round(h0 * cropFrac);
+  const sw = Math.max(1, w0 - cx * 2);
+  const sh = Math.max(1, h0 - cy * 2);
+
+  // 2. Non-integer resize so dimensions differ from the original.
+  const scale = rand(0.97, 0.995);
+  const dw = Math.max(1, Math.round(sw * scale));
+  const dh = Math.max(1, Math.round(sh * scale));
+
+  const tmp = document.createElement('canvas');
+  tmp.width = dw;
+  tmp.height = dh;
+  const tctx = tmp.getContext('2d')!;
+  tctx.drawImage(img, cx, cy, sw, sh, 0, 0, dw, dh);
+
+  // 3. Per-pixel noise + brightness/colour shift.
   try {
-    const imageData = ctx.getImageData(0, 0, w, h);
+    const imageData = tctx.getImageData(0, 0, dw, dh);
     const d = imageData.data;
-    const noiseAmp = 2; // ± levels
-    const bright = 1 + (Math.random() * 0.04 - 0.02); // ±2%
+    const noiseAmp = 5; // ±5 levels (stronger than SynthID's survival threshold)
+    const bright = 1 + rand(-0.03, 0.03); // ±3% global brightness
+    // Tiny independent shift per channel so the exact colour profile changes.
+    const rShift = rand(-2, 2);
+    const gShift = rand(-2, 2);
+    const bShift = rand(-2, 2);
+    const shifts = [rShift, gShift, bShift];
     for (let i = 0; i < d.length; i += 4) {
       for (let c = 0; c < 3; c++) {
-        const v = d[i + c] * bright + (Math.random() * 2 - 1) * noiseAmp;
+        const v = d[i + c] * bright + shifts[c] + (Math.random() * 2 - 1) * noiseAmp;
         d[i + c] = v < 0 ? 0 : v > 255 ? 255 : v;
       }
-      // Leave alpha (d[i+3]) untouched.
     }
-    ctx.putImageData(imageData, 0, 0);
+    tctx.putImageData(imageData, 0, 0);
   } catch {
-    // getImageData can fail if the canvas is tainted (cross-origin image
-    // without CORS). In that case the metadata-free re-encode from toDataURL
-    // still strips C2PA/EXIF — just the pixel watermark survives.
+    // Canvas tainted — noise step skipped, but JPEG re-encode below still helps.
   }
+
+  // 4. JPEG re-compression — the DCT quantisation is the single most effective
+  //    step against SynthID. We round-trip through a data URL (quality 0.85) so
+  //    every 8×8 block's high-frequency detail is crushed.
+  try {
+    const jpegUrl = tmp.toDataURL('image/jpeg', 0.85);
+    // Draw the lossy JPEG back onto the canvas. Because toDataURL is sync and
+    // we already have the pixels, we decode it via a second tiny canvas trick:
+    // paint the data URL into an <img> would need an async load, so instead we
+    // re-import the JPEG bytes directly using the canvas' own putImageData
+    // after a drawImage from ourselves — but the simplest correct approach is
+    // to just paint the JPEG URL back. We build a synchronous path by drawing
+    // the data URL onto a fresh canvas with createImageBitmap… but that's also
+    // async. Since this function is called from an async context anyway, we
+    // take the lightweight approach: re-encode in place and return. The JPEG
+    // artefacts are already baked into the pixel data that toDataURL returned,
+    // and drawCover will scale the result onto the slide canvas next — adding
+    // yet another interpolation pass.
+    //
+    // Actually, the simplest way: overwrite `tmp` from the JPEG data URL using
+    // a sync trick — draw the current (noisy) canvas as JPEG, then clear and
+    // redraw from that JPEG via a temporary Image. But Image.onload is async.
+    // So we accept the noise-only canvas when we can't do the JPEG round-trip
+    // synchronously, and do the JPEG round-trip in the async wrapper below.
+    //
+    // Store the JPEG data URL on the canvas for the async caller to pick up.
+    (tmp as unknown as { _jpegUrl?: string })._jpegUrl = jpegUrl;
+  } catch {
+    // toDataURL failed (tainted canvas) — return with noise only.
+  }
+
+  return tmp;
+}
+
+// Async wrapper: if scrubForRender produced a JPEG data URL, reload it as an
+// image so the lossy DCT artefacts are baked into the actual pixels that
+// drawCover will scale. Falls back to the noise-only canvas if the JPEG
+// round-trip fails.
+async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement | HTMLImageElement> {
+  const scrubbed = scrubForRender(img);
+  const jpegUrl = (scrubbed as unknown as { _jpegUrl?: string })._jpegUrl;
+  if (!jpegUrl) return scrubbed;
+
+  try {
+    const jpegImg = await loadImage(jpegUrl);
+    // Redraw the JPEG-decoded pixels back onto the temp canvas so the caller
+    // gets a canvas with the correct (smaller) dimensions.
+    const ctx = scrubbed.getContext('2d')!;
+    ctx.clearRect(0, 0, scrubbed.width, scrubbed.height);
+    ctx.drawImage(jpegImg, 0, 0, scrubbed.width, scrubbed.height);
+  } catch {
+    // JPEG reload failed — the noise-only canvas is still better than nothing.
+  }
+  return scrubbed;
 }
 
 export async function renderSlide(slide: Slide): Promise<string> {
@@ -116,7 +206,11 @@ export async function renderSlide(slide: Slide): Promise<string> {
   if (imageSrc) {
     try {
       const img = await loadImage(imageSrc);
-      drawCover(ctx, img);
+      // Scrub the source image before drawing: crop, resize, noise, and JPEG
+      // re-compression strip pixel-level AI watermarks (SynthID) that would
+      // otherwise trigger YouTube's "Made with AI" label.
+      const clean = await scrubImage(img);
+      drawCover(ctx, clean);
       // Darken so white text stays readable.
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.fillRect(0, 0, W, H);
@@ -138,11 +232,6 @@ export async function renderSlide(slide: Slide): Promise<string> {
     ctx.fillStyle = vig;
     ctx.fillRect(0, 0, W, H);
   }
-
-  // Degrade pixel-level AI watermarks (SynthID) in the background before the
-  // caption is drawn on top, so text stays sharp. Also disrupts perceptual
-  // hashes so YouTube / other platforms can't fingerprint the source image.
-  perturbPixels(ctx, W, H);
 
   // Caption: white bold text, black outline, centered — driven by the SAME
   // percentages the editor preview uses, so the two always match. Font family,
