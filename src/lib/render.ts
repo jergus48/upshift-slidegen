@@ -60,38 +60,41 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement | HTMLCa
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
 }
 
-// Full scrub pipeline for AI-generated source images: strips pixel-level
-// watermarks (Google SynthID / Imagen) that survive a simple canvas re-encode
-// or light noise. The pipeline stacks several degradation steps — each one
-// alone might not kill the watermark, but together they make recovery
-// effectively impossible:
+// ── Nuclear scrub pipeline ──────────────────────────────────────────────────
+// Strips pixel-level watermarks (Google SynthID / Imagen) from source images
+// so YouTube's classifiers can't flag the exported video as "Made with AI".
 //
-//   1. Random crop (2–5% off each edge) — changes spatial layout
-//   2. Non-integer resize (~97–99.5%) — interpolation smears pixel patterns
-//   3. Per-pixel noise (±5 levels) + brightness/channel shift — direct pixel
-//      disruption, stronger than the ±2 that SynthID is designed to survive
-//   4. Lossy JPEG re-compression (quality 0.85) — the 8×8 DCT block transform
-//      is the most destructive step; it quantises high-frequency detail where
-//      watermarks hide
+// SynthID is specifically engineered to survive mild crop/resize/noise/single
+// JPEG — so we stack MANY degradation passes that each attack the watermark
+// from a different angle:
 //
-// Returns a canvas (drawable via drawImage) so there's no extra async image
-// load. The output is slightly smaller than the input, but drawCover scales it
-// to fill the slide, so the final 1080×1920 output is identical in framing.
-function scrubForRender(img: HTMLImageElement): HTMLCanvasElement {
+//   1. Aggressive crop (5–10% off each edge)
+//   2. Downscale to ~70–80% (heavy interpolation smearing)
+//   3. Per-pixel noise (±8 levels) + per-channel colour shift (±5)
+//   4. 3×3 box blur (smears spatial watermark patterns)
+//   5. THREE rounds of JPEG re-compression at LOW quality (0.65 → 0.55 → 0.70)
+//      — each pass applies 8×8 DCT quantisation that destroys different
+//      frequency components; three passes at varying quality ensures nothing
+//      survives in the high-frequency domain where SynthID hides
+//
+// The output is a much smaller image, but drawCover scales it right back up to
+// 1080×1920 for the slide — and since it's just a background under bold text
+// + a 45% dark overlay, the quality loss is invisible.
+
+async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement> {
   const w0 = img.naturalWidth || img.width;
   const h0 = img.naturalHeight || img.height;
-
   const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
-  // 1. Random crop off each edge (2–5%).
-  const cropFrac = rand(0.02, 0.05);
+  // ── 1. Aggressive crop (5–10% off each edge) ──────────────────────────────
+  const cropFrac = rand(0.05, 0.10);
   const cx = Math.round(w0 * cropFrac);
   const cy = Math.round(h0 * cropFrac);
   const sw = Math.max(1, w0 - cx * 2);
   const sh = Math.max(1, h0 - cy * 2);
 
-  // 2. Non-integer resize so dimensions differ from the original.
-  const scale = rand(0.97, 0.995);
+  // ── 2. Downscale to 70–80% — heavy interpolation smears pixel patterns ────
+  const scale = rand(0.70, 0.80);
   const dw = Math.max(1, Math.round(sw * scale));
   const dh = Math.max(1, Math.round(sh * scale));
 
@@ -101,17 +104,14 @@ function scrubForRender(img: HTMLImageElement): HTMLCanvasElement {
   const tctx = tmp.getContext('2d')!;
   tctx.drawImage(img, cx, cy, sw, sh, 0, 0, dw, dh);
 
-  // 3. Per-pixel noise + brightness/colour shift.
+  // ── 3. Heavy per-pixel noise + colour channel shifts ──────────────────────
   try {
     const imageData = tctx.getImageData(0, 0, dw, dh);
     const d = imageData.data;
-    const noiseAmp = 5; // ±5 levels (stronger than SynthID's survival threshold)
-    const bright = 1 + rand(-0.03, 0.03); // ±3% global brightness
-    // Tiny independent shift per channel so the exact colour profile changes.
-    const rShift = rand(-2, 2);
-    const gShift = rand(-2, 2);
-    const bShift = rand(-2, 2);
-    const shifts = [rShift, gShift, bShift];
+    const noiseAmp = 8; // ±8 levels — well above SynthID's designed tolerance
+    const bright = 1 + rand(-0.05, 0.05); // ±5% global brightness
+    // Independent per-channel shift so colour profile drifts.
+    const shifts = [rand(-5, 5), rand(-5, 5), rand(-5, 5)];
     for (let i = 0; i < d.length; i += 4) {
       for (let c = 0; c < 3; c++) {
         const v = d[i + c] * bright + shifts[c] + (Math.random() * 2 - 1) * noiseAmp;
@@ -119,63 +119,56 @@ function scrubForRender(img: HTMLImageElement): HTMLCanvasElement {
       }
     }
     tctx.putImageData(imageData, 0, 0);
-  } catch {
-    // Canvas tainted — noise step skipped, but JPEG re-encode below still helps.
-  }
+  } catch { /* tainted canvas — skip noise, JPEG passes still help */ }
 
-  // 4. JPEG re-compression — the DCT quantisation is the single most effective
-  //    step against SynthID. We round-trip through a data URL (quality 0.85) so
-  //    every 8×8 block's high-frequency detail is crushed.
+  // ── 4. 3×3 box blur — smears spatial watermark patterns ───────────────────
   try {
-    const jpegUrl = tmp.toDataURL('image/jpeg', 0.85);
-    // Draw the lossy JPEG back onto the canvas. Because toDataURL is sync and
-    // we already have the pixels, we decode it via a second tiny canvas trick:
-    // paint the data URL into an <img> would need an async load, so instead we
-    // re-import the JPEG bytes directly using the canvas' own putImageData
-    // after a drawImage from ourselves — but the simplest correct approach is
-    // to just paint the JPEG URL back. We build a synchronous path by drawing
-    // the data URL onto a fresh canvas with createImageBitmap… but that's also
-    // async. Since this function is called from an async context anyway, we
-    // take the lightweight approach: re-encode in place and return. The JPEG
-    // artefacts are already baked into the pixel data that toDataURL returned,
-    // and drawCover will scale the result onto the slide canvas next — adding
-    // yet another interpolation pass.
-    //
-    // Actually, the simplest way: overwrite `tmp` from the JPEG data URL using
-    // a sync trick — draw the current (noisy) canvas as JPEG, then clear and
-    // redraw from that JPEG via a temporary Image. But Image.onload is async.
-    // So we accept the noise-only canvas when we can't do the JPEG round-trip
-    // synchronously, and do the JPEG round-trip in the async wrapper below.
-    //
-    // Store the JPEG data URL on the canvas for the async caller to pick up.
-    (tmp as unknown as { _jpegUrl?: string })._jpegUrl = jpegUrl;
-  } catch {
-    // toDataURL failed (tainted canvas) — return with noise only.
+    const src = tctx.getImageData(0, 0, dw, dh);
+    const dst = tctx.createImageData(dw, dh);
+    const s = src.data;
+    const o = dst.data;
+    for (let y = 0; y < dh; y++) {
+      for (let x = 0; x < dw; x++) {
+        const idx = (y * dw + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          let sum = 0;
+          let count = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const ny = y + dy;
+              const nx = x + dx;
+              if (ny >= 0 && ny < dh && nx >= 0 && nx < dw) {
+                sum += s[(ny * dw + nx) * 4 + c];
+                count++;
+              }
+            }
+          }
+          o[idx + c] = Math.round(sum / count);
+        }
+        o[idx + 3] = 255; // alpha
+      }
+    }
+    tctx.putImageData(dst, 0, 0);
+  } catch { /* skip blur if getImageData fails */ }
+
+  // ── 5. Triple JPEG round-trip at LOW quality ──────────────────────────────
+  // Each pass applies 8×8 DCT quantisation; varying the quality ensures
+  // different frequency coefficients get zeroed each time. Three passes at
+  // aggressive quality levels is devastating to any pixel-embedded signal.
+  const jpegQualities = [0.65, 0.55, 0.70];
+  for (const q of jpegQualities) {
+    try {
+      const jpegUrl = tmp.toDataURL('image/jpeg', q);
+      const jpegImg = await loadImage(jpegUrl);
+      tctx.clearRect(0, 0, dw, dh);
+      tctx.drawImage(jpegImg, 0, 0, dw, dh);
+    } catch {
+      // If a round-trip fails, continue with what we have.
+      break;
+    }
   }
 
   return tmp;
-}
-
-// Async wrapper: if scrubForRender produced a JPEG data URL, reload it as an
-// image so the lossy DCT artefacts are baked into the actual pixels that
-// drawCover will scale. Falls back to the noise-only canvas if the JPEG
-// round-trip fails.
-async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement | HTMLImageElement> {
-  const scrubbed = scrubForRender(img);
-  const jpegUrl = (scrubbed as unknown as { _jpegUrl?: string })._jpegUrl;
-  if (!jpegUrl) return scrubbed;
-
-  try {
-    const jpegImg = await loadImage(jpegUrl);
-    // Redraw the JPEG-decoded pixels back onto the temp canvas so the caller
-    // gets a canvas with the correct (smaller) dimensions.
-    const ctx = scrubbed.getContext('2d')!;
-    ctx.clearRect(0, 0, scrubbed.width, scrubbed.height);
-    ctx.drawImage(jpegImg, 0, 0, scrubbed.width, scrubbed.height);
-  } catch {
-    // JPEG reload failed — the noise-only canvas is still better than nothing.
-  }
-  return scrubbed;
 }
 
 export async function renderSlide(slide: Slide): Promise<string> {
