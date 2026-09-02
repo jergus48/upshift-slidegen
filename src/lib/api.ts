@@ -13,6 +13,7 @@ import type {
   LibraryImage,
   LibraryPack,
   YtChannel,
+  YtVideoComments,
   SocialProfile,
   StockQuote,
   StockAnalysis,
@@ -156,6 +157,14 @@ export const getYoutubeChannels = (channels: string[], noCache = false) =>
   req<YtChannel[]>('/youtube/channels', {
     method: 'POST',
     body: JSON.stringify({ channels, noCache }),
+  });
+
+// Recent public comments on a batch of videos (no API key). Used by the
+// Channels dashboard to show what still needs a reply.
+export const getYoutubeComments = (videos: string[], opts: { limit?: number; noCache?: boolean } = {}) =>
+  req<YtVideoComments[]>('/youtube/comments', {
+    method: 'POST',
+    body: JSON.stringify({ videos, limit: opts.limit, noCache: opts.noCache }),
   });
 
 // ── Social profiles (Instagram / TikTok / X / Threads / Facebook) ────────────

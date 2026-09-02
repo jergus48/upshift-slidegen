@@ -717,7 +717,7 @@ export default function App() {
         {activeView === 'clean' && <ScrubView />}
         {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
         {activeView === 'results' && <ResultsView configured={hasPostbridge} />}
-        {activeView === 'channels' && <ChannelsView />}
+        {activeView === 'channels' && <ChannelsView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'stocks' && <StocksView hasFmp={hasFmp} canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'brain' && (
           <BrainView

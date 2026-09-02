@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Eye, ThumbsUp, RefreshCw, Loader2, Plus, X, Flame, MonitorPlay, ExternalLink, Users, Heart, Grid3x3 } from 'lucide-react';
-import type { YtChannel, YtVideo, SocialProfile } from '../types';
+import { Eye, ThumbsUp, RefreshCw, Loader2, Plus, X, Flame, MonitorPlay, ExternalLink, Users, Heart, Grid3x3, MessageSquare, Sparkles, Copy, Check, Reply } from 'lucide-react';
+import type { YtChannel, YtVideo, SocialProfile, YtComment } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
-import { getYoutubeChannels, getSocialProfiles } from '../lib/api';
+import { getYoutubeChannels, getSocialProfiles, getYoutubeComments, generateComments } from '../lib/api';
 import { loadChannels, saveChannels, PLATFORMS, PLATFORM_LABELS, type Platform } from '../lib/localChannels';
 
 // Per-platform copy for the add bar. Only YouTube fetches live stats; the rest
@@ -93,7 +93,14 @@ function shownVideos(c: YtChannel, filter: TimeFilter, now: number): YtVideo[] {
   return vids.filter((v) => new Date(v.publishedAt).getTime() >= cutoff);
 }
 
-export function ChannelsView() {
+interface ChannelsViewProps {
+  // Reply drafting reuses the Reply view's generator, so it needs the same
+  // model + "is the OpenRouter key set" flag.
+  canGenerate: boolean;
+  model: string;
+}
+
+export function ChannelsView({ canGenerate, model }: ChannelsViewProps) {
   const [platform, setPlatform] = useState<Platform>('youtube');
   const [links, setLinks] = useState<string[]>(() => loadChannels('youtube'));
   const [data, setData] = useState<YtChannel[] | null>(null);
@@ -237,7 +244,7 @@ export function ChannelsView() {
         title="Channels"
         subtitle={
           isYoutube
-            ? 'Latest uploads and their views across all your YouTube channels — no API key needed.'
+            ? 'Latest uploads and their views across all your YouTube channels — open any upload to read its newest comments and draft replies. No API key needed.'
             : `Your ${PLATFORM_LABELS[platform]} accounts — saved per platform.`
         }
         right={
@@ -372,6 +379,8 @@ export function ChannelsView() {
                   filter={filter}
                   emptyNote={filter === 'all' ? '' : `No uploads in ${WINDOW_NOUN[filter]}.`}
                   onRemove={() => removeChannel(c.input)}
+                  canGenerate={canGenerate}
+                  model={model}
                 />
               ))
             )}
@@ -398,13 +407,21 @@ function ChannelCard({
   filter,
   emptyNote,
   onRemove,
+  canGenerate,
+  model,
 }: {
   channel: YtChannel;
   videos: YtVideo[];
   filter: TimeFilter;
   emptyNote: string;
   onRemove: () => void;
+  canGenerate: boolean;
+  model: string;
 }) {
+  // Which upload's comment thread is expanded under the grid (one at a time).
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = videos.find((v) => v.id === openId) ?? null;
+
   return (
     <div className="bg-card border border-line rounded-xl p-4">
       <div className="flex items-center gap-3 mb-3">
@@ -447,11 +464,28 @@ function ChannelCard({
 
       {channel.ok &&
         (videos.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-            {videos.map((v) => (
-              <VideoCard key={v.id} video={v} gained={gainedFor(v, filter)} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              {videos.map((v) => (
+                <VideoCard
+                  key={v.id}
+                  video={v}
+                  gained={gainedFor(v, filter)}
+                  open={v.id === openId}
+                  onToggleComments={() => setOpenId((id) => (id === v.id ? null : v.id))}
+                />
+              ))}
+            </div>
+            {open && (
+              <CommentsPanel
+                key={open.id}
+                video={open}
+                canGenerate={canGenerate}
+                model={model}
+                onClose={() => setOpenId(null)}
+              />
+            )}
+          </>
         ) : (
           emptyNote && <div className="text-[12px] text-ink-6 py-2">{emptyNote}</div>
         ))}
@@ -459,24 +493,36 @@ function ChannelCard({
   );
 }
 
-function VideoCard({ video, gained }: { video: YtVideo; gained?: { value: number; exact: boolean } | null }) {
+function VideoCard({
+  video,
+  gained,
+  open,
+  onToggleComments,
+}: {
+  video: YtVideo;
+  gained?: { value: number; exact: boolean } | null;
+  open: boolean;
+  onToggleComments: () => void;
+}) {
   return (
-    <a href={video.url} target="_blank" rel="noreferrer" className="group block">
-      <div className="relative aspect-video rounded-md overflow-hidden bg-raised">
-        <img
-          src={video.thumbnail}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
-        />
-        {video.publishedAt && (
-          <span className="absolute bottom-1 right-1 text-[10px] font-medium text-white bg-black/70 px-1 rounded">
-            {timeAgo(video.publishedAt)}
-          </span>
-        )}
-      </div>
-      <div className="mt-1.5 text-[11px] text-ink-4 line-clamp-2 leading-snug group-hover:text-ink">{video.title}</div>
+    <div className="group">
+      <a href={video.url} target="_blank" rel="noreferrer" className="block">
+        <div className="relative aspect-video rounded-md overflow-hidden bg-raised">
+          <img
+            src={video.thumbnail}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
+          />
+          {video.publishedAt && (
+            <span className="absolute bottom-1 right-1 text-[10px] font-medium text-white bg-black/70 px-1 rounded">
+              {timeAgo(video.publishedAt)}
+            </span>
+          )}
+        </div>
+        <div className="mt-1.5 text-[11px] text-ink-4 line-clamp-2 leading-snug group-hover:text-ink">{video.title}</div>
+      </a>
       <div className="mt-1 flex items-center gap-3 text-[11px] text-ink-5">
         <span className="flex items-center gap-1">
           <Eye size={11} className="text-ink-6" />
@@ -493,7 +539,212 @@ function VideoCard({ video, gained }: { video: YtVideo; gained?: { value: number
           </span>
         )}
       </div>
-    </a>
+      <button
+        onClick={onToggleComments}
+        aria-expanded={open}
+        className={`mt-1 flex items-center gap-1 text-[11px] ${open ? 'text-ink' : 'text-ink-5 hover:text-ink'}`}
+      >
+        <MessageSquare size={11} className={open ? '' : 'text-ink-6'} />
+        {open ? 'Hide comments' : 'Comments'}
+      </button>
+    </div>
+  );
+}
+
+// The recent comments on one upload, with a per-comment "draft a reply" helper.
+// Posting a reply needs a logged-in YouTube session, so each comment deep-links
+// straight to itself on YouTube — draft here, paste there.
+function CommentsPanel({
+  video,
+  canGenerate,
+  model,
+  onClose,
+}: {
+  video: YtVideo;
+  canGenerate: boolean;
+  model: string;
+  onClose: () => void;
+}) {
+  const [comments, setComments] = useState<YtComment[] | null>(null);
+  const [sort, setSort] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
+  // Bumped by the reload button; the fetch effect re-runs on every change and
+  // any value past the first means "skip the cache".
+  const [nonce, setNonce] = useState(0);
+
+  // Fetch only — state is set inside the async callbacks, never synchronously in
+  // the effect body (the first render already shows Loading via comments===null).
+  useEffect(() => {
+    let live = true;
+    getYoutubeComments([video.url], { limit: 25, noCache: nonce > 0 })
+      .then(([r]) => {
+        if (!r || !r.ok) throw new Error(r?.error || 'Could not load comments.');
+        if (!live) return;
+        setSort(r.sort || '');
+        setComments(r.comments ?? []);
+      })
+      .catch((e) => live && setError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      live = false;
+    };
+  }, [video.url, nonce]);
+
+  const reload = () => {
+    setError(null);
+    setComments(null);
+    setNonce((n) => n + 1);
+  };
+
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <div className="flex items-center gap-2 mb-2">
+        <MessageSquare size={13} className="text-ink-6 shrink-0" />
+        <span className="text-[12px] font-medium text-ink truncate flex-1">{video.title}</span>
+        {comments && (
+          <span className="text-[11px] text-ink-6 shrink-0">
+            {sort === 'newest' ? 'newest first' : sort === 'top' ? 'top comments' : ''}
+          </span>
+        )}
+        <button onClick={reload} className="text-ink-6 hover:text-ink shrink-0 p-1" aria-label="Reload comments">
+          <RefreshCw size={13} />
+        </button>
+        <button onClick={onClose} className="text-ink-6 hover:text-ink shrink-0 p-1" aria-label="Close comments">
+          <X size={14} />
+        </button>
+      </div>
+
+      {error ? (
+        <div className="text-[12px] text-ink-6 py-2">{error}</div>
+      ) : comments === null ? (
+        <div className="flex items-center gap-2 text-[12px] text-ink-5 py-3">
+          <Loader2 size={13} className="animate-spin" /> Loading comments…
+        </div>
+      ) : comments.length === 0 ? (
+        <div className="text-[12px] text-ink-6 py-2">No comments on this one yet.</div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {comments.map((c) => (
+            <CommentRow key={c.id} comment={c} videoTitle={video.title} canGenerate={canGenerate} model={model} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CommentRow({
+  comment,
+  videoTitle,
+  canGenerate,
+  model,
+}: {
+  comment: YtComment;
+  videoTitle: string;
+  canGenerate: boolean;
+  model: string;
+}) {
+  const [drafts, setDrafts] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<number | null>(null);
+
+  // Reuses the Reply view's generator: hand it the video title + this comment as
+  // the "post", so the drafts answer this specific person.
+  const draft = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const text = [
+        `My video is titled: ${videoTitle}`,
+        '',
+        'A viewer commented:',
+        comment.text,
+        '',
+        'Reply to that viewer, as the creator of the video.',
+      ].join('\n');
+      const r = await generateComments({ text, model });
+      setDrafts(r.comments);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async (i: number, value: string) => {
+    await navigator.clipboard.writeText(value).catch(() => {});
+    setCopied(i);
+    setTimeout(() => setCopied(null), 1200);
+  };
+
+  return (
+    <div className="bg-surface border border-line rounded-lg p-2.5">
+      <div className="flex items-start gap-2.5">
+        <div className="w-6 h-6 rounded-full overflow-hidden bg-raised shrink-0">
+          {comment.avatar && (
+            <img src={comment.avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-[11px] text-ink-6">
+            <span className="font-medium text-ink-4 truncate">{comment.author}</span>
+            <span className="shrink-0">{comment.publishedText}</span>
+            {comment.likes > 0 && (
+              <span className="flex items-center gap-1 shrink-0">
+                <ThumbsUp size={10} /> {formatNumber(comment.likes)}
+              </span>
+            )}
+            {comment.replyCount > 0 && (
+              <span className="flex items-center gap-1 shrink-0">
+                <MessageSquare size={10} /> {formatNumber(comment.replyCount)}
+              </span>
+            )}
+            {comment.isHearted && <Heart size={10} className="text-red-500 shrink-0" />}
+          </div>
+          <p className="text-[13px] text-ink leading-snug mt-0.5 whitespace-pre-wrap break-words">{comment.text}</p>
+
+          <div className="mt-1.5 flex items-center gap-3">
+            <a
+              href={comment.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-[11px] text-ink-5 hover:text-ink"
+            >
+              <Reply size={11} /> Reply on YouTube
+            </a>
+            <button
+              onClick={draft}
+              disabled={busy || !canGenerate}
+              title={canGenerate ? undefined : 'Add your OpenRouter key in Settings.'}
+              className="flex items-center gap-1 text-[11px] text-ink-5 hover:text-ink disabled:opacity-40"
+            >
+              {busy ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+              {busy ? 'Writing…' : drafts.length ? 'Redraft' : 'Draft reply'}
+            </button>
+          </div>
+
+          {error && <p className="text-[11px] text-red-600 mt-1">{error}</p>}
+
+          {drafts.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {drafts.map((d, i) => (
+                <div key={i} className="flex items-start gap-2 bg-card border border-line rounded-md px-2 py-1.5">
+                  <p className="flex-1 text-[12px] text-ink leading-snug">{d}</p>
+                  <button
+                    onClick={() => copy(i, d)}
+                    className="shrink-0 text-[11px] text-ink-5 hover:text-ink flex items-center gap-1"
+                  >
+                    {copied === i ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                    {copied === i ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

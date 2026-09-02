@@ -14,6 +14,7 @@ import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.
 import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { fetchChannels } from './youtube.js'
+import { fetchCommentsBatch } from './ytComments.js'
 import { withViewDeltas } from './viewSnapshots.js'
 import { fetchProfiles } from './social.js'
 import { fetchQuotes, fetchFxRates, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
@@ -295,6 +296,16 @@ app.post('/api/youtube/channels', h(async (req, res) => {
   // Record each video's current view count and attach real per-window gained
   // views (`video.gained`), measured against our own snapshot history.
   res.json(await withViewDeltas(result))
+}))
+
+// Recent public comments on a batch of videos, so the dashboard can show what
+// needs replying to. No API key — this reads the same public surface the watch
+// page itself loads (see ytComments.js). Per-video errors are captured.
+app.post('/api/youtube/comments', h(async (req, res) => {
+  const videos = Array.isArray(req.body?.videos) ? req.body.videos : []
+  const noCache = !!req.body?.noCache
+  const limit = Math.min(Math.max(Number(req.body?.limit) || 20, 1), 100)
+  res.json(await fetchCommentsBatch(videos, { limit, noCache }))
 }))
 
 // ── Social profiles (Instagram / TikTok / X / Threads / Facebook) ───────────

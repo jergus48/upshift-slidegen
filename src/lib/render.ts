@@ -60,6 +60,34 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
 }
 
+// Apply faint per-pixel noise and a tiny brightness nudge to the background
+// region of the canvas. This degrades pixel-level watermarks (e.g. Google's
+// SynthID embedded by Imagen/Gemini) that survive a plain canvas re-encode.
+// The perturbation is near-invisible (±2 levels out of 255, <2% brightness)
+// but enough to shift perceptual hashes and disrupt watermark decoding.
+// Called AFTER the background is fully drawn (image + overlay) and BEFORE
+// the caption text, so the text stays crisp.
+function perturbPixels(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  try {
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const d = imageData.data;
+    const noiseAmp = 2; // ± levels
+    const bright = 1 + (Math.random() * 0.04 - 0.02); // ±2%
+    for (let i = 0; i < d.length; i += 4) {
+      for (let c = 0; c < 3; c++) {
+        const v = d[i + c] * bright + (Math.random() * 2 - 1) * noiseAmp;
+        d[i + c] = v < 0 ? 0 : v > 255 ? 255 : v;
+      }
+      // Leave alpha (d[i+3]) untouched.
+    }
+    ctx.putImageData(imageData, 0, 0);
+  } catch {
+    // getImageData can fail if the canvas is tainted (cross-origin image
+    // without CORS). In that case the metadata-free re-encode from toDataURL
+    // still strips C2PA/EXIF — just the pixel watermark survives.
+  }
+}
+
 export async function renderSlide(slide: Slide): Promise<string> {
   const style = captionStyleSpec(slide.captionStyle);
 
@@ -110,6 +138,11 @@ export async function renderSlide(slide: Slide): Promise<string> {
     ctx.fillStyle = vig;
     ctx.fillRect(0, 0, W, H);
   }
+
+  // Degrade pixel-level AI watermarks (SynthID) in the background before the
+  // caption is drawn on top, so text stays sharp. Also disrupts perceptual
+  // hashes so YouTube / other platforms can't fingerprint the source image.
+  perturbPixels(ctx, W, H);
 
   // Caption: white bold text, black outline, centered — driven by the SAME
   // percentages the editor preview uses, so the two always match. Font family,

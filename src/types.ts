@@ -30,6 +30,35 @@ export interface YtChannel {
   videos?: YtVideo[];
 }
 
+// ── YouTube comments (public scrape, no API key — see server/ytComments.js) ──
+// One top-level comment on a video. `url` deep-links to the comment on YouTube,
+// which is where replying actually happens (posting needs a logged-in account).
+export interface YtComment {
+  id: string;
+  author: string;
+  authorUrl: string;
+  avatar: string;
+  text: string;
+  publishedText: string; // YouTube's own relative label, e.g. "4 minutes ago"
+  likes: number;
+  replyCount: number;
+  isOwner: boolean; // the channel owner's own comment
+  isHearted: boolean; // hearted by the creator
+  url: string;
+}
+
+// One video's comment fetch. `ok: false` carries an `error`; `sort` says which
+// ordering YouTube served ('newest' when the sort menu was available, 'top' as
+// a fallback, 'none' when comments are turned off).
+export interface YtVideoComments {
+  input: string; // the video url/id we asked for (stable key)
+  ok: boolean;
+  error?: string;
+  videoId?: string;
+  sort?: 'newest' | 'top' | 'none';
+  comments?: YtComment[];
+}
+
 // ── Non-YouTube social profiles (best-effort public scrape, no API key) ──────
 // One tracked account's result. Like YtChannel, `ok: false` carries an `error`
 // instead of data. All stat fields are optional — login-walled platforms often
