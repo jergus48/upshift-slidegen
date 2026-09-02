@@ -8,22 +8,38 @@
 // best-effort fallback.
 import { execFile } from 'node:child_process'
 import { writeFile, readFile, unlink, mkdtemp } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { tmpdir, homedir } from 'node:os'
 import { logger } from './log.js'
 
 const log = logger('scrub')
 
-// Check once at startup whether noai-watermark is available on PATH.
+// Resolve the noai-watermark executable. `uv tool install` puts it in
+// ~/.local/bin which may not be on PATH, so we check there explicitly.
+function findTool() {
+  const uvBin = join(homedir(), '.local', 'bin', process.platform === 'win32' ? 'noai-watermark.exe' : 'noai-watermark')
+  if (existsSync(uvBin)) return uvBin
+  return 'noai-watermark' // hope it's on PATH
+}
+
+const TOOL_PATH = findTool()
+
+// Check once at startup whether noai-watermark is available.
 let toolAvailable = null // null = unchecked, true/false after first probe
+
+// Shared env overrides for all execFile calls — noai-watermark's ASCII logo
+// uses characters that Windows cp1250 can't encode, so force UTF-8.
+const EXEC_ENV = { ...process.env, PYTHONIOENCODING: 'utf-8' }
 
 async function checkTool() {
   if (toolAvailable !== null) return toolAvailable
   return new Promise((resolve) => {
-    execFile('noai-watermark', ['--version'], { timeout: 5000 }, (err) => {
+    // Probe with -h (no --version flag). First run loads torch — can take 30s.
+    execFile(TOOL_PATH, ['-h'], { timeout: 60_000, env: EXEC_ENV }, (err) => {
       toolAvailable = !err
-      if (toolAvailable) log.ok('noai-watermark is available')
-      else log.warn('noai-watermark not found — scrub endpoint will be inactive')
+      if (toolAvailable) log.ok(`noai-watermark is available at ${TOOL_PATH}`)
+      else log.warn(`noai-watermark not found at ${TOOL_PATH} — scrub endpoint will be inactive`)
       resolve(toolAvailable)
     })
   })
@@ -33,12 +49,15 @@ async function checkTool() {
 // output, or null on failure.
 function runScrub(inputPath, outputPath) {
   return new Promise((resolve) => {
-    // --strength 0.04 is the sweet spot: enough to disrupt SynthID, not enough
-    // to visibly alter the image. --steps 50 keeps it fast.
+    // CLI: noai-watermark <source> <target> --remove-ai --strength 0.04 --steps 50 -y
+    // --remove-ai: strip invisible AI watermarks (SynthID, StableSignature, etc.)
+    // --strength 0.04: low enough to preserve visuals, high enough to disrupt watermark
+    // --steps 50: diffusion steps (balance speed vs thoroughness)
+    // -y: auto-confirm (skip interactive prompts)
     execFile(
-      'noai-watermark',
-      [inputPath, '--strength', '0.04', '--steps', '50', '-o', outputPath],
-      { timeout: 120_000 }, // 2 min max
+      TOOL_PATH,
+      [inputPath, outputPath, '--remove-ai', '--strength', '0.04', '--steps', '50', '-y'],
+      { timeout: 120_000, env: EXEC_ENV }, // 2 min max
       (err) => {
         if (err) {
           log.warn(`scrub failed: ${err.message}`)
