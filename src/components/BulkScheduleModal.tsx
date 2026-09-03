@@ -3,7 +3,7 @@ import { X, Loader2, CalendarClock, CheckCircle2, ExternalLink } from 'lucide-re
 import type { Slideshow, SocialAccount, ProjectDefaults } from '../types';
 import { Button } from './Button';
 import { renderSlideshow, renderSlideshowVideo, videoMeta } from '../lib/render';
-import { schedule as scheduleOne, getScheduledPosts } from '../lib/api';
+import { schedule as scheduleOne, getScheduledPosts, getRegradeStatus } from '../lib/api';
 
 // Read a Blob back as a base64 data URL so the MP4 can ride the same JSON
 // /api/schedule call the PNG slides already use.
@@ -43,6 +43,19 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
   const [mode, setMode] = useState<'schedule' | 'draft'>(defaults.mode === 'draft' ? 'draft' : 'schedule');
   // Post each slideshow as a vertical video (Short/Reel) instead of a carousel.
   const [asVideo, setAsVideo] = useState(false);
+  // Same choices the single-video export offers (MusicChoiceModal).
+  const [zoom, setZoom] = useState(true);
+  const [regrade, setRegrade] = useState<0 | 1 | 2>(0);
+  const [ffmpegOk, setFfmpegOk] = useState(false);
+  useEffect(() => {
+    let live = true;
+    getRegradeStatus()
+      .then((r) => live && setFfmpegOk(!!r?.ok))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
   const [hours, setHours] = useState(6);
   const [startLocal, setStartLocal] = useState(() => toLocalInput(new Date(Date.now() + 6 * 3600_000)));
   const [lastScheduledMs, setLastScheduledMs] = useState<number | null>(null);
@@ -118,7 +131,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
             // First line is the hook so post-bridge uses it as the video title;
             // the description (caption + hashtags) follows.
             const caption = [meta.title, meta.description].filter(Boolean).join('\n\n');
-            const blob = await renderSlideshowVideo(show);
+            const blob = await renderSlideshowVideo(show, undefined, { zoom, regrade });
             const video = await blobToDataUrl(blob);
             await scheduleOne({ id: show.id, caption, video, socialAccounts: selectedAccounts, scheduledAt, mode });
           } else {
@@ -197,9 +210,27 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
                 <Button variant={asVideo ? 'primary' : 'secondary'} onClick={() => setAsVideo(true)} disabled={busy}>Video (Short/Reel)</Button>
               </div>
               {asVideo && (
-                <p className="text-[11px] text-ink-6 mt-1.5 leading-snug">
-                  Each slideshow renders to a vertical MP4 in real time (~20–30s each), so a big batch takes a while. The hook becomes the video title.
-                </p>
+                <>
+                  <div className="flex gap-2 mt-2">
+                    <Button variant={zoom ? 'primary' : 'secondary'} onClick={() => setZoom(true)} disabled={busy}>Zoom</Button>
+                    <Button variant={!zoom ? 'primary' : 'secondary'} onClick={() => setZoom(false)} disabled={busy}>No zoom</Button>
+                  </div>
+                  {ffmpegOk && (
+                    <div className="flex gap-2 mt-2">
+                      <Button variant={regrade === 0 ? 'primary' : 'secondary'} onClick={() => setRegrade(0)} disabled={busy}>No distortion</Button>
+                      <Button variant={regrade === 1 ? 'primary' : 'secondary'} onClick={() => setRegrade(1)} disabled={busy}>Distort subtle</Button>
+                      <Button variant={regrade === 2 ? 'primary' : 'secondary'} onClick={() => setRegrade(2)} disabled={busy}>Distort heavy</Button>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-ink-6 mt-1.5 leading-snug">
+                    Each slideshow renders to a vertical MP4 in real time (~20–30s each), so a big batch takes a while. The hook becomes the video title.
+                    {zoom
+                      ? ' Every slide slowly pans and zooms.'
+                      : ' Every slide is held perfectly still.'}
+                    {regrade > 0 &&
+                      ' Distortion adds rotation, warp, crop, grain and a colour grade plus a second encode — visibly softer, and it roughly quadruples the time for every video in the batch.'}
+                  </p>
+                </>
               )}
             </div>
 

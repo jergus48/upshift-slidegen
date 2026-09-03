@@ -14,6 +14,7 @@ import type {
   LibraryPack,
   YtChannel,
   YtVideoComments,
+  YtCommentCount,
   SocialProfile,
   StockQuote,
   StockAnalysis,
@@ -161,6 +162,27 @@ export const getYoutubeChannels = (channels: string[], noCache = false) =>
 
 // Recent public comments on a batch of videos (no API key). Used by the
 // Channels dashboard to show what still needs a reply.
+// ── Video regrade (local ffmpeg) ─────────────────────────────────────
+// Is ffmpeg actually installed where the server can reach it? The export UI
+// hides the option when it isn't, rather than failing at the end of a render.
+export const getRegradeStatus = () => req<{ ok: boolean; version?: string; error?: string }>('/video/regrade/status');
+
+// Push an exported video through the ffmpeg distortion + re-encode chain.
+// `strength` 1 = subtle, 2 = heavy. Returns the processed video as a data URL.
+export const regradeVideo = (video: string, strength: 1 | 2, codec: 'h264' | 'h265' = 'h264') =>
+  req<{ video: string; params: Record<string, unknown> }>('/video/regrade', {
+    method: 'POST',
+    body: JSON.stringify({ video, strength, codec }),
+  });
+
+// Comment counts for a grid of videos — one cheap watch-page read each, so the
+// cards can show which uploads have comments without opening them.
+export const getYoutubeCommentCounts = (videos: string[], noCache = false) =>
+  req<YtCommentCount[]>('/youtube/comment-counts', {
+    method: 'POST',
+    body: JSON.stringify({ videos, noCache }),
+  });
+
 export const getYoutubeComments = (videos: string[], opts: { limit?: number; noCache?: boolean } = {}) =>
   req<YtVideoComments[]>('/youtube/comments', {
     method: 'POST',

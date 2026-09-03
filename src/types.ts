@@ -30,6 +30,17 @@ export interface YtChannel {
   videos?: YtVideo[];
 }
 
+// How many comments one video has, for the channel grid's badge. `count` is
+// null when YouTube's page didn't carry the field — comments off, or simply not
+// readable — so the UI can show nothing instead of a misleading 0.
+export interface YtCommentCount {
+  input: string;
+  ok: boolean;
+  error?: string;
+  videoId?: string;
+  count?: number | null;
+}
+
 // ── YouTube comments (public scrape, no API key — see server/ytComments.js) ──
 // One top-level comment on a video. `url` deep-links to the comment on YouTube,
 // which is where replying actually happens (posting needs a logged-in account).

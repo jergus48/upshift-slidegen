@@ -13,6 +13,7 @@ import { createZip, dataUrlToBytes, type ZipEntry } from './zip';
 import { writeFileToDir } from './downloadFolders';
 import { pickMusicTrack, type MusicGender, type MusicTrack } from './music';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+import { regradeVideo as regradeVideoApi } from './api';
 
 const W = 1080;
 const H = 1920;
@@ -497,6 +498,24 @@ interface VideoScene {
   cutAt?: number;
 }
 
+// ── Video options ────────────────────────────────────────────────────────
+export interface VideoOptions {
+  // Ken Burns: slowly pan and zoom every slide (default) instead of holding it
+  // perfectly still. Purely a look — it only ever crops into the already-baked
+  // frame, so neither setting costs any fidelity. The slide transition stays in
+  // both: it's how the deck is paced, not part of the zoom.
+  zoom?: boolean;
+  // Post-process the finished video through the server's ffmpeg chain:
+  // geometric + photometric distortion, then a ProRes intermediate and a second
+  // encode (see server/regrade.js). 0 = off (default), 1 = subtle, 2 = heavy.
+  //
+  // Unlike `zoom` this DOES cost visible quality — it rotates, warps, crops,
+  // grades and adds film grain, then re-encodes twice. It also takes roughly
+  // 4x the clip's length to run and needs ffmpeg on the server. Off unless
+  // explicitly asked for.
+  regrade?: 0 | 1 | 2;
+}
+
 // ── Ken Burns ───────────────────────────────────────────────────────────────
 // Every slide slowly pans and zooms instead of sitting perfectly still. Besides
 // reading less like a static slideshow, continuous motion means no two encoded
@@ -548,7 +567,40 @@ function drawKenBurns(
   ctx.drawImage(img, dx + (W - w) / 2 + ux * slackX * t, (H - h) / 2 + uy * slackY * t, w, h);
 }
 
-async function prepareVideoScene(show: Slideshow): Promise<VideoScene> {
+// ── Transitions ────────────────────────────────────────────────────
+// A deck used to cut between slides one way: a 240ms horizontal push. Every
+// boundary looking identical is both duller than it needs to be and a very
+// regular signal. These five rotate deterministically by boundary index, so a
+// deck still renders identically every time.
+//
+// All of them run inside the SAME TRANSITION_MS window, which matters: `total`
+// and `cutAt` (the music drop) are computed from a uniform transition length,
+// so a per-type duration would desync the audio.
+type TransitionKind = 'slide' | 'zoom' | 'whip' | 'flash' | 'glitch';
+
+const TRANSITIONS: TransitionKind[] = ['slide', 'zoom', 'whip', 'flash', 'glitch'];
+
+// Deterministic per boundary, and never the same kind twice in a row.
+function transitionFor(i: number): TransitionKind {
+  return TRANSITIONS[i % TRANSITIONS.length];
+}
+
+// Small deterministic PRNG (mulberry32) so the glitch bands are random-looking
+// but identical on every render of the same deck.
+function seededRandom(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+async function prepareVideoScene(
+  show: Slideshow,
+  { zoom = true }: VideoOptions = {},
+): Promise<VideoScene> {
   const imgs = await Promise.all((await renderSlideshow(show)).map(loadImage));
   if (!imgs.length) throw new Error('This slideshow has no slides to turn into a video.');
 
@@ -576,14 +628,122 @@ async function prepareVideoScene(show: Slideshow): Promise<VideoScene> {
   // A Ken Burns slide is wider and taller than the frame, so during a
   // transition the two halves would overlap and bleed into each other. Clip
   // each one to its own side of the moving boundary.
+  // One slide, drifting or dead still depending on the zoom setting.
+  const drawSlide = (i: number, p: number, dx: number) => {
+    if (zoom) drawKenBurns(ctx, imgs[i], i, p, dx);
+    else ctx.drawImage(imgs[i], dx, 0, W, H);
+  };
+
   const drawHalf = (i: number, p: number, dx: number, clipX: number, clipW: number) => {
     if (clipW <= 0) return;
     ctx.save();
     ctx.beginPath();
     ctx.rect(clipX, 0, clipW, H);
     ctx.clip();
-    drawKenBurns(ctx, imgs[i], i, p, dx);
+    drawSlide(i, p, dx);
     ctx.restore();
+  };
+
+  // One slide drawn scaled about the frame centre at a given opacity — the
+  // building block for the transitions that don't slide.
+  const drawScaled = (i: number, p: number, scale: number, alpha: number) => {
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(scale, scale);
+    ctx.translate(-W / 2, -H / 2);
+    drawSlide(i, p, 0);
+    ctx.restore();
+  };
+
+  // The five transition renderers. `q` is 0..1 through the transition window;
+  // `pOut`/`pIn` are the two slides' own Ken Burns progress.
+  const transitions: Record<TransitionKind, (i: number, q: number, pOut: number, pIn: number) => void> = {
+    // The original: outgoing pushes left, incoming follows it in.
+    slide: (i, q, pOut, pIn) => {
+      const dx = Math.round(-easeInOut(q) * W);
+      const edge = dx + W;
+      drawHalf(i, pOut, dx, 0, edge);
+      drawHalf(i + 1, pIn, edge, edge, W - edge);
+    },
+
+    // Outgoing pushes through the camera while the incoming rises to meet it.
+    // The outgoing stays fully opaque as the base layer: it only ever scales UP
+    // from 1, so it always covers the frame. Fading it out instead would let
+    // the previous frame show through at the edges (drawAt never clears).
+    zoom: (i, q, pOut, pIn) => {
+      const e = easeInOut(q);
+      drawScaled(i, pOut, 1 + 0.35 * e, 1);
+      drawScaled(i + 1, pIn, 0.72 + 0.28 * e, e);
+    },
+
+    // A hard sideways whip, smeared: a few ghost copies trailing the motion
+    // stand in for real motion blur, which canvas has no filter for.
+    whip: (i, q, pOut, pIn) => {
+      const e = easeInOut(q);
+      const dx = Math.round(-e * W);
+      const edge = dx + W;
+      drawHalf(i, pOut, dx, 0, edge);
+      drawHalf(i + 1, pIn, edge, edge, W - edge);
+      // Smear strongest mid-whip, gone by either end.
+      const smear = Math.sin(Math.PI * q);
+      if (smear > 0.01) {
+        ctx.save();
+        ctx.globalAlpha = 0.22 * smear;
+        for (let g = 1; g <= 3; g++) {
+          const off = Math.round(g * 26 * smear);
+          drawHalf(i, pOut, dx + off, 0, edge);
+          drawHalf(i + 1, pIn, edge + off, edge, W - edge);
+        }
+        ctx.restore();
+      }
+    },
+
+    // Light leak: the two slides cross-fade under a warm bloom that peaks at
+    // the midpoint, so the cut lands inside the flash.
+    flash: (i, q, pOut, pIn) => {
+      const e = easeInOut(q);
+      drawScaled(i, pOut, 1 + 0.04 * e, 1);
+      drawScaled(i + 1, pIn, 1.04 - 0.04 * e, e);
+      const bloom = Math.sin(Math.PI * q) ** 1.6;
+      if (bloom > 0.01) {
+        const g = ctx.createLinearGradient(0, 0, W, H);
+        g.addColorStop(0, `rgba(255,238,204,${0.85 * bloom})`);
+        g.addColorStop(0.5, `rgba(255,255,255,${0.92 * bloom})`);
+        g.addColorStop(1, `rgba(255,226,196,${0.8 * bloom})`);
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, W, H);
+      }
+    },
+
+    // Digital tear: horizontal bands of both slides displaced sideways, the
+    // displacement peaking mid-transition. Bands are seeded off the boundary
+    // index so the tear is identical on every render.
+    glitch: (i, q, pOut, pIn) => {
+      const e = easeInOut(q);
+      const rnd = seededRandom(i * 9973 + 17);
+      const bands = 14;
+      const bandH = Math.ceil(H / bands);
+      const kick = Math.sin(Math.PI * q);
+      // Opaque base first: every band below is drawn with a sideways offset,
+      // which leaves a sliver of the frame uncovered at one edge. Without a
+      // base that sliver would show whatever was on the canvas last frame.
+      drawSlide(e < 0.5 ? i : i + 1, e < 0.5 ? pOut : pIn, 0);
+      for (let b = 0; b < bands; b++) {
+        const y = b * bandH;
+        // Which slide this band shows flips over as the transition runs.
+        const showIncoming = rnd() < e;
+        const off = Math.round((rnd() * 2 - 1) * 90 * kick);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, y, W, bandH);
+        ctx.clip();
+        if (showIncoming) drawSlide(i + 1, pIn, off);
+        else drawSlide(i, pOut, off);
+        ctx.restore();
+      }
+    },
   };
 
   // Draw whatever should be on screen at time `t` (ms into the clip).
@@ -595,25 +755,23 @@ async function prepareVideoScene(show: Slideshow): Promise<VideoScene> {
       // jumping speed the moment it starts moving out.
       const span = holds[i] + (i < imgs.length - 1 ? TRANSITION_MS : 0);
       if (t < start + holds[i]) {
-        drawKenBurns(ctx, imgs[i], i, (t - start) / span, 0); // holding slide i
+        drawSlide(i, (t - start) / span, 0); // holding slide i
         return;
       }
       const cut = start + holds[i];
       if (i < imgs.length - 1) {
         if (t < cut + TRANSITION_MS) {
-          const dx = Math.round(-easeInOut((t - cut) / TRANSITION_MS) * W);
-          const edge = dx + W; // where outgoing ends and incoming begins
-          drawHalf(i, (t - start) / span, dx, 0, edge); // outgoing slides left
+          const q = (t - cut) / TRANSITION_MS;
           // The incoming slide holds its opening framing until it lands, then
           // picks up its own drift on the next branch.
-          drawHalf(i + 1, 0, edge, edge, W - edge); // incoming follows from the right
+          transitions[transitionFor(i)](i, q, (t - start) / span, 0);
           return;
         }
         start = cut + TRANSITION_MS;
       }
     }
     const last = imgs.length - 1;
-    drawKenBurns(ctx, imgs[last], last, 1, 0); // past the end — hold the last frame
+    drawSlide(last, 1, 0); // past the end — hold the last frame
   };
 
   return { canvas, drawAt, total, cutAt };
@@ -700,11 +858,12 @@ function aacAudioSpecificConfig(sampleRate: number, channels: number): Uint8Arra
 async function renderSlideshowVideoWebCodecs(
   show: Slideshow,
   music?: MusicTrack | null,
+  opts?: VideoOptions,
 ): Promise<Blob> {
   const videoConfig = await pickAvcConfig();
   if (!videoConfig) throw new Error('No supported H.264 config for WebCodecs.');
 
-  const { canvas, drawAt, total, cutAt } = await prepareVideoScene(show);
+  const { canvas, drawAt, total, cutAt } = await prepareVideoScene(show, opts);
   const frameDurUs = Math.round(1_000_000 / VIDEO_FPS);
   const frameCount = Math.max(1, Math.round((total / 1000) * VIDEO_FPS));
 
@@ -850,11 +1009,15 @@ async function renderSlideshowVideoWebCodecs(
 // ── MediaRecorder encoder (real-time fallback) ───────────────────────────────
 // Used only when WebCodecs isn't available. Records the canvas in real time, so
 // export takes about as long as the clip itself.
-async function renderSlideshowVideoRealtime(show: Slideshow, music?: MusicTrack | null): Promise<Blob> {
+async function renderSlideshowVideoRealtime(
+  show: Slideshow,
+  music?: MusicTrack | null,
+  opts?: VideoOptions,
+): Promise<Blob> {
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('Video export needs a browser with MediaRecorder support.');
   }
-  const { canvas, drawAt, total, cutAt } = await prepareVideoScene(show);
+  const { canvas, drawAt, total, cutAt } = await prepareVideoScene(show, opts);
 
   // Capture in MANUAL mode: captureStream(0) means the browser emits a frame ONLY
   // when we call requestFrame(). This is deliberate — passing a frame rate instead
@@ -998,17 +1161,54 @@ async function renderSlideshowVideoRealtime(show: Slideshow, music?: MusicTrack 
 // a music track). `music`, when given, is mixed in as a background track
 // (looped/trimmed to the clip, starting on its pinned `start` or an auto-detected
 // drop); a missing or unreadable track just yields a silent video.
-export async function renderSlideshowVideo(show: Slideshow, music?: MusicTrack | null): Promise<Blob> {
+export async function renderSlideshowVideo(
+  show: Slideshow,
+  music?: MusicTrack | null,
+  opts?: VideoOptions,
+): Promise<Blob> {
+  const master = await renderMaster(show, music, opts);
+  return opts?.regrade ? applyRegrade(master, opts.regrade) : master;
+}
+
+// The clean render, before any optional post-processing.
+async function renderMaster(
+  show: Slideshow,
+  music?: MusicTrack | null,
+  opts?: VideoOptions,
+): Promise<Blob> {
   if (hasWebCodecs()) {
     try {
-      return await renderSlideshowVideoWebCodecs(show, music);
+      return await renderSlideshowVideoWebCodecs(show, music, opts);
     } catch (err) {
       // Any WebCodecs failure (unsupported config, no AAC encoder, runtime
       // error) drops us to the real-time recorder so the export still succeeds.
       console.warn('WebCodecs video export failed; using real-time recorder.', err);
     }
   }
-  return renderSlideshowVideoRealtime(show, music);
+  return renderSlideshowVideoRealtime(show, music, opts);
+}
+
+// Hand the finished video to the server's ffmpeg chain and take back what it
+// returns. A failure here is NOT fatal: the clean master is a perfectly good
+// export, so we warn and hand that back rather than losing a whole render to a
+// missing binary or a server that isn't running.
+async function applyRegrade(master: Blob, strength: 1 | 2): Promise<Blob> {
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => reject(r.error || new Error('Could not read the rendered video.'));
+      r.readAsDataURL(master);
+    });
+    const { video } = await regradeVideoApi(dataUrl, strength);
+    // dataUrlToBytes allocates an exactly-sized array, so its buffer is the
+    // whole payload and can go straight to Blob without a copy.
+    const bytes = dataUrlToBytes(video);
+    return new Blob([bytes.buffer as ArrayBuffer], { type: 'video/mp4' });
+  } catch (err) {
+    console.warn('Video regrade failed; keeping the clean master.', err);
+    return master;
+  }
 }
 
 // Download selected slideshows as video(s). A single selection saves one file
@@ -1020,6 +1220,7 @@ export async function downloadSlideshowsVideo(
   onProgress?: (done: number, total: number) => void,
   music?: MusicGender | null,
   dir?: FileSystemDirectoryHandle | null,
+  opts?: VideoOptions,
 ): Promise<void> {
   if (!shows.length) return;
 
@@ -1033,7 +1234,7 @@ export async function downloadSlideshowsVideo(
   // Single selection → one plain video file plus its metadata sidecar.
   if (shows.length === 1) {
     onProgress?.(0, 1);
-    const blob = await renderSlideshowVideo(shows[0], await trackFor(shows[0]));
+    const blob = await renderSlideshowVideo(shows[0], await trackFor(shows[0]), opts);
     onProgress?.(1, 1);
     const base = slugify(shows[0].hook || shows[0].caption || shows[0].id);
     const videoName = `${base}.${extForMime(blob.type)}`;
@@ -1080,7 +1281,7 @@ export async function downloadSlideshowsVideo(
     }
     usedNames.add(name);
 
-    const blob = await renderSlideshowVideo(show, await trackFor(show));
+    const blob = await renderSlideshowVideo(show, await trackFor(show), opts);
     const videoName = `${name}.${extForMime(blob.type)}`;
     const videoBytes = new Uint8Array(await blob.arrayBuffer());
     const metaBytes = new TextEncoder().encode(videoMetaJson(show));

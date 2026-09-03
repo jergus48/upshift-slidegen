@@ -102,7 +102,7 @@ export function QueueView({
     }
   };
 
-  const downloadSelectedVideo = async (music: MusicGender | null) => {
+  const downloadSelectedVideo = async (music: MusicGender | null, zoom: boolean, regrade: 0 | 1 | 2) => {
     setAskMusic(false);
     setVideoProgress({ done: 0, total: selectedCount });
     try {
@@ -112,6 +112,7 @@ export function QueueView({
         (done, total) => setVideoProgress({ done, total }),
         music,
         dir,
+        { zoom, regrade },
       );
     } finally {
       setVideoProgress(null);
@@ -283,12 +284,12 @@ function SlideshowCard({ slideshow, selected, destId, onToggleSelect, onApprove,
     }
   };
 
-  const downloadVideo = async (music: MusicGender | null) => {
+  const downloadVideo = async (music: MusicGender | null, zoom: boolean, regrade: 0 | 1 | 2) => {
     setAskMusic(false);
     setRenderingVideo(true);
     try {
       const dir = await resolveWritableFolder(destId);
-      await downloadSlideshowsVideo([slideshow], undefined, music, dir);
+      await downloadSlideshowsVideo([slideshow], undefined, music, dir, { zoom, regrade });
     } finally {
       setRenderingVideo(false);
     }

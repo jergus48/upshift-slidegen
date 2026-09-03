@@ -238,6 +238,75 @@ export async function fetchComments(input, { limit = 20, noCache = false } = {})
   return result
 }
 
+// --- Comment counts ---------------------------------------------------------
+// Just "how many comments does this video have", for the channel grid — so you
+// can see which uploads need replies without opening each one.
+//
+// The full fetchComments flow costs 2-3 requests per video, far too much for a
+// whole grid. The watch page itself carries the count in `contextualInfo` (the
+// abbreviated "53K" the comments section header shows), so ONE request is
+// enough. Verified against the exact `countText` from the continuation on four
+// videos: 2.4M/2,456,674 - 53K/53,192 - 23K/23,222 - 12K/12,929.
+//
+// `count` is null when the page has no such field, which is how "comments are
+// off" and "we could not tell" both come back — the UI shows nothing rather
+// than a misleading 0.
+const countCache = new Map() // videoId -> { at, data }
+
+export async function fetchCommentCount(input, { noCache = false } = {}) {
+  const videoId = toVideoId(input)
+  if (!noCache) {
+    const hit = countCache.get(videoId)
+    if (hit && Date.now() - hit.at < TTL_MS) return hit.data
+  }
+
+  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+    headers: FETCH_HEADERS,
+    redirect: 'follow',
+  })
+  if (!res.ok) throw new Error(`watch page ${res.status}`)
+  const data = parseInitialData(await res.text())
+  if (!data) throw new Error('Could not read this video page.')
+
+  // `contextualInfo` is attached to the comments section entry point. Take the
+  // first one that actually reads as a number.
+  let count = null
+  for (const node of collect(data, 'contextualInfo')) {
+    const t = textOf(node).trim()
+    if (t && /\d/.test(t)) {
+      count = parseCount(t)
+      break
+    }
+  }
+
+  const result = { videoId, count }
+  countCache.set(videoId, { at: Date.now(), data: result })
+  return result
+}
+
+// Counts for a whole grid. Capped concurrency (not Promise.all over everything)
+// because YouTube starts serving unparseable pages when hit with a burst.
+const COUNT_CONCURRENCY = 4
+
+export async function fetchCommentCountsBatch(inputs, opts = {}) {
+  const list = (Array.isArray(inputs) ? inputs : []).map(String).map((s) => s.trim()).filter(Boolean)
+  const out = new Array(list.length)
+  let next = 0
+  const worker = async () => {
+    while (next < list.length) {
+      const i = next++
+      const input = list[i]
+      try {
+        out[i] = { input, ok: true, ...(await fetchCommentCount(input, opts)) }
+      } catch (e) {
+        out[i] = { input, ok: false, error: e.message || String(e) }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(COUNT_CONCURRENCY, list.length) }, worker))
+  return out
+}
+
 // Comments for a batch of videos in parallel, capturing per-video errors so one
 // dead video never fails the panel.
 export async function fetchCommentsBatch(inputs, opts = {}) {

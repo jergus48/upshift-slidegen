@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Eye, ThumbsUp, RefreshCw, Loader2, Plus, X, Flame, MonitorPlay, ExternalLink, Users, Heart, Grid3x3, MessageSquare, Sparkles, Copy, Check, Reply } from 'lucide-react';
 import type { YtChannel, YtVideo, SocialProfile, YtComment } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
-import { getYoutubeChannels, getSocialProfiles, getYoutubeComments, generateComments } from '../lib/api';
+import { getYoutubeChannels, getSocialProfiles, getYoutubeComments, getYoutubeCommentCounts, generateComments } from '../lib/api';
 import { loadChannels, saveChannels, PLATFORMS, PLATFORM_LABELS, type Platform } from '../lib/localChannels';
 
 // Per-platform copy for the add bar. Only YouTube fetches live stats; the rest
@@ -421,6 +421,7 @@ function ChannelCard({
   // Which upload's comment thread is expanded under the grid (one at a time).
   const [openId, setOpenId] = useState<string | null>(null);
   const open = videos.find((v) => v.id === openId) ?? null;
+  const commentCounts = useCommentCounts(videos);
 
   return (
     <div className="bg-card border border-line rounded-xl p-4">
@@ -471,6 +472,7 @@ function ChannelCard({
                   key={v.id}
                   video={v}
                   gained={gainedFor(v, filter)}
+                  commentCount={commentCounts.get(v.id)}
                   open={v.id === openId}
                   onToggleComments={() => setOpenId((id) => (id === v.id ? null : v.id))}
                 />
@@ -496,11 +498,15 @@ function ChannelCard({
 function VideoCard({
   video,
   gained,
+  commentCount,
   open,
   onToggleComments,
 }: {
   video: YtVideo;
   gained?: { value: number; exact: boolean } | null;
+  // undefined while the counts are still loading, null when YouTube wouldn't
+  // tell us — a number only when we actually know.
+  commentCount?: number | null;
   open: boolean;
   onToggleComments: () => void;
 }) {
@@ -545,10 +551,48 @@ function VideoCard({
         className={`mt-1 flex items-center gap-1 text-[11px] ${open ? 'text-ink' : 'text-ink-5 hover:text-ink'}`}
       >
         <MessageSquare size={11} className={open ? '' : 'text-ink-6'} />
-        {open ? 'Hide comments' : 'Comments'}
+        {open ? 'Hide comments' : commentCount == null ? 'Comments' : `${formatNumber(commentCount)} comments`}
       </button>
     </div>
   );
+}
+
+// How many comments each upload in this grid has, so a card can say "12
+// comments" instead of a bare "Comments" and you can see at a glance which ones
+// need replying to. One cheap watch-page read per video server-side (capped
+// concurrency, 5-minute cache), fired once the grid has rendered.
+//
+// Counts are YouTube's own abbreviated figures ("53K" -> 53000), so they're
+// approximate for big videos and exact for small ones — which is the right way
+// round for a "what needs a reply" list.
+function useCommentCounts(videos: YtVideo[]): Map<string, number | null> {
+  const [counts, setCounts] = useState<Map<string, number | null>>(new Map());
+  // Refetch only when the actual set of uploads changes, not on every render.
+  const key = videos.map((v) => v.id).join(',');
+
+  useEffect(() => {
+    if (!videos.length) return;
+    let live = true;
+    getYoutubeCommentCounts(videos.map((v) => v.url))
+      .then((rows) => {
+        if (!live) return;
+        const next = new Map<string, number | null>();
+        for (const r of rows) {
+          if (r.ok && r.videoId) next.set(r.videoId, r.count ?? null);
+        }
+        setCounts(next);
+      })
+      .catch(() => {
+        // A failed count is not worth surfacing — the cards just keep saying
+        // "Comments" and opening one still works.
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  return counts;
 }
 
 // The recent comments on one upload, with a per-comment "draft a reply" helper.

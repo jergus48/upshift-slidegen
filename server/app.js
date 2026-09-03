@@ -14,7 +14,8 @@ import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.
 import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
 import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { fetchChannels } from './youtube.js'
-import { fetchCommentsBatch } from './ytComments.js'
+import { fetchCommentsBatch, fetchCommentCountsBatch } from './ytComments.js'
+import { regradeVideo, ffmpegAvailable } from './regrade.js'
 import { withViewDeltas } from './viewSnapshots.js'
 import { fetchProfiles } from './social.js'
 import { fetchQuotes, fetchFxRates, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
@@ -302,6 +303,32 @@ app.post('/api/youtube/channels', h(async (req, res) => {
 // Recent public comments on a batch of videos, so the dashboard can show what
 // needs replying to. No API key — this reads the same public surface the watch
 // page itself loads (see ytComments.js). Per-video errors are captured.
+// ── Video regrade (local ffmpeg) ─────────────────────────────────────
+// Opt-in post-process for an exported video: geometric + photometric
+// distortion, then a ProRes intermediate and a second encode. See regrade.js
+// for what it does and what it does not do.
+app.get('/api/video/regrade/status', h(async (_req, res) => res.json(await ffmpegAvailable())))
+
+app.post('/api/video/regrade', h(async (req, res) => {
+  const raw = String(req.body?.video || '')
+  // Accept a data: URL (what the browser has after an export) or bare base64.
+  const b64 = raw.startsWith('data:') ? raw.slice(raw.indexOf(',') + 1) : raw
+  if (!b64) return res.status(400).json({ error: 'No video supplied.' })
+  const strength = req.body?.strength === 2 ? 2 : 1
+  const codec = req.body?.codec === 'h265' ? 'h265' : 'h264'
+  const { video, params } = await regradeVideo(Buffer.from(b64, 'base64'), { strength, codec })
+  res.json({ video: 'data:video/mp4;base64,' + video.toString('base64'), params })
+}))
+
+// How many comments each video has, for the grid badges. One watch-page read
+// per video (see fetchCommentCountsBatch), so the panel can show what needs a
+// reply without opening every upload.
+app.post('/api/youtube/comment-counts', h(async (req, res) => {
+  const videos = Array.isArray(req.body?.videos) ? req.body.videos : []
+  const noCache = !!req.body?.noCache
+  res.json(await fetchCommentCountsBatch(videos, { noCache }))
+}))
+
 app.post('/api/youtube/comments', h(async (req, res) => {
   const videos = Array.isArray(req.body?.videos) ? req.body.videos : []
   const noCache = !!req.body?.noCache
