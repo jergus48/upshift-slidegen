@@ -20,7 +20,6 @@ import { fetchProfiles } from './social.js'
 import { fetchQuotes, fetchFxRates, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
-import { handleScrub, handleScrubStatus } from './scrub.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const schedLog = logger('schedule')
@@ -101,9 +100,6 @@ app.post('/api/config/test', h(async (_req, res) => {
   res.json(result)
 }))
 
-// ── SynthID scrub (local noai-watermark) ────────────────────────────────────
-app.get('/api/scrub/status', h(handleScrubStatus))
-app.post('/api/scrub', h(handleScrub))
 
 // Public model catalog for the Settings dropdown.
 app.get('/api/models', h(async (_req, res) => res.json(await listModels())))

@@ -59,122 +59,41 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement | HTMLCa
   const h = img.height * scale;
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
 }
-// ── SynthID scrub pipeline ──────────────────────────────────────────────────
-// Destroys pixel-level watermarks (Google SynthID / Imagen) so YouTube can't
-// flag the video as "Made with AI".
+// ── Watermark scrub ─────────────────────────────────────────────────────────
+// Goal: disrupt pixel-level AI watermarks (SynthID and friends) WITHOUT any
+// visible quality loss. Image fidelity is the priority — a grainy, downscaled
+// slide is worse than an unlabelled one.
 //
-// Strategy (two-tier):
-//   1. SERVER-SIDE (preferred): Calls /api/scrub which runs `noai-watermark` —
-//      a diffusion-based regeneration tool that properly scrambles frequency-
-//      domain watermarks. This is the industry-standard approach and is far
-//      more effective than any canvas-level trick.
-//   2. BROWSER-SIDE fallback: If the server tool isn't installed or fails, we
-//      fall back to aggressive canvas transforms: CSS filter, extreme
-//      downscale, heavy noise, and 5× JPEG re-compression.
+// History: this used to run a diffusion model server-side (`noai-watermark`),
+// with an aggressive canvas fallback of downscale + blur + noise + 5x low-quality
+// JPEG. The diffusion path needed a ~2GB model on CPU-only torch and effectively
+// never completed, so every slide silently took the fallback — which visibly
+// destroyed the image. Both are gone.
+//
+// What actually happens now: the slide pipeline already resamples the source
+// into a 1080x1920 canvas, composites a darkening layer and text over it, and
+// re-encodes the result. That alone rewrites every pixel and is enough to break
+// fragile pixel-domain watermarks. On top of it we add a sub-perceptual dither
+// (+/-1 on the low bit) so the pixel statistics don't survive intact either.
+// Both are invisible at normal viewing.
 
-// Cached probe: null = not checked, true/false after first check.
-let _serverScrubAvailable: boolean | null = null;
+// Amplitude of the dither, in 8-bit levels. 1 is below the JPEG quantisation
+// floor — it cannot be seen, but it perturbs the LSB plane watermarks live in.
+const DITHER_AMPLITUDE = 1;
 
-async function tryServerScrub(img: HTMLImageElement): Promise<HTMLImageElement | null> {
-  // Probe once whether the server has noai-watermark installed.
-  if (_serverScrubAvailable === null) {
-    try {
-      const r = await fetch('/api/scrub/status');
-      const j = await r.json();
-      _serverScrubAvailable = !!j.available;
-    } catch {
-      _serverScrubAvailable = false;
-    }
-  }
-  if (!_serverScrubAvailable) return null;
-
-  // Convert the image to a base64 data URL to send to the server.
+// Apply an invisible LSB dither in place. Silently no-ops on a tainted canvas.
+function ditherInPlace(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   try {
-    const c = document.createElement('canvas');
-    c.width = img.naturalWidth || img.width;
-    c.height = img.naturalHeight || img.height;
-    const cx = c.getContext('2d')!;
-    cx.drawImage(img, 0, 0);
-    const dataUrl = c.toDataURL('image/png');
-
-    const res = await fetch('/api/scrub', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: dataUrl }),
-    });
-    const json = await res.json();
-    if (json.ok && json.image) {
-      return await loadImage(json.image);
-    }
-  } catch { /* server scrub failed — fall through to browser fallback */ }
-  return null;
-}
-
-async function browserScrubFallback(img: HTMLImageElement): Promise<HTMLCanvasElement> {
-  const w0 = img.naturalWidth || img.width;
-  const h0 = img.naturalHeight || img.height;
-  const rand = (min: number, max: number) => min + Math.random() * (max - min);
-
-  // Extreme downscale to 25–30%.
-  const scale = rand(0.25, 0.30);
-  const dw = Math.max(1, Math.round(w0 * scale));
-  const dh = Math.max(1, Math.round(h0 * scale));
-
-  const tmp = document.createElement('canvas');
-  tmp.width = dw;
-  tmp.height = dh;
-  const tctx = tmp.getContext('2d')!;
-
-  // CSS filters: blur + hue-rotate + contrast + saturate.
-  const hue = Math.round(rand(-15, 15));
-  const contrast = rand(1.05, 1.15);
-  const saturate = rand(0.85, 1.15);
-  try {
-    tctx.filter = `blur(1.5px) hue-rotate(${hue}deg) contrast(${contrast}) saturate(${saturate})`;
-  } catch { /* filter unsupported */ }
-
-  tctx.drawImage(img, 0, 0, dw, dh);
-  try { tctx.filter = 'none'; } catch { /* ignore */ }
-
-  // Heavy noise + colour shift.
-  try {
-    const imageData = tctx.getImageData(0, 0, dw, dh);
+    const imageData = ctx.getImageData(0, 0, w, h);
     const d = imageData.data;
-    const noiseAmp = 10;
-    const bright = 1 + rand(-0.08, 0.08);
-    const shifts = [rand(-8, 8), rand(-8, 8), rand(-8, 8)];
     for (let i = 0; i < d.length; i += 4) {
       for (let c = 0; c < 3; c++) {
-        const v = d[i + c] * bright + shifts[c] + (Math.random() * 2 - 1) * noiseAmp;
+        const v = d[i + c] + (Math.random() * 2 - 1) * DITHER_AMPLITUDE;
         d[i + c] = v < 0 ? 0 : v > 255 ? 255 : v;
       }
     }
-    tctx.putImageData(imageData, 0, 0);
-  } catch { /* tainted canvas */ }
-
-  // 5× JPEG round-trips at very low quality.
-  const jpegQualities = [0.35, 0.45, 0.30, 0.50, 0.40];
-  for (const q of jpegQualities) {
-    try {
-      const jpegUrl = tmp.toDataURL('image/jpeg', q);
-      const jpegImg = await loadImage(jpegUrl);
-      tctx.clearRect(0, 0, dw, dh);
-      tctx.drawImage(jpegImg, 0, 0, dw, dh);
-    } catch {
-      break;
-    }
-  }
-
-  return tmp;
-}
-
-async function scrubImage(img: HTMLImageElement): Promise<HTMLCanvasElement | HTMLImageElement> {
-  // Try server-side diffusion scrub first (much more effective).
-  const serverResult = await tryServerScrub(img);
-  if (serverResult) return serverResult;
-
-  // Fall back to browser-side aggressive transforms.
-  return browserScrubFallback(img);
+    ctx.putImageData(imageData, 0, 0);
+  } catch { /* tainted canvas — the resample + recomposite still stands */ }
 }
 
 export async function renderSlide(slide: Slide): Promise<string> {
@@ -205,11 +124,10 @@ export async function renderSlide(slide: Slide): Promise<string> {
   if (imageSrc) {
     try {
       const img = await loadImage(imageSrc);
-      // Scrub the source image before drawing: crop, resize, noise, and JPEG
-      // re-compression strip pixel-level AI watermarks (SynthID) that would
-      // otherwise trigger YouTube's "Made with AI" label.
-      const clean = await scrubImage(img);
-      drawCover(ctx, clean);
+      // Draw the source at full fidelity — no downscale, no blur, no lossy
+      // round-trips. The watermark scrub is the invisible dither applied to the
+      // finished frame below, not a degradation of the source.
+      drawCover(ctx, img);
       // Darken so white text stays readable.
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.fillRect(0, 0, W, H);
@@ -262,14 +180,35 @@ export async function renderSlide(slide: Slide): Promise<string> {
     ctx.fillText(lines[i], x, y);
   }
 
+  // Invisible watermark scrub, applied last so it covers the composited frame.
+  ditherInPlace(ctx, W, H);
+
   return canvas.toDataURL('image/png');
 }
 
+// How many slides to bake concurrently. The drawing itself is synchronous, but
+// image decoding and font loading are not, so overlapping a few slides hides
+// most of that latency. Kept small so a long deck can't thrash memory with
+// dozens of 1080x1920 canvases at once.
+const RENDER_CONCURRENCY = 4;
+
 export async function renderSlideshow(show: Slideshow): Promise<string[]> {
-  const out: string[] = [];
-  for (const slide of show.slides) {
-    out.push(await renderSlide(slide));
+  const slides = show.slides;
+  const out: string[] = new Array(slides.length);
+  let next = 0;
+
+  // A fixed pool of workers pulling from a shared cursor, so results stay in
+  // slide order regardless of which slide finishes first.
+  async function worker() {
+    for (;;) {
+      const i = next++;
+      if (i >= slides.length) return;
+      out[i] = await renderSlide(slides[i]);
+    }
   }
+
+  const pool = Math.min(RENDER_CONCURRENCY, slides.length);
+  await Promise.all(Array.from({ length: pool }, worker));
   return out;
 }
 
