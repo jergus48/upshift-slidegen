@@ -24,3 +24,12 @@ slide. Do NOT add downscaling, blur, visible noise, or low-quality JPEG round-tr
 path, and do not bring back a per-image model process. `src/lib/scrubImage.ts`
 (RedditView/ScrubView) is a SEPARATE feature — leave it alone. See
 [[video-export-must-be-lag-free]].
+
+**Sanctioned alternative (2026-09-03):** when Gemini-sourced advice proposed film grain
+(2-5%), mild blur, vignette and colour grading to defeat AI detectors, the user took Ken
+Burns ONLY and declined all four degradation items. `drawKenBurns` in `src/lib/render.ts`
+pans/zooms each slide 1 -> 1.08 and only ever crops INTO the already-baked 1080x1920 frame,
+so it adds motion at zero fidelity cost. Crop is capped at 6% per edge, inside the caption's
+8% `SIDE_PAD_PCT`, so drifting can't clip text. Motion is a legitimate way to avoid identical
+repeated frames; degrading pixels is not. Also note the source images are scraped photos, not
+AI generations, so pixel-distribution scanners have nothing to find anyway.

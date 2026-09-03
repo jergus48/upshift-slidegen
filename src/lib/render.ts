@@ -497,6 +497,57 @@ interface VideoScene {
   cutAt?: number;
 }
 
+// ── Ken Burns ───────────────────────────────────────────────────────────────
+// Every slide slowly pans and zooms instead of sitting perfectly still. Besides
+// reading less like a static slideshow, continuous motion means no two encoded
+// frames are identical, so there's no flat, repeated frame to anchor on.
+//
+// This costs nothing in fidelity, which is the whole reason it's the one motion
+// effect here: the baked slide is already exactly W x H, and we only ever crop
+// INTO it. Nothing is upscaled past ZOOM, blurred, or re-compressed.
+
+// Peak zoom. At 1.08 a centred frame crops 3.7% off each edge; the pan below is
+// capped at half the remaining slack, so the worst case on any one edge is 6% —
+// still inside the caption's 8% side padding (SIDE_PAD_PCT), so a drifting
+// slide can never clip its own text.
+const KEN_BURNS_ZOOM = 1.08;
+
+// Per-slide motion, derived from the slide index rather than Math.random so a
+// deck renders identically every time and neighbouring slides never drift the
+// same way.
+function kenBurnsMove(i: number): { zoomIn: boolean; ux: number; uy: number } {
+  const dirs = [
+    { ux: -1, uy: -1 }, { ux: 1, uy: -1 }, { ux: 0, uy: 1 },
+    { ux: 1, uy: 1 }, { ux: -1, uy: 1 }, { ux: 0, uy: -1 },
+  ];
+  const d = dirs[i % dirs.length];
+  return { zoomIn: i % 2 === 0, ux: d.ux, uy: d.uy };
+}
+
+// Draw slide `i` at progress `p` (0..1) through its on-screen life, shifted by
+// `dx` for the slide transition. Linear, not eased — a steady drift reads as a
+// camera move, whereas easing mid-slide looks like a speed glitch.
+function drawKenBurns(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  i: number,
+  p: number,
+  dx: number,
+): void {
+  const { zoomIn, ux, uy } = kenBurnsMove(i);
+  const e = p < 0 ? 0 : p > 1 ? 1 : p;
+  // Zoom-in slides travel 1 -> ZOOM; zoom-out slides run it backwards.
+  const z = zoomIn ? 1 + (KEN_BURNS_ZOOM - 1) * e : KEN_BURNS_ZOOM - (KEN_BURNS_ZOOM - 1) * e;
+  const w = W * z;
+  const h = H * z;
+  // Half the off-screen slack, keeping the crop clear of the caption margin.
+  const slackX = (w - W) / 4;
+  const slackY = (h - H) / 4;
+  // Pan runs with the zoom, so a zoom-out slide settles back where it started.
+  const t = zoomIn ? e : 1 - e;
+  ctx.drawImage(img, dx + (W - w) / 2 + ux * slackX * t, (H - h) / 2 + uy * slackY * t, w, h);
+}
+
 async function prepareVideoScene(show: Slideshow): Promise<VideoScene> {
   const imgs = await Promise.all((await renderSlideshow(show)).map(loadImage));
   if (!imgs.length) throw new Error('This slideshow has no slides to turn into a video.');
@@ -522,26 +573,47 @@ async function prepareVideoScene(show: Slideshow): Promise<VideoScene> {
   // Total = every hold plus one transition between each adjacent pair.
   const total = holds.reduce((n, d) => n + d, 0) + Math.max(0, imgs.length - 1) * TRANSITION_MS;
 
+  // A Ken Burns slide is wider and taller than the frame, so during a
+  // transition the two halves would overlap and bleed into each other. Clip
+  // each one to its own side of the moving boundary.
+  const drawHalf = (i: number, p: number, dx: number, clipX: number, clipW: number) => {
+    if (clipW <= 0) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(clipX, 0, clipW, H);
+    ctx.clip();
+    drawKenBurns(ctx, imgs[i], i, p, dx);
+    ctx.restore();
+  };
+
   // Draw whatever should be on screen at time `t` (ms into the clip).
   const drawAt = (t: number) => {
-    let cursor = 0;
+    let start = 0;
     for (let i = 0; i < imgs.length; i++) {
-      if (t < cursor + holds[i]) {
-        ctx.drawImage(imgs[i], 0, 0, W, H); // holding slide i, full frame
+      // Slide i's on-screen life is its hold plus the transition that carries
+      // it off, so its drift stays continuous across that boundary instead of
+      // jumping speed the moment it starts moving out.
+      const span = holds[i] + (i < imgs.length - 1 ? TRANSITION_MS : 0);
+      if (t < start + holds[i]) {
+        drawKenBurns(ctx, imgs[i], i, (t - start) / span, 0); // holding slide i
         return;
       }
-      cursor += holds[i];
+      const cut = start + holds[i];
       if (i < imgs.length - 1) {
-        if (t < cursor + TRANSITION_MS) {
-          const dx = Math.round(-easeInOut((t - cursor) / TRANSITION_MS) * W);
-          ctx.drawImage(imgs[i], dx, 0, W, H); // outgoing slides left
-          ctx.drawImage(imgs[i + 1], dx + W, 0, W, H); // incoming follows from the right
+        if (t < cut + TRANSITION_MS) {
+          const dx = Math.round(-easeInOut((t - cut) / TRANSITION_MS) * W);
+          const edge = dx + W; // where outgoing ends and incoming begins
+          drawHalf(i, (t - start) / span, dx, 0, edge); // outgoing slides left
+          // The incoming slide holds its opening framing until it lands, then
+          // picks up its own drift on the next branch.
+          drawHalf(i + 1, 0, edge, edge, W - edge); // incoming follows from the right
           return;
         }
-        cursor += TRANSITION_MS;
+        start = cut + TRANSITION_MS;
       }
     }
-    ctx.drawImage(imgs[imgs.length - 1], 0, 0, W, H); // past the end — hold the last frame
+    const last = imgs.length - 1;
+    drawKenBurns(ctx, imgs[last], last, 1, 0); // past the end — hold the last frame
   };
 
   return { canvas, drawAt, total, cutAt };
