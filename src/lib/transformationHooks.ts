@@ -7,6 +7,12 @@
 //   {A} → the same duration with an article ("a year", "90 days")
 // A template with no token is used as-is.
 
+// The grandpa hook pays itself off on the closing slide: instead of the usual
+// "<streak> clean" line, the last slide reads CLOSING_LINES[GRANDPA_HOOK]
+// (see lib/transformationDeck.ts).
+export const GRANDPA_HOOK =
+  'My grandpa told me quitting lust will unlock infinite women....';
+
 export const HOOKS: string[] = [
   'The goon effect',
   'The  g00n effect',
@@ -23,7 +29,7 @@ export const HOOKS: string[] = [
   'I quit lust for {X}....but It costed everything',
   'POV: You listen to God and quit lust for {X}',
   'What 1 year of no lust lowkenuinely does to a man...',
-  'My grandpa told me quitting lust will unlock infinite women....',
+  GRANDPA_HOOK,
   'POV: God told you to quit lust',
   'What quitting 🌽 does to your face',
   'How I went from 🌽addict to married in 1 year',
@@ -52,3 +58,8 @@ export function fillHook(template: string, streak: { label: string; article: str
 export function hookUsesStreak(template: string): boolean {
   return /\{X\}|\{A\}/.test(template);
 }
+
+// Hooks whose deck closes on their own line instead of "<streak> clean".
+export const CLOSING_LINES: Record<string, string> = {
+  [GRANDPA_HOOK]: 'he was damn right',
+};

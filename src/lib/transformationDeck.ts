@@ -19,7 +19,7 @@
 // No model call is involved — every line is picked from lib/transformationHooks.ts,
 // so this is a pure client-side build, like lib/fixedDeck.ts.
 import type { Slideshow, Slide, LibraryImage } from '../types';
-import { HOOKS, fillHook } from './transformationHooks';
+import { HOOKS, CLOSING_LINES, fillHook } from './transformationHooks';
 import { makeCaptionPicker, type CaptionPicker } from './transformationCaptions';
 import { makeDealer, makeWeightedDealer, type Dealer } from './dealer';
 import { tokenMatches } from './subfolders';
@@ -173,8 +173,11 @@ export function buildTransformationShow(
   const girlfriendShot = batch.girlfriend.next();
   if (!girlfriendShot) return { error: `${character.name} has no girlfriend photos.` };
 
-  const hook = fillHook(opts.hookTemplate ?? batch.hooks.next()!, streak);
+  const hookTemplate = opts.hookTemplate ?? batch.hooks.next()!;
+  const hook = fillHook(hookTemplate, streak);
   const cleanLine = `${streak.label} clean`;
+  // A few hooks pay themselves off on the closer; the rest end on the clean line.
+  const closingLine = CLOSING_LINES[hookTemplate] ?? cleanLine;
   // The post's own caption/hashtags — short, and dealt so a batch works through
   // the lines instead of publishing the same one five times.
   const { caption, hashtags } = batch.caption(streak);
@@ -207,8 +210,8 @@ export function buildTransformationShow(
     slide(cleanLine, blockedShot),
     slide(cleanLine, streakShot),
     ...afterShots.slice(1).map((img) => slide(cleanLine, img)),
-    // The closer: same line, the payoff shot.
-    slide(cleanLine, girlfriendShot),
+    // The closer: the payoff shot, with the hook's own closing line.
+    slide(closingLine, girlfriendShot),
   ];
 
   return {
