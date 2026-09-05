@@ -33,7 +33,7 @@ const ZOOM_CHOICES: { value: boolean; label: string; hint: string; icon: typeof 
   {
     value: false,
     label: 'No zoom',
-    hint: 'Every slide held perfectly still',
+    hint: 'Held still, plain slide transitions',
     icon: Square,
   },
 ];

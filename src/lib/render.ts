@@ -502,8 +502,8 @@ interface VideoScene {
 export interface VideoOptions {
   // Ken Burns: slowly pan and zoom every slide (default) instead of holding it
   // perfectly still. Purely a look — it only ever crops into the already-baked
-  // frame, so neither setting costs any fidelity. The slide transition stays in
-  // both: it's how the deck is paced, not part of the zoom.
+  // frame, so neither setting costs any fidelity. Turning it off also drops the
+  // varied transitions: every boundary goes back to the plain horizontal push.
   zoom?: boolean;
   // Post-process the finished video through the server's ffmpeg chain:
   // geometric + photometric distortion, then a ProRes intermediate and a second
@@ -764,7 +764,9 @@ async function prepareVideoScene(
           const q = (t - cut) / TRANSITION_MS;
           // The incoming slide holds its opening framing until it lands, then
           // picks up its own drift on the next branch.
-          transitions[transitionFor(i)](i, q, (t - start) / span, 0);
+          // With zoom off the deck stays completely plain: the original
+          // horizontal push at every boundary, no zoom/whip/flash/glitch.
+          transitions[zoom ? transitionFor(i) : 'slide'](i, q, (t - start) / span, 0);
           return;
         }
         start = cut + TRANSITION_MS;

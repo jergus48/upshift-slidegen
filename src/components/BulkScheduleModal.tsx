@@ -226,7 +226,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
                     Each slideshow renders to a vertical MP4 in real time (~20–30s each), so a big batch takes a while. The hook becomes the video title.
                     {zoom
                       ? ' Every slide slowly pans and zooms.'
-                      : ' Every slide is held perfectly still.'}
+                      : ' Every slide is held perfectly still, with plain slide transitions.'}
                     {regrade > 0 &&
                       ' Distortion adds rotation, warp, crop, grain and a colour grade plus a second encode — visibly softer, and it roughly quadruples the time for every video in the batch.'}
                   </p>
