@@ -1,9 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Flag, RotateCcw, Music, Trash2, Plus, EyeOff, Loader2 } from 'lucide-react';
+import { Play, Pause, Flag, RotateCcw, Music, Trash2, Plus, EyeOff, Loader2, Activity } from 'lucide-react';
 import { listAllTracks, type MusicListItem, type MusicGender } from '../lib/music';
 import { getAllStarts, setStart } from '../lib/musicStarts';
 import { getAllDrops, setDrop } from '../lib/musicDrops';
 import { addLocalTrack, removeLocalTrack, hideTrack, type MusicScope } from '../lib/localMusic';
+import { detectBeatsFromUrl, nearestBeat } from '../lib/beatDetect';
+import {
+  getAllBeats,
+  setBeats,
+  setBeatRange,
+  beatsInRange,
+  rangeDuration,
+  type SavedBeats,
+} from '../lib/musicBeats';
 
 // Strip the extension and any leading "artist -" noise for a compact label.
 function prettyName(t: MusicListItem): string {
@@ -56,10 +65,14 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
   const [starts, setStarts] = useState<Record<string, number>>({});
   const [savedFlash, setSavedFlash] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Detected beat grids per track, and which track is being analysed right now.
+  const [grids, setGrids] = useState<Record<string, SavedBeats>>({});
+  const [detecting, setDetecting] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const reload = () => {
     setStarts(readAll());
+    setGrids(getAllBeats());
     return listAllTracks(scope).then(setTracks).catch(() => setTracks([]));
   };
 
@@ -91,6 +104,54 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
     setStarts(readAll());
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1200);
+  };
+
+  const grid: SavedBeats | undefined = loaded ? grids[loaded.file] : undefined;
+
+  // Analyse the loaded track and cache its grid. Decoding + FFT takes a moment
+  // on a long track, hence the spinner; the result is saved so it only ever
+  // happens once per track per browser.
+  const detect = async () => {
+    if (!loaded) return;
+    setDetecting(loaded.file);
+    try {
+      const found = await detectBeatsFromUrl(loaded.url);
+      setBeats(loaded.file, found);
+      setGrids(getAllBeats());
+    } finally {
+      setDetecting(null);
+    }
+  };
+
+  // Pin the start/drop to a beat rather than to wherever the scrub landed —
+  // the whole point of having a grid.
+  const saveBeat = (sec: number) => {
+    if (!loaded) return;
+    savePoint(loaded.file, sec);
+    setStarts(readAll());
+    if (audioRef.current) audioRef.current.currentTime = sec;
+    setTime(sec);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1200);
+  };
+
+  // Move the range edge nearest to the playhead onto the current beat, so one
+  // control does both ends without a mode switch.
+  const setEdge = (edge: 'from' | 'to') => {
+    if (!loaded || !grid) return;
+    const beat = nearestBeat(grid.beats, time);
+    if (beat == null) return;
+    const idx = grid.beats.indexOf(beat);
+    const from = edge === 'from' ? idx : grid.from ?? 0;
+    const to = edge === 'to' ? idx + 1 : grid.to ?? grid.beats.length;
+    setBeatRange(loaded.file, from, to);
+    setGrids(getAllBeats());
+  };
+
+  const clearRange = () => {
+    if (!loaded) return;
+    setBeatRange(loaded.file, null, null);
+    setGrids(getAllBeats());
   };
 
   // The point shown for a track: the one saved in this browser, else the
@@ -174,6 +235,35 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
               </div>
             </div>
 
+            {/* Beat ruler: every detected beat as a clickable tick, dimmed
+                outside the selected range. Sits above the scrubber so it can
+                take clicks without fighting the range thumb. */}
+            {grid && duration > 0 && (
+              <div className="relative h-5 mb-1">
+                {grid.beats.map((b, i) => {
+                  const inRange = i >= (grid.from ?? 0) && i < (grid.to ?? grid.beats.length);
+                  const isPoint =
+                    pointOf(loaded) != null && Math.abs(pointOf(loaded)! - b) < 0.02;
+                  return (
+                    <button
+                      key={b}
+                      type="button"
+                      title={`Beat ${i + 1} · ${fmt(b)} — click to set ${copy.verb}`}
+                      onClick={() => saveBeat(b)}
+                      style={{ left: `${(b / duration) * 100}%` }}
+                      className={`absolute top-0 -ml-[3px] w-[6px] h-5 rounded-sm transition-colors ${
+                        isPoint
+                          ? 'bg-ink'
+                          : inRange
+                            ? 'bg-ink-4 hover:bg-ink-2'
+                            : 'bg-line hover:bg-ink-5'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
             <input
               type="range"
               min={0}
@@ -197,6 +287,19 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
                 <Flag size={13} />
                 {savedFlash ? 'Saved!' : `Set ${copy.verb} = ${fmt(time)}`}
               </button>
+              <button
+                type="button"
+                onClick={detect}
+                disabled={detecting === loaded.file}
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-3 hover:bg-raised hover:text-ink-2 transition-colors disabled:opacity-50"
+              >
+                {detecting === loaded.file ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Activity size={13} />
+                )}
+                {grid ? 'Re-detect beats' : 'Detect beats'}
+              </button>
               {pointOf(loaded) != null && (
                 <>
                   <button
@@ -216,6 +319,43 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
                 </>
               )}
             </div>
+
+            {/* Grid summary + the slice of it a beat-cut video would use. */}
+            {grid && (
+              <div className="flex items-center gap-2 mt-2 flex-wrap text-[11px] text-ink-5">
+                <span className="text-ink-3 font-medium">{grid.bpm} BPM</span>
+                <span>· {grid.beats.length} beats</span>
+                {grid.confidence < 0.15 && (
+                  <span className="text-amber-600">· weak beat — check by hand</span>
+                )}
+                <span className="ml-1 text-ink-4">
+                  · use {beatsInRange(grid).length} beats ({fmt(rangeDuration(grid))})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEdge('from')}
+                  className="h-7 px-2 rounded-lg border border-line text-ink-3 hover:bg-raised hover:text-ink-2 transition-colors"
+                >
+                  From here
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEdge('to')}
+                  className="h-7 px-2 rounded-lg border border-line text-ink-3 hover:bg-raised hover:text-ink-2 transition-colors"
+                >
+                  To here
+                </button>
+                {(grid.from != null || grid.to != null) && (
+                  <button
+                    type="button"
+                    onClick={clearRange}
+                    className="h-7 px-2 rounded-lg text-ink-5 hover:bg-raised hover:text-ink-2 transition-colors"
+                  >
+                    Whole track
+                  </button>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <div className="flex items-center gap-2 text-[12px] text-ink-5 py-1">
