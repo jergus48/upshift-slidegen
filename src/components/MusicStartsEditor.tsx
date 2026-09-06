@@ -5,6 +5,7 @@ import { getAllStarts, setStart } from '../lib/musicStarts';
 import { getAllDrops, setDrop } from '../lib/musicDrops';
 import { addLocalTrack, removeLocalTrack, hideTrack, type MusicScope } from '../lib/localMusic';
 import { detectBeatsFromUrl, nearestBeat } from '../lib/beatDetect';
+import { BeatTimeline } from './BeatTimeline';
 import {
   getAllBeats,
   setBeats,
@@ -254,32 +255,21 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
               </div>
             </div>
 
-            {/* Beat ruler: every detected beat as a clickable tick, dimmed
-                outside the selected range. Sits above the scrubber so it can
-                take clicks without fighting the range thumb. */}
             {grid && duration > 0 && (
-              <div className="relative h-5 mb-1">
-                {grid.beats.map((b, i) => {
-                  const inRange = i >= (grid.from ?? 0) && i < (grid.to ?? grid.beats.length);
-                  const isPoint =
-                    pointOf(loaded) != null && Math.abs(pointOf(loaded)! - b) < 0.02;
-                  return (
-                    <button
-                      key={b}
-                      type="button"
-                      title={`Beat ${i + 1} · ${fmt(b)} — click to set ${copy.verb}`}
-                      onClick={() => saveBeat(b)}
-                      style={{ left: `${(b / duration) * 100}%` }}
-                      className={`absolute top-0 -ml-[3px] w-[6px] h-5 rounded-sm transition-colors ${
-                        isPoint
-                          ? 'bg-ink'
-                          : inRange
-                            ? 'bg-ink-4 hover:bg-ink-2'
-                            : 'bg-line hover:bg-ink-5'
-                      }`}
-                    />
-                  );
-                })}
+              <div className="mb-2">
+                <BeatTimeline
+                  duration={duration}
+                  time={time}
+                  beats={grid.beats}
+                  from={grid.from ?? 0}
+                  to={grid.to ?? grid.beats.length}
+                  point={pointOf(loaded)}
+                  onSeek={(sec) => {
+                    if (audioRef.current) audioRef.current.currentTime = sec;
+                    setTime(sec);
+                  }}
+                  onPickBeat={saveBeat}
+                />
               </div>
             )}
 
