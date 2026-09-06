@@ -26,6 +26,34 @@
 // rubato/live material or something beatless it will return a low `confidence`
 // — check that before trusting the grid, and let the user fix it by hand.
 
+// What part of the sound a detection listens to. A kick and a clap almost never
+// land on the same set of moments, and cutting to one or the other gives a very
+// different edit — so the band is the user's choice, not a fixed constant.
+//
+//   kick   the low thump that carries the pulse — the safest default
+//   clap   snare/clap body, i.e. the backbeat you actually feel
+//   hat    hi-hats and other top end, for fast subdivided cutting
+//   full   everything, when a track's pulse isn't in one band
+export type BeatBand = 'kick' | 'clap' | 'hat' | 'full';
+
+// Frequency window per band, in Hz. Bins outside it are ignored, so a kick
+// detection genuinely can't be triggered by a hi-hat.
+const BANDS: Record<BeatBand, [number, number]> = {
+  kick: [20, 160],
+  clap: [900, 4000],
+  hat: [6000, 16000],
+  full: [20, 20000],
+};
+
+// How a detection is run.
+export interface DetectOptions {
+  band?: BeatBand;
+  // Analyse only this window of the track, in seconds. Everything returned is
+  // still in absolute track time.
+  from?: number;
+  to?: number;
+}
+
 // One analysed track.
 export interface BeatGrid {
   bpm: number;
@@ -108,7 +136,7 @@ function mono(buf: AudioBuffer): Float32Array {
 // the previous frame. Magnitudes are compressed with log1p first so a quiet
 // hi-hat in a quiet passage counts comparably to one in a loud chorus —
 // otherwise the envelope is dominated by whichever section is mastered louder.
-function onsetEnvelope(samples: Float32Array): Float32Array {
+function onsetEnvelope(samples: Float32Array, sampleRate: number, band: BeatBand): Float32Array {
   const frames = Math.max(0, Math.floor((samples.length - FFT_SIZE) / HOP) + 1);
   if (frames < 2) return new Float32Array(0);
 
@@ -117,6 +145,13 @@ function onsetEnvelope(samples: Float32Array): Float32Array {
   for (let i = 0; i < FFT_SIZE; i++) {
     win[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (FFT_SIZE - 1)));
   }
+
+  // Restrict the summed bins to the chosen band. Bin b covers b * sr / FFT_SIZE
+  // Hz, so the band edges convert straight into bin indexes.
+  const [loHz, hiHz] = BANDS[band];
+  const hzPerBin = sampleRate / FFT_SIZE;
+  const loBin = Math.max(1, Math.floor(loHz / hzPerBin));
+  const hiBin = Math.min(FFT_SIZE / 2 - 1, Math.ceil(hiHz / hzPerBin));
 
   const bins = FFT_SIZE / 2;
   const re = new Float32Array(FFT_SIZE);
@@ -137,6 +172,7 @@ function onsetEnvelope(samples: Float32Array): Float32Array {
     for (let b = 0; b < bins; b++) {
       const mag = Math.log1p(Math.hypot(re[b], im[b]));
       cur[b] = mag;
+      if (b < loBin || b > hiBin) continue; // outside the chosen band
       const d = mag - prev[b];
       if (d > 0) sum += d; // rises only — decays are not onsets
     }
@@ -225,11 +261,23 @@ function snap(frame: number, env: Float32Array, tol: number): number {
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
+// The mono samples for the requested window, plus the second that window starts
+// at, so detected frames can be reported back in absolute track time.
+function windowOf(buf: AudioBuffer, opts: DetectOptions): { samples: Float32Array; offset: number } {
+  const all = mono(buf);
+  const sr = buf.sampleRate;
+  const a = Math.max(0, Math.floor((opts.from ?? 0) * sr));
+  const b = Math.min(all.length, Math.floor((opts.to ?? buf.duration) * sr));
+  if (b - a < FFT_SIZE * 2) return { samples: all, offset: 0 };
+  return { samples: all.subarray(a, b), offset: a / sr };
+}
+
 // Analyse a decoded track into a beat grid. Returns null when there's nothing
 // to work with (too short, silent, or no tempo found at all).
-export function detectBeats(buf: AudioBuffer): BeatGrid | null {
-  const samples = mono(buf);
-  const env = onsetEnvelope(samples);
+export function detectBeats(buf: AudioBuffer, opts: DetectOptions = {}): BeatGrid | null {
+  const band = opts.band ?? 'kick';
+  const { samples, offset } = windowOf(buf, opts);
+  const env = onsetEnvelope(samples, buf.sampleRate, band);
   if (env.length < 16) return null;
 
   const fps = buf.sampleRate / HOP; // envelope frames per second
@@ -241,7 +289,7 @@ export function detectBeats(buf: AudioBuffer): BeatGrid | null {
 
   const beats: number[] = [];
   for (let f = phase; f < env.length; f += period) {
-    beats.push(snap(f, env, tol) / fps);
+    beats.push(offset + snap(f, env, tol) / fps);
   }
   // Snapping can nudge two neighbours onto the same peak; keep the grid strictly
   // ascending so downstream cut lengths are never zero or negative.
@@ -255,9 +303,132 @@ export function detectBeats(buf: AudioBuffer): BeatGrid | null {
   };
 }
 
-// Fetch + decode a URL and analyse it. Returns null on any failure — a track
-// that won't load simply has no grid, exactly as it has no auto-detected drop.
-export async function detectBeatsFromUrl(url: string): Promise<BeatGrid | null> {
+// Raw transients in the chosen band, WITHOUT forcing them onto a steady grid.
+// This is what "cut on the claps" needs: a clap pattern is often syncopated or
+// only present in some bars, and a tempo grid would either miss those hits or
+// invent beats where nothing was played.
+//
+// Peak picking is adaptive: a frame counts as an onset when it's the local
+// maximum AND stands `sensitivity` standard deviations above the local mean, so
+// a quiet verse and a loud chorus are each judged on their own terms.
+export function detectOnsets(
+  buf: AudioBuffer,
+  opts: DetectOptions & { sensitivity?: number } = {}
+): number[] {
+  const band = opts.band ?? 'clap';
+  const sensitivity = opts.sensitivity ?? 1.3;
+  const { samples, offset } = windowOf(buf, opts);
+  const env = onsetEnvelope(samples, buf.sampleRate, band);
+  if (env.length < 8) return [];
+
+  const fps = buf.sampleRate / HOP;
+  const local = Math.max(4, Math.round(fps * 0.5)); // ±0.5s of context
+  const minGap = Math.round(fps * 0.09); // no two hits closer than ~90ms
+  const out: number[] = [];
+  let last = -Infinity;
+
+  for (let i = 1; i < env.length - 1; i++) {
+    if (env[i] < env[i - 1] || env[i] < env[i + 1]) continue; // not a peak
+    const lo = Math.max(0, i - local);
+    const hi = Math.min(env.length, i + local);
+    let mean = 0;
+    for (let k = lo; k < hi; k++) mean += env[k];
+    mean /= hi - lo;
+    let varr = 0;
+    for (let k = lo; k < hi; k++) varr += (env[k] - mean) ** 2;
+    const sd = Math.sqrt(varr / (hi - lo));
+    if (env[i] < mean + sensitivity * sd) continue;
+    if (i - last < minGap) continue;
+    last = i;
+    out.push(Math.round((offset + i / fps) * 1000) / 1000);
+  }
+  return out;
+}
+
+// Section changes: where the track's overall character shifts — verse into
+// chorus, the beat dropping in or out. Instead of frame-to-frame flux this
+// compares the AVERAGE spectrum of the seconds before a point with the seconds
+// after it, so a sustained change scores high while individual drum hits, which
+// look the same on both sides, score near zero.
+export function detectChanges(buf: AudioBuffer, opts: DetectOptions = {}): number[] {
+  const { samples, offset } = windowOf(buf, opts);
+  const sr = buf.sampleRate;
+  const frames = Math.max(0, Math.floor((samples.length - FFT_SIZE) / HOP) + 1);
+  if (frames < 40) return [];
+
+  const win = new Float32Array(FFT_SIZE);
+  for (let i = 0; i < FFT_SIZE; i++) {
+    win[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (FFT_SIZE - 1)));
+  }
+
+  // A coarse 16-band spectrum per frame is enough to tell one section from
+  // another, and keeps the before/after comparison below cheap.
+  const BANDS_N = 16;
+  const bins = FFT_SIZE / 2;
+  const perBand = Math.floor(bins / BANDS_N);
+  const spec: Float32Array[] = [];
+  const re = new Float32Array(FFT_SIZE);
+  const im = new Float32Array(FFT_SIZE);
+
+  for (let f = 0; f < frames; f++) {
+    const off = f * HOP;
+    for (let i = 0; i < FFT_SIZE; i++) {
+      re[i] = samples[off + i] * win[i];
+      im[i] = 0;
+    }
+    fft(re, im);
+    const row = new Float32Array(BANDS_N);
+    for (let b = 0; b < BANDS_N; b++) {
+      let sum = 0;
+      for (let k = b * perBand; k < (b + 1) * perBand; k++) sum += Math.hypot(re[k], im[k]);
+      row[b] = Math.log1p(sum / perBand);
+    }
+    spec.push(row);
+  }
+
+  const fps = sr / HOP;
+  const half = Math.round(fps * 2); // 2s of context each side
+  const novelty = new Float32Array(frames);
+  for (let f = half; f < frames - half; f++) {
+    let d = 0;
+    for (let b = 0; b < BANDS_N; b++) {
+      let before = 0;
+      let after = 0;
+      for (let k = 1; k <= half; k++) {
+        before += spec[f - k][b];
+        after += spec[f + k][b];
+      }
+      d += Math.abs(after - before) / half;
+    }
+    novelty[f] = d;
+  }
+
+  // Keep only clear peaks, and never two within 4s — sections don't change
+  // faster than that, and without the gap one transition reports three times.
+  let peak = 0;
+  for (let i = 0; i < novelty.length; i++) peak = Math.max(peak, novelty[i]);
+  if (peak <= 0) return [];
+  const minGap = Math.round(fps * 4);
+  const out: number[] = [];
+  let last = -Infinity;
+  for (let f = half; f < frames - half; f++) {
+    if (novelty[f] < peak * 0.45) continue;
+    if (novelty[f] < novelty[f - 1] || novelty[f] < novelty[f + 1]) continue;
+    if (f - last < minGap) continue;
+    last = f;
+    out.push(Math.round((offset + f / fps) * 1000) / 1000);
+  }
+  return out;
+}
+
+// Decode a URL once and keep the buffer, so re-analysing the same track with a
+// different band or window doesn't re-download and re-decode it.
+const bufferCache = new Map<string, AudioBuffer>();
+
+export async function loadTrackBuffer(url: string): Promise<AudioBuffer | null> {
+  const cached = bufferCache.get(url);
+  if (cached) return cached;
+
   const Ctor: typeof AudioContext | undefined =
     (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext ??
     (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -268,12 +439,23 @@ export async function detectBeatsFromUrl(url: string): Promise<BeatGrid | null> 
     const res = await fetch(url);
     if (!res.ok) return null;
     const buf = await ctx.decodeAudioData(await res.arrayBuffer());
-    return detectBeats(buf);
+    bufferCache.set(url, buf);
+    return buf;
   } catch {
     return null;
   } finally {
     void ctx.close();
   }
+}
+
+// Fetch + decode a URL and analyse it. Returns null on any failure — a track
+// that won't load simply has no grid, exactly as it has no auto-detected drop.
+export async function detectBeatsFromUrl(
+  url: string,
+  opts: DetectOptions = {}
+): Promise<BeatGrid | null> {
+  const buf = await loadTrackBuffer(url);
+  return buf ? detectBeats(buf, opts) : null;
 }
 
 // The beat nearest a given second — what the editor uses to turn a scrub

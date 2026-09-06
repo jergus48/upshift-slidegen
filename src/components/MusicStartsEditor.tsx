@@ -4,11 +4,21 @@ import { listAllTracks, type MusicListItem, type MusicGender } from '../lib/musi
 import { getAllStarts, setStart } from '../lib/musicStarts';
 import { getAllDrops, setDrop } from '../lib/musicDrops';
 import { addLocalTrack, removeLocalTrack, hideTrack, type MusicScope } from '../lib/localMusic';
-import { detectBeatsFromUrl, nearestBeat } from '../lib/beatDetect';
+import {
+  loadTrackBuffer,
+  detectBeats,
+  detectOnsets,
+  detectChanges,
+  nearestBeat,
+  type BeatBand,
+} from '../lib/beatDetect';
 import { BeatTimeline } from './BeatTimeline';
 import {
   getAllBeats,
   setBeats,
+  setBeatList,
+  addBeat,
+  removeBeatNear,
   setBeatRange,
   beatsInRange,
   rangeDuration,
@@ -69,6 +79,11 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
   // Detected beat grids per track, and which track is being analysed right now.
   const [grids, setGrids] = useState<Record<string, SavedBeats>>({});
   const [detecting, setDetecting] = useState<string | null>(null);
+  // What the next detection listens to, and whether it looks at the whole track
+  // or only the selected range.
+  const [band, setBand] = useState<BeatBand>('kick');
+  const [source, setSource] = useState<'grid' | 'onsets' | 'changes'>('grid');
+  const [trim, setTrim] = useState(false);
   // Why the library came up empty, when it did. Without this the editor showed
   // an empty list for a load failure and for an empty pool alike.
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -120,19 +135,45 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
 
   const grid: SavedBeats | undefined = loaded ? grids[loaded.file] : undefined;
 
-  // Analyse the loaded track and cache its grid. Decoding + FFT takes a moment
-  // on a long track, hence the spinner; the result is saved so it only ever
-  // happens once per track per browser.
+  // The window a detection (and the timeline view) is limited to when the user
+  // has chosen to work inside their selection.
+  const view =
+    trim && grid && grid.beats.length
+      ? { start: grid.beats[grid.from ?? 0], end: grid.beats[Math.min(grid.to ?? grid.beats.length, grid.beats.length - 1)] }
+      : undefined;
+
+  // Analyse the loaded track with the current source/band, over the whole track
+  // or just the selected window. The decoded buffer is cached, so re-running
+  // with different settings is near-instant after the first pass.
   const detect = async () => {
     if (!loaded) return;
     setDetecting(loaded.file);
     try {
-      const found = await detectBeatsFromUrl(loaded.url);
-      setBeats(loaded.file, found);
+      const buf = await loadTrackBuffer(loaded.url);
+      if (!buf) {
+        setBeats(loaded.file, null);
+        return;
+      }
+      const opts = { band, from: view?.start, to: view?.end };
+      if (source === 'grid') {
+        const found = detectBeats(buf, opts);
+        if (found) setBeatList(loaded.file, found.beats, { source: 'grid', band, bpm: found.bpm, confidence: found.confidence });
+        else setBeats(loaded.file, null);
+      } else if (source === 'onsets') {
+        setBeatList(loaded.file, detectOnsets(buf, opts), { source: 'onsets', band });
+      } else {
+        setBeatList(loaded.file, detectChanges(buf, opts), { source: 'changes', band });
+      }
       setGrids(getAllBeats());
     } finally {
       setDetecting(null);
     }
+  };
+
+  const editBeat = (fn: (file: string, sec: number) => void) => (sec: number) => {
+    if (!loaded) return;
+    fn(loaded.file, sec);
+    setGrids(getAllBeats());
   };
 
   // Pin the start/drop to a beat rather than to wherever the scrub landed —
@@ -162,6 +203,7 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
 
   const clearRange = () => {
     if (!loaded) return;
+    setTrim(false);
     setBeatRange(loaded.file, null, null);
     setGrids(getAllBeats());
   };
@@ -259,16 +301,20 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
               <div className="mb-2">
                 <BeatTimeline
                   duration={duration}
-                  time={time}
                   beats={grid.beats}
                   from={grid.from ?? 0}
                   to={grid.to ?? grid.beats.length}
                   point={pointOf(loaded)}
+                  viewStart={view?.start}
+                  viewEnd={view?.end}
+                  getTime={() => audioRef.current?.currentTime ?? 0}
                   onSeek={(sec) => {
                     if (audioRef.current) audioRef.current.currentTime = sec;
                     setTime(sec);
                   }}
                   onPickBeat={saveBeat}
+                  onAddBeat={editBeat(addBeat)}
+                  onRemoveBeat={editBeat((f, sec) => removeBeatNear(f, sec))}
                 />
               </div>
             )}
@@ -307,8 +353,31 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
                 ) : (
                   <Activity size={13} />
                 )}
-                {grid ? 'Re-detect beats' : 'Detect beats'}
+                {grid ? 'Re-detect' : 'Detect beats'}
               </button>
+              <select
+                value={source}
+                onChange={(e) => setSource(e.target.value as typeof source)}
+                className="h-8 px-2 rounded-lg border border-line bg-card text-[12px] text-ink-2"
+                title="What the detection looks for"
+              >
+                <option value="grid">Beat grid</option>
+                <option value="onsets">Hits</option>
+                <option value="changes">Section changes</option>
+              </select>
+              {source !== 'changes' && (
+                <select
+                  value={band}
+                  onChange={(e) => setBand(e.target.value as BeatBand)}
+                  className="h-8 px-2 rounded-lg border border-line bg-card text-[12px] text-ink-2"
+                  title="Which part of the sound to listen to"
+                >
+                  <option value="kick">Kick</option>
+                  <option value="clap">Claps / snare</option>
+                  <option value="hat">Hi-hats</option>
+                  <option value="full">Everything</option>
+                </select>
+              )}
               {pointOf(loaded) != null && (
                 <>
                   <button
@@ -354,6 +423,20 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
                 >
                   To here
                 </button>
+                {(grid.from != null || grid.to != null) && (
+                  <button
+                    type="button"
+                    onClick={() => setTrim((v) => !v)}
+                    className={`h-7 px-2 rounded-lg border transition-colors ${
+                      trim
+                        ? 'border-ink bg-ink text-bg'
+                        : 'border-line text-ink-3 hover:bg-raised hover:text-ink-2'
+                    }`}
+                    title="Fill the timeline with just the selected part, and detect only inside it"
+                  >
+                    Zoom to selection
+                  </button>
+                )}
                 {(grid.from != null || grid.to != null) && (
                   <button
                     type="button"

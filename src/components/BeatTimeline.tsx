@@ -1,26 +1,37 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 
-// A CapCut-style beat timeline: a time ruler with real timestamps, a beat grid
-// where every 4th beat (the downbeat, i.e. the start of a bar) is tall and
-// numbered while the beats between it stay hair-thin, a draggable playhead, and
-// dimming outside the selected range.
+// A CapCut-style beat timeline.
 //
-// The zoom is the point of it. A 3-minute track at 120 BPM has ~360 beats; drawn
-// across one screen width they're under 2px apart and merge into a grey smear,
-// which is useless for picking a beat. Zooming widens the track and scrolls, so
-// individual beats become separate, clickable objects.
+// Two things make it smooth, and both matter: the grid is drawn on a CANVAS
+// rather than as one DOM node per beat (a 3-minute track holds hundreds, and
+// laying those out was what made the first version crawl), and the playhead is
+// moved by a requestAnimationFrame loop that writes a transform straight to one
+// element — it never goes through React state, so playback triggers no renders
+// at all. React only redraws when the beats, the view window, or the size
+// actually change.
+//
+// The view window is the other half of the design: when a range is selected the
+// editor can hand this a `viewStart`/`viewEnd` and the whole width maps to just
+// that slice, which is what makes beats in a 5-second section pickable without
+// zooming into a 3-minute track.
 
 interface Props {
   duration: number;
-  time: number;
   beats: number[];
   from: number;
   to: number;
-  // The pinned start/drop second, drawn as the marker to aim for.
   point?: number;
+  // The slice of the track the timeline draws. Defaults to the whole thing.
+  viewStart?: number;
+  viewEnd?: number;
+  // Read the current playback position. A function, not a value, so the
+  // playhead can animate without this component re-rendering.
+  getTime: () => number;
   onSeek: (seconds: number) => void;
   onPickBeat: (seconds: number) => void;
+  onAddBeat: (seconds: number) => void;
+  onRemoveBeat: (seconds: number) => void;
 }
 
 function fmt(sec: number): string {
@@ -30,145 +41,219 @@ function fmt(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// Ruler steps that read naturally as time. Picked so labels stay ~60px apart at
-// the current zoom rather than colliding into each other.
-const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300];
-
-function labelStep(duration: number, widthPx: number): number {
-  const target = 64; // min px between labels
-  const perSec = widthPx / Math.max(1, duration);
-  return STEPS.find((s) => s * perSec >= target) ?? STEPS[STEPS.length - 1];
+// Sub-second labels for short windows, so a 4-second selection doesn't show
+// four identical-looking marks.
+function fmtFine(sec: number): string {
+  return sec < 10 ? `${sec.toFixed(1)}s` : fmt(sec);
 }
 
-export function BeatTimeline({ duration, time, beats, from, to, point, onSeek, onPickBeat }: Props) {
+const STEPS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+
+function labelStep(span: number, widthPx: number): number {
+  const perSec = widthPx / Math.max(0.001, span);
+  return STEPS.find((s) => s * perSec >= 64) ?? STEPS[STEPS.length - 1];
+}
+
+const RULER_H = 18;
+const TRACK_H = 52;
+
+export function BeatTimeline({
+  duration,
+  beats,
+  from,
+  to,
+  point,
+  viewStart = 0,
+  viewEnd,
+  getTime,
+  onSeek,
+  onPickBeat,
+  onAddBeat,
+  onRemoveBeat,
+}: Props) {
   const [zoom, setZoom] = useState(1);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const innerRef = useRef<HTMLDivElement | null>(null);
-  const [innerWidth, setInnerWidth] = useState(700);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const headRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(700);
 
-  // Measure the drawn width so the ruler can space its labels in real pixels
-  // instead of guessing from the zoom factor.
+  const vStart = viewStart;
+  const vEnd = viewEnd ?? duration;
+  const span = Math.max(0.001, vEnd - vStart);
+
+  // Track the drawn width so both the canvas and the ruler work in real pixels.
   useEffect(() => {
-    const el = innerRef.current;
+    const el = scrollRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setInnerWidth(el.clientWidth || 700));
+    const measure = () => setWidth(Math.max(200, el.clientWidth * zoom));
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    setInnerWidth(el.clientWidth || 700);
     return () => ro.disconnect();
-  }, []);
+  }, [zoom]);
 
-  // Keep the playhead on screen while zoomed in, the way a video editor does.
+  const xOf = useCallback((t: number) => ((t - vStart) / span) * width, [vStart, span, width]);
+  const tOf = useCallback((x: number) => vStart + (x / width) * span, [vStart, span, width]);
+
+  // ── Draw the grid ──────────────────────────────────────────────────────────
   useEffect(() => {
-    const sc = scrollRef.current;
-    if (!sc || zoom === 1 || !duration) return;
-    const x = (time / duration) * innerWidth;
-    const pad = 80;
-    if (x < sc.scrollLeft + pad || x > sc.scrollLeft + sc.clientWidth - pad) {
-      sc.scrollTo({ left: Math.max(0, x - sc.clientWidth / 2), behavior: 'smooth' });
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    const h = RULER_H + TRACK_H;
+    cv.width = width * dpr;
+    cv.height = h * dpr;
+    cv.style.width = `${width}px`;
+    cv.style.height = `${h}px`;
+    const g = cv.getContext('2d');
+    if (!g) return;
+    g.scale(dpr, dpr);
+    g.clearRect(0, 0, width, h);
+
+    const css = getComputedStyle(document.documentElement);
+    const ink = css.getPropertyValue('--ink').trim() || '#111';
+    const ink5 = css.getPropertyValue('--ink-5').trim() || '#888';
+    const line = css.getPropertyValue('--line').trim() || '#ddd';
+    const bg = css.getPropertyValue('--bg').trim() || '#fff';
+
+    // Ruler
+    g.strokeStyle = line;
+    g.beginPath();
+    g.moveTo(0, RULER_H + 0.5);
+    g.lineTo(width, RULER_H + 0.5);
+    g.stroke();
+
+    const step = labelStep(span, width);
+    g.fillStyle = ink5;
+    g.font = '9px ui-sans-serif, system-ui, sans-serif';
+    const first = Math.ceil(vStart / step) * step;
+    for (let t = first; t <= vEnd; t += step) {
+      const x = Math.round(xOf(t)) + 0.5;
+      g.strokeStyle = line;
+      g.beginPath();
+      g.moveTo(x, 0);
+      g.lineTo(x, 6);
+      g.stroke();
+      g.fillText(span < 20 ? fmtFine(t) : fmt(t), x + 3, 11);
     }
-  }, [time, duration, innerWidth, zoom]);
+
+    // Everything outside the selected beat range is dimmed, so the slice that
+    // will actually become video is the bright part.
+    if (beats.length) {
+      g.fillStyle = bg;
+      g.globalAlpha = 0.62;
+      const a = beats[from] ?? beats[0];
+      const b = beats[Math.min(to, beats.length - 1)] ?? beats[beats.length - 1];
+      if (a > vStart) g.fillRect(0, RULER_H, xOf(a), TRACK_H);
+      if (b < vEnd) g.fillRect(xOf(b), RULER_H, width - xOf(b), TRACK_H);
+      g.globalAlpha = 1;
+    }
+
+    // Beats. Every 4th is a downbeat: taller, stronger, and numbered by bar when
+    // there's room, which is what makes the pulse readable instead of a smear.
+    const spacingPx = beats.length > 1 ? width / beats.length : width;
+    const showNumbers = spacingPx > 26;
+    for (let i = 0; i < beats.length; i++) {
+      const t = beats[i];
+      if (t < vStart - 1 || t > vEnd + 1) continue; // off-screen, skip the work
+      const x = Math.round(xOf(t)) + 0.5;
+      const bar = i % 4 === 0;
+      const inRange = i >= from && i < to;
+      g.strokeStyle = inRange ? (bar ? ink : ink5) : line;
+      g.lineWidth = bar ? 1.5 : 1;
+      g.beginPath();
+      g.moveTo(x, RULER_H + (bar ? 8 : TRACK_H - 16));
+      g.lineTo(x, RULER_H + TRACK_H);
+      g.stroke();
+      if (bar && showNumbers) {
+        g.fillStyle = ink5;
+        g.fillText(String(Math.floor(i / 4) + 1), x + 3, RULER_H + 16);
+      }
+    }
+    g.lineWidth = 1;
+
+    // The pinned start/drop
+    if (point != null && point >= vStart && point <= vEnd) {
+      const x = Math.round(xOf(point)) + 0.5;
+      g.strokeStyle = '#10b981';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(x, RULER_H);
+      g.lineTo(x, RULER_H + TRACK_H);
+      g.stroke();
+      g.fillStyle = '#10b981';
+      g.beginPath();
+      g.arc(x, RULER_H + 4, 3.5, 0, Math.PI * 2);
+      g.fill();
+    }
+  }, [beats, from, to, point, width, span, vStart, vEnd, xOf]);
+
+  // ── Animate the playhead, outside React ────────────────────────────────────
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const el = headRef.current;
+      if (el) {
+        const x = xOf(getTime());
+        el.style.transform = `translateX(${x}px)`;
+        el.style.opacity = x < -2 || x > width + 2 ? '0' : '1';
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [xOf, getTime, width]);
 
   if (!duration) return null;
 
-  const pct = (t: number) => `${(t / duration) * 100}%`;
-  const step = labelStep(duration, innerWidth);
-  const ticks: number[] = [];
-  for (let t = 0; t <= duration; t += step) ticks.push(t);
-
-  // Seek from a click anywhere on the track background.
-  const seekFromEvent = (e: React.MouseEvent<HTMLDivElement>) => {
+  // A click picks the beat under the cursor when there is one, else it seeks.
+  // Shift adds a beat, Alt (or right-click) removes the nearest one.
+  const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = (e.clientX - rect.left) / rect.width;
-    onSeek(Math.max(0, Math.min(duration, ratio * duration)));
+    const x = e.clientX - rect.left;
+    const t = Math.max(vStart, Math.min(vEnd, tOf(x)));
+    if (e.shiftKey) {
+      onAddBeat(t);
+      return;
+    }
+    if (e.altKey) {
+      onRemoveBeat(t);
+      return;
+    }
+    const tolSec = (8 / width) * span; // 8px of slop
+    let hit: number | undefined;
+    let best = tolSec;
+    for (const b of beats) {
+      const d = Math.abs(b - t);
+      if (d <= best) {
+        best = d;
+        hit = b;
+      }
+    }
+    if (hit != null) onPickBeat(hit);
+    else onSeek(t);
   };
 
   return (
     <div className="rounded-lg border border-line bg-raised/40 overflow-hidden">
       <div ref={scrollRef} className="overflow-x-auto">
-        <div ref={innerRef} className="relative select-none" style={{ width: `${zoom * 100}%` }}>
-          {/* Time ruler */}
-          <div className="relative h-5 border-b border-line/70">
-            {ticks.map((t) => (
-              <div key={t} className="absolute top-0 h-full" style={{ left: pct(t) }}>
-                <div className="absolute top-0 left-0 w-px h-2 bg-ink-5/50" />
-                <span className="absolute top-1.5 left-1 text-[9px] leading-none text-ink-5 tabular-nums">
-                  {fmt(t)}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Beat track */}
-          <div className="relative h-12 cursor-text" onClick={seekFromEvent}>
-            {/* Dim everything outside the selected beat range */}
-            {beats.length > 0 && from > 0 && (
-              <div
-                className="absolute inset-y-0 left-0 bg-bg/70"
-                style={{ width: pct(beats[from] ?? 0) }}
-              />
-            )}
-            {beats.length > 0 && to < beats.length && (
-              <div
-                className="absolute inset-y-0 right-0 bg-bg/70"
-                style={{ left: pct(beats[to] ?? duration) }}
-              />
-            )}
-
-            {beats.map((b, i) => {
-              const bar = i % 4 === 0; // downbeat — the one worth aiming at
-              const inRange = i >= from && i < to;
-              return (
-                <button
-                  key={b}
-                  type="button"
-                  title={`Beat ${i + 1} · bar ${Math.floor(i / 4) + 1} · ${fmt(b)}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPickBeat(b);
-                  }}
-                  style={{ left: pct(b) }}
-                  className={`absolute -ml-[4px] w-[9px] flex justify-center group ${
-                    bar ? 'bottom-0 h-9' : 'bottom-0 h-4'
-                  }`}
-                >
-                  <span
-                    className={`w-px h-full transition-colors ${
-                      inRange
-                        ? bar
-                          ? 'bg-ink-3 group-hover:bg-ink'
-                          : 'bg-ink-5/60 group-hover:bg-ink-2'
-                        : 'bg-line group-hover:bg-ink-5'
-                    }`}
-                  />
-                </button>
-              );
-            })}
-
-            {/* Bar numbers, every 4 beats, only while there's room for them */}
-            {zoom > 1 &&
-              beats.map((b, i) =>
-                i % 4 === 0 ? (
-                  <span
-                    key={`n${b}`}
-                    className="absolute top-0 text-[9px] leading-none text-ink-5 tabular-nums pointer-events-none"
-                    style={{ left: `calc(${pct(b)} + 3px)` }}
-                  >
-                    {Math.floor(i / 4) + 1}
-                  </span>
-                ) : null
-              )}
-
-            {/* The pinned start/drop */}
-            {point != null && (
-              <div className="absolute inset-y-0 w-[2px] bg-emerald-500" style={{ left: pct(point) }}>
-                <div className="absolute -top-0.5 -left-[3px] w-2 h-2 rounded-full bg-emerald-500" />
-              </div>
-            )}
-
-            {/* Playhead */}
-            <div className="absolute inset-y-0 w-[2px] bg-ink pointer-events-none" style={{ left: pct(time) }}>
-              <div className="absolute -top-0.5 -left-[3px] w-2 h-2 rotate-45 bg-ink" />
-            </div>
+        <div
+          className="relative cursor-pointer select-none"
+          style={{ width, height: RULER_H + TRACK_H }}
+          onClick={onClick}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            const rect = e.currentTarget.getBoundingClientRect();
+            onRemoveBeat(tOf(e.clientX - rect.left));
+          }}
+        >
+          <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
+          <div
+            ref={headRef}
+            className="absolute top-0 left-0 w-[2px] bg-ink pointer-events-none will-change-transform"
+            style={{ height: RULER_H + TRACK_H }}
+          >
+            <div className="absolute -top-px -left-[3px] w-2 h-2 rotate-45 bg-ink" />
           </div>
         </div>
       </div>
@@ -194,7 +279,7 @@ export function BeatTimeline({ duration, time, beats, from, to, point, onSeek, o
         </button>
         <span className="text-[10px] text-ink-5 tabular-nums">{zoom}×</span>
         <span className="ml-auto text-[10px] text-ink-5">
-          tall tick = bar · click a beat to pin it
+          click a beat to pin · shift-click to add · alt-click to remove
         </span>
       </div>
     </div>

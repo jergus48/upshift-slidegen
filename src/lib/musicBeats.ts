@@ -9,7 +9,7 @@
 // Keyed by the track's manifest filename / `local:…` id, the same key
 // musicStarts.ts and musicDrops.ts use, so all three settings coexist per track.
 
-import type { BeatGrid } from './beatDetect';
+import type { BeatGrid, BeatBand } from './beatDetect';
 
 const KEY = 'slidesmith:musicBeats';
 
@@ -19,6 +19,10 @@ const KEY = 'slidesmith:musicBeats';
 export interface SavedBeats extends BeatGrid {
   from?: number;
   to?: number;
+  // What produced this list, so the editor can say so and re-run it the same
+  // way: a steady tempo grid, raw transients, or section changes.
+  source?: 'grid' | 'onsets' | 'changes' | 'manual';
+  band?: BeatBand;
 }
 
 type BeatMap = Record<string, SavedBeats>;
@@ -58,6 +62,66 @@ export function setBeats(file: string, grid: BeatGrid | null): void {
   const map = read();
   if (!grid) delete map[file];
   else map[file] = { ...map[file], ...grid };
+  write(map);
+}
+
+// Replace a track's beats with an arbitrary list — what the onset and section
+// detectors return, since neither produces a tempo. A range that pointed into
+// the old list is dropped: its indexes mean nothing against new beats.
+export function setBeatList(
+  file: string,
+  beats: number[],
+  meta: { source: SavedBeats['source']; band?: BeatBand; bpm?: number; confidence?: number }
+): void {
+  const map = read();
+  map[file] = {
+    bpm: meta.bpm ?? 0,
+    confidence: meta.confidence ?? 0,
+    beats: [...beats].sort((a, b) => a - b),
+    source: meta.source,
+    band: meta.band,
+  };
+  write(map);
+}
+
+// Add one beat by hand, keeping the list sorted. Ignored if it would land on top
+// of an existing beat (within 20ms), which would only produce a zero-length cut.
+export function addBeat(file: string, seconds: number): void {
+  const map = read();
+  const entry = map[file];
+  const t = Math.round(seconds * 1000) / 1000;
+  if (!entry) {
+    map[file] = { bpm: 0, confidence: 0, beats: [t], source: 'manual' };
+    write(map);
+    return;
+  }
+  if (entry.beats.some((b) => Math.abs(b - t) < 0.02)) return;
+  entry.beats = [...entry.beats, t].sort((a, b) => a - b);
+  // Hand edits invalidate a range expressed as indexes into the old list.
+  delete entry.from;
+  delete entry.to;
+  write(map);
+}
+
+// Remove the beat nearest `seconds`, when one is close enough to have been the
+// intended target.
+export function removeBeatNear(file: string, seconds: number, tolerance = 0.25): void {
+  const map = read();
+  const entry = map[file];
+  if (!entry?.beats.length) return;
+  let idx = -1;
+  let best = tolerance;
+  entry.beats.forEach((b, i) => {
+    const d = Math.abs(b - seconds);
+    if (d <= best) {
+      best = d;
+      idx = i;
+    }
+  });
+  if (idx < 0) return;
+  entry.beats = entry.beats.filter((_, i) => i !== idx);
+  delete entry.from;
+  delete entry.to;
   write(map);
 }
 
