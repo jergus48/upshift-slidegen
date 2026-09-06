@@ -134,7 +134,17 @@ export async function listAllTracks(scope: MusicScope = 'video'): Promise<MusicL
       });
     }
   }
-  for (const t of await listLocalTracks()) {
+  // Locally uploaded tracks are a BONUS on top of the manifest, so a failure to
+  // read them (IndexedDB blocked, private window, corrupt store) must not take
+  // the bundled pools down with it — that turned one storage error into an
+  // apparently empty music library.
+  let local: Awaited<ReturnType<typeof listLocalTracks>> = [];
+  try {
+    local = await listLocalTracks();
+  } catch {
+    local = [];
+  }
+  for (const t of local) {
     if (hidden.has(t.id)) continue;
     out.push({
       gender: t.gender,

@@ -68,12 +68,23 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
   // Detected beat grids per track, and which track is being analysed right now.
   const [grids, setGrids] = useState<Record<string, SavedBeats>>({});
   const [detecting, setDetecting] = useState<string | null>(null);
+  // Why the library came up empty, when it did. Without this the editor showed
+  // an empty list for a load failure and for an empty pool alike.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const reload = () => {
     setStarts(readAll());
     setGrids(getAllBeats());
-    return listAllTracks(scope).then(setTracks).catch(() => setTracks([]));
+    return listAllTracks(scope)
+      .then((t) => {
+        setTracks(t);
+        setLoadError(null);
+      })
+      .catch((e: unknown) => {
+        setTracks([]);
+        setLoadError(e instanceof Error ? e.message : String(e));
+      });
   };
 
   useEffect(() => {
@@ -200,6 +211,14 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
 
   return (
     <div className="space-y-4">
+      {(loadError || (!tracks.length && !busy)) && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-700">
+          {loadError
+            ? `Couldn't load the music library: ${loadError}`
+            : 'No tracks in this library — check /music/manifest.json, or add files below.'}
+        </div>
+      )}
+
       <audio
         ref={audioRef}
         onPlay={() => setPlaying(true)}
