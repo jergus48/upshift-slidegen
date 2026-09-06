@@ -13,6 +13,7 @@ import {
   type BeatBand,
 } from '../lib/beatDetect';
 import { BeatTimeline } from './BeatTimeline';
+import { listPlans, savePlan, deletePlan, planLength, planCuts, type BeatPlan } from '../lib/beatPlans';
 import {
   getAllBeats,
   setBeats,
@@ -84,6 +85,9 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
   const [band, setBand] = useState<BeatBand>('kick');
   const [source, setSource] = useState<'grid' | 'onsets' | 'changes'>('grid');
   const [trim, setTrim] = useState(false);
+  // Cut density: 1 = one cut per beat, 2 = eighths, 0.5 = every other beat.
+  const [subdivision, setSubdivision] = useState(1);
+  const [plans, setPlans] = useState<BeatPlan[]>([]);
   // Why the library came up empty, when it did. Without this the editor showed
   // an empty list for a load failure and for an empty pool alike.
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -92,6 +96,7 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
   const reload = () => {
     setStarts(readAll());
     setGrids(getAllBeats());
+    setPlans(listPlans());
     return listAllTracks(scope)
       .then((t) => {
         setTracks(t);
@@ -154,7 +159,7 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
         setBeats(loaded.file, null);
         return;
       }
-      const opts = { band, from: view?.start, to: view?.end };
+      const opts = { band, subdivision, from: view?.start, to: view?.end };
       if (source === 'grid') {
         const found = detectBeats(buf, opts);
         if (found) setBeatList(loaded.file, found.beats, { source: 'grid', band, bpm: found.bpm, confidence: found.confidence });
@@ -174,6 +179,29 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
     if (!loaded) return;
     fn(loaded.file, sec);
     setGrids(getAllBeats());
+  };
+
+  // Snapshot the finished beats + length under a name, so this edit can be
+  // recalled later instead of being re-detected and re-trimmed by hand.
+  const savePlanNow = () => {
+    if (!loaded || !grid) return;
+    const name = window.prompt('Name this beat plan', `${prettyName(loaded)} — ${fmt(rangeDuration(grid))}`);
+    if (name === null) return;
+    savePlan(name, loaded.file, prettyName(loaded), grid);
+    setPlans(listPlans());
+  };
+
+  // Load a plan back as the working grid for its track.
+  const loadPlan = (plan: BeatPlan) => {
+    setBeatList(plan.file, plan.beats, {
+      source: plan.source,
+      band: plan.band,
+      bpm: plan.bpm,
+    });
+    setBeatRange(plan.file, plan.from, plan.to);
+    setGrids(getAllBeats());
+    const track = tracks.find((t) => t.file === plan.file);
+    if (track) load(track, plan.start);
   };
 
   // Pin the start/drop to a beat rather than to wherever the scrub landed —
@@ -365,6 +393,19 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
                 <option value="onsets">Hits</option>
                 <option value="changes">Section changes</option>
               </select>
+              {source === 'grid' && (
+                <select
+                  value={subdivision}
+                  onChange={(e) => setSubdivision(Number(e.target.value))}
+                  className="h-8 px-2 rounded-lg border border-line bg-card text-[12px] text-ink-2"
+                  title="How often to cut, relative to the beat"
+                >
+                  <option value={0.5}>½× — every other beat</option>
+                  <option value={1}>1× — every beat</option>
+                  <option value={2}>2× — eighths</option>
+                  <option value={4}>4× — sixteenths</option>
+                </select>
+              )}
               {source !== 'changes' && (
                 <select
                   value={band}
@@ -411,6 +452,14 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
                 </span>
                 <button
                   type="button"
+                  onClick={savePlanNow}
+                  className="h-7 px-2 rounded-lg bg-ink text-bg font-medium hover:bg-ink-hover transition-colors"
+                  title="Save these beats and this length under a name"
+                >
+                  Save plan
+                </button>
+                <button
+                  type="button"
                   onClick={() => setEdge('from')}
                   className="h-7 px-2 rounded-lg border border-line text-ink-3 hover:bg-raised hover:text-ink-2 transition-colors"
                 >
@@ -455,6 +504,46 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
           </div>
         )}
       </div>
+
+      {/* Saved beat plans */}
+      {plans.length > 0 && (
+        <div className="rounded-xl border border-line bg-card p-3">
+          <div className="text-[11px] font-medium text-ink-3 mb-2">Saved beat plans</div>
+          <div className="space-y-1">
+            {plans.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-raised transition-colors"
+              >
+                <button
+                  type="button"
+                  onClick={() => loadPlan(p)}
+                  className="min-w-0 flex-1 text-left"
+                  title="Load these beats back onto the track"
+                >
+                  <div className="text-[12px] text-ink truncate">{p.name}</div>
+                  <div className="text-[10px] text-ink-5 truncate">
+                    {p.trackName} · {fmt(planLength(p))} · {planCuts(p)} cuts
+                    {p.bpm > 0 && ` · ${p.bpm} BPM`}
+                    {p.band && ` · ${p.band}`}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deletePlan(p.id);
+                    setPlans(listPlans());
+                  }}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-5 hover:bg-bg hover:text-ink-2 transition-colors"
+                  aria-label={`Delete ${p.name}`}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Track lists */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
