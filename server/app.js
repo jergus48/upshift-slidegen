@@ -21,6 +21,7 @@ import { fetchProfiles } from './social.js'
 import { fetchQuotes, fetchFxRates, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
 import { logger } from './log.js'
 import { authGate, checkPassword, authCookie, clearAuthCookie, isAuthed, AUTH_REQUIRED } from './auth.js'
+import { router as renderRouter, internalRouter as renderInternalRouter } from './renderJobs.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const schedLog = logger('schedule')
@@ -40,8 +41,18 @@ app.use((req, res, next) => {
   next()
 })
 
+// The render page a background job drives loads with no session, so its asset
+// routes sit in front of the password gate and carry the job's own token
+// instead. Nothing here reads keys or user data — only that job's own uploads.
+app.use(renderInternalRouter)
+
 // Shared-password gate (no-op unless APP_PASSWORD is set — see auth.js).
 app.use(authGate)
+
+// Background video rendering: the queue the local server drives a real browser
+// with, so an export no longer needs the user's tab (see renderJobs.js).
+app.use(renderRouter)
+
 
 // Wrap async handlers so thrown errors become clean 500 JSON instead of crashes.
 const h = (fn) => (req, res) => fn(req, res).catch((e) => {

@@ -213,7 +213,7 @@ export async function renderSlideshow(show: Slideshow): Promise<string[]> {
   return out;
 }
 
-function slugify(text: string): string {
+export function slugify(text: string): string {
   return (
     text
       .toLowerCase()
@@ -288,7 +288,7 @@ export function videoMeta(show: Slideshow): VideoMeta {
 
 // The JSON sidecar bundled next to each exported .mp4, so every video file
 // carries its own title/description/tags and an uploader needs no second export.
-function videoMetaJson(show: Slideshow): string {
+export function videoMetaJson(show: Slideshow): string {
   return JSON.stringify(videoMeta(show), null, 2);
 }
 

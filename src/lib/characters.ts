@@ -160,6 +160,11 @@ export interface Character {
   // "Generate videos" can write this character's videos straight into their own
   // folder. '' = fall back to the global default folder / browser downloads.
   folderId: string;
+  // Absolute path on the machine running the local server, for background
+  // render jobs (lib/serverRender.ts) — the server writes the finished videos
+  // there itself, so no browser folder permission is involved. '' = the job's
+  // own folder under ~/.slidesmith.
+  outDir: string;
 }
 
 interface Store {
@@ -219,6 +224,7 @@ function read(): Store {
           afterToken: String(c.afterToken || ''),
           girlfriendToken: String(c.girlfriendToken || ''),
           folderId: String(c.folderId || ''),
+          outDir: String(c.outDir || ''),
         }))
       : [];
 
@@ -308,6 +314,7 @@ export function addCharacter(name: string): Character {
     afterToken: '',
     girlfriendToken: '',
     folderId: '',
+    outDir: '',
   };
   write({ ...store, characters: [...store.characters, character] });
   return character;
@@ -359,6 +366,14 @@ export function setCharacterToken(
 
 // Where this character's exports go — a folder preset id, or '' for the global
 // default. Only used by the Characters view's direct video export.
+export function setCharacterOutDir(id: string, outDir: string): void {
+  const store = read();
+  write({
+    ...store,
+    characters: store.characters.map((c) => (c.id === id ? { ...c, outDir: outDir.trim() } : c)),
+  });
+}
+
 export function setCharacterFolder(id: string, folderId: string): void {
   const store = read();
   write({

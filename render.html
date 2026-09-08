@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>SlideGen render worker</title>
+</head>
+
+<!-- Not a page anyone browses: the local server opens this in a headless Chrome
+     and calls window.slidesmithRender() on it, so a video export runs in the
+     background instead of holding the user's tab (see server/renderJobs.js). -->
+
+<body>
+  <div id="status">Render worker — waiting for a job.</div>
+  <script type="module" src="/src/render-entry.ts"></script>
+</body>
+
+</html>

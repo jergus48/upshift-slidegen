@@ -37,6 +37,7 @@ import { buildFixedShows } from './lib/fixedDeck';
 import { buildTransformationShows } from './lib/transformationDeck';
 import { getCharacters } from './lib/characters';
 import { resolveWritableFolder, getDefaultFolderId } from './lib/downloadFolders';
+import { submitServerRender } from './lib/serverRender';
 import type { MusicGender } from './lib/music';
 import * as ws from './lib/localWorkspace';
 import * as api from './lib/api';
@@ -478,6 +479,10 @@ export default function App() {
     music: MusicGender | null;
     zoom: boolean;
     regrade: 0 | 1 | 2;
+    // 'tab' renders here and writes through the browser's folder handles;
+    // 'server' hands the decks to the local server's background queue, which
+    // drives its own browser and writes the files itself.
+    target: 'tab' | 'server';
     onProgress?: (done: number, total: number) => void;
   }) => {
     setError(null);
@@ -506,6 +511,27 @@ export default function App() {
         if (shows.length) jobs.push({ character, shows });
       }
       if (!jobs.length) throw new Error(failures.join(' ') || 'Nothing to build.');
+
+      // Straight to the server's background queue: one job per character, so
+      // each writes into that character's own output path. Nothing renders in
+      // this tab, so it can be closed as soon as the uploads are through.
+      if (opts.target === 'server') {
+        const totalUploads = jobs.length;
+        let queued = 0;
+        opts.onProgress?.(0, totalUploads);
+        for (const { character, shows } of jobs) {
+          await submitServerRender(shows, {
+            name: `${character.name} — ${shows.length} video${shows.length === 1 ? '' : 's'}`,
+            outDir: character.outDir,
+            music: opts.music,
+            zoom: opts.zoom,
+            regrade: opts.regrade,
+          });
+          opts.onProgress?.(++queued, totalUploads);
+        }
+        if (failures.length) setError(failures.join(' '));
+        return;
+      }
 
       // Resolve every destination up front: the permission prompt has to come
       // as close to the click as possible, not after a long render.
