@@ -23,7 +23,7 @@ import { ChannelsView } from './views/ChannelsView';
 import { StocksView } from './views/StocksView';
 import { BrainView } from './views/BrainView';
 import { SettingsView } from './views/SettingsView';
-import { renderSlideshow } from './lib/render';
+import { renderSlideshow, downloadSlideshowsVideo } from './lib/render';
 import { loadQueue, saveQueue, recoverOrphanQueues } from './lib/localQueue';
 import { loadBatches, saveBatches, isPresetBatch, type GenBatch, type PresetBatch } from './lib/localBatches';
 import { getMergedLibrary } from './lib/mergedLibrary';
@@ -36,6 +36,8 @@ import { getQuitPresets, type Gender } from './lib/quitPresets';
 import { buildFixedShows } from './lib/fixedDeck';
 import { buildTransformationShows } from './lib/transformationDeck';
 import { getCharacters } from './lib/characters';
+import { resolveWritableFolder, getDefaultFolderId } from './lib/downloadFolders';
+import type { MusicGender } from './lib/music';
 import * as ws from './lib/localWorkspace';
 import * as api from './lib/api';
 import type {
@@ -463,6 +465,82 @@ export default function App() {
     }
   };
 
+  // Characters, straight to video: build the same decks as above but never put
+  // them on the queue — each character's videos are rendered and written into
+  // that character's own export folder (falling back to the global default
+  // folder, then to plain browser downloads).
+  const generateCharacterVideos = async (opts: {
+    characterIds: string[];
+    count: number;
+    streakKey?: string;
+    hookTemplate?: string;
+    captionStyle: CaptionStyle;
+    music: MusicGender | null;
+    zoom: boolean;
+    regrade: 0 | 1 | 2;
+    onProgress?: (done: number, total: number) => void;
+  }) => {
+    setError(null);
+    setGenerating(true);
+    try {
+      const all = getCharacters();
+      const library = await getMergedLibrary(true);
+      const failures: string[] = [];
+      // Deck-building first, so nothing renders if a character can't produce one.
+      const jobs: { character: (typeof all)[number]; shows: Slideshow[] }[] = [];
+      for (const id of opts.characterIds) {
+        const character = all.find((c) => c.id === id);
+        if (!character) continue;
+        const shows: Slideshow[] = [];
+        for (const result of buildTransformationShows(character, library, opts.count, {
+          streakKey: opts.streakKey,
+          hookTemplate: opts.hookTemplate,
+        })) {
+          if (result.show) {
+            shows.push({
+              ...result.show,
+              slides: result.show.slides.map((sl) => ({ ...sl, captionStyle: opts.captionStyle })),
+            });
+          } else if (result.error && !failures.includes(result.error)) failures.push(result.error);
+        }
+        if (shows.length) jobs.push({ character, shows });
+      }
+      if (!jobs.length) throw new Error(failures.join(' ') || 'Nothing to build.');
+
+      // Resolve every destination up front: the permission prompt has to come
+      // as close to the click as possible, not after a long render.
+      const dirs = new Map<string, FileSystemDirectoryHandle | null>();
+      for (const { character } of jobs) {
+        dirs.set(
+          character.id,
+          await resolveWritableFolder(character.folderId || getDefaultFolderId()),
+        );
+      }
+
+      const total = jobs.reduce((n, j) => n + j.shows.length, 0);
+      let done = 0;
+      opts.onProgress?.(0, total);
+      for (const { character, shows } of jobs) {
+        const base = done;
+        await downloadSlideshowsVideo(
+          shows,
+          (d) => opts.onProgress?.(base + d, total),
+          opts.music,
+          dirs.get(character.id) ?? null,
+          { zoom: opts.zoom, regrade: opts.regrade },
+        );
+        done += shows.length;
+        opts.onProgress?.(done, total);
+      }
+      if (failures.length) setError(failures.join(' '));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      throw e;
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const reject = (id: string) => {
     setQueue((q) => q.filter((s) => s.id !== id));
   };
@@ -706,7 +784,11 @@ export default function App() {
           />
         )}
         {activeView === 'characters' && (
-          <CharactersView generating={generating} onGenerate={generateCharacterDecks} />
+          <CharactersView
+            generating={generating}
+            onGenerate={generateCharacterDecks}
+            onGenerateVideos={generateCharacterVideos}
+          />
         )}
         {activeView === 'library' && <LibraryView hasApify={hasApify} pinterestActor={config.pinterestActor} />}
         {activeView === 'reddit' && <RedditView canGenerate={hasOpenrouter} model={config.model} />}

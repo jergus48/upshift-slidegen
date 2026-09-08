@@ -156,6 +156,10 @@ export interface Character {
   // The closing slide: a shot of the character with their girlfriend. It takes
   // the place of the last after photo, so every deck ends on the same beat.
   girlfriendToken: string;
+  // Export destination: a download folder preset id (lib/downloadFolders.ts), so
+  // "Generate videos" can write this character's videos straight into their own
+  // folder. '' = fall back to the global default folder / browser downloads.
+  folderId: string;
 }
 
 interface Store {
@@ -214,6 +218,7 @@ function read(): Store {
           beforeToken: String(c.beforeToken || ''),
           afterToken: String(c.afterToken || ''),
           girlfriendToken: String(c.girlfriendToken || ''),
+          folderId: String(c.folderId || ''),
         }))
       : [];
 
@@ -302,6 +307,7 @@ export function addCharacter(name: string): Character {
     beforeToken: '',
     afterToken: '',
     girlfriendToken: '',
+    folderId: '',
   };
   write({ ...store, characters: [...store.characters, character] });
   return character;
@@ -348,5 +354,15 @@ export function setCharacterToken(
   write({
     ...store,
     characters: store.characters.map((c) => (c.id === id ? { ...c, [field]: token } : c)),
+  });
+}
+
+// Where this character's exports go — a folder preset id, or '' for the global
+// default. Only used by the Characters view's direct video export.
+export function setCharacterFolder(id: string, folderId: string): void {
+  const store = read();
+  write({
+    ...store,
+    characters: store.characters.map((c) => (c.id === id ? { ...c, folderId } : c)),
   });
 }

@@ -1,8 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Trash2, Sparkles, Check, UserRound, Images, Shuffle, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Sparkles, Check, UserRound, Images, Shuffle, RefreshCw, Film, Folder, Loader2 } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
+import { MusicChoiceModal } from '../components/MusicChoiceModal';
+import {
+  supportsFolderPresets,
+  listFolderPresets,
+  getDefaultFolderId,
+  type FolderPreset,
+} from '../lib/downloadFolders';
+import type { MusicGender } from '../lib/music';
 import { getMergedLibrary, getMergedPacks } from '../lib/mergedLibrary';
 import { makeToken } from '../lib/subfolders';
 import { HOOKS, fillHook, hookUsesStreak } from '../lib/transformationHooks';
@@ -25,6 +33,7 @@ import {
   renameCharacter,
   removeCharacter,
   setCharacterToken,
+  setCharacterFolder,
   subscribeCharacters,
   type Variant,
   type Character,
@@ -162,9 +171,22 @@ interface CharactersViewProps {
     hookTemplate?: string;
     captionStyle: CaptionStyle;
   }) => Promise<void>;
+  // Same decks, but rendered straight to video into each character's export
+  // folder — nothing is put on the queue.
+  onGenerateVideos: (opts: {
+    characterIds: string[];
+    count: number;
+    streakKey?: string;
+    hookTemplate?: string;
+    captionStyle: CaptionStyle;
+    music: MusicGender | null;
+    zoom: boolean;
+    regrade: 0 | 1 | 2;
+    onProgress?: (done: number, total: number) => void;
+  }) => Promise<void>;
 }
 
-export function CharactersView({ generating, onGenerate }: CharactersViewProps) {
+export function CharactersView({ generating, onGenerate, onGenerateVideos }: CharactersViewProps) {
   const [, bump] = useState(0);
   const rerender = useCallback(() => bump((n) => n + 1), []);
   const [characters, setCharacters] = useState<Character[]>(() => getCharacters());
@@ -182,6 +204,12 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
   const [editVariant, setEditVariant] = useState<string>(VARIANTS[0].key);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // Direct-to-video export: the folder presets each character can be pointed at,
+  // the music/zoom popup, and live render progress.
+  const [folderPresets, setFolderPresets] = useState<FolderPreset[]>([]);
+  const [askMusic, setAskMusic] = useState(false);
+  const [videoProgress, setVideoProgress] = useState<{ done: number; total: number } | null>(null);
+  const [videosDone, setVideosDone] = useState(0);
 
   // The packages are ordinary library packs, so pull the library once and let
   // "Reload library" pick up anything added in the Library view meanwhile.
@@ -202,6 +230,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
     // out of the other tools' pickers the first time this view is opened.
     hideBundledPacksOnce();
     loadLibrary();
+    if (supportsFolderPresets()) listFolderPresets().then(setFolderPresets).catch(() => undefined);
   }, [loadLibrary]);
 
   const reload = () => {
@@ -225,6 +254,7 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
   const streakVariants = characters.filter((c) => selected.includes(c.id)).map(variantOf);
   const usableStreaks = usableStreaksIn(library, streakVariants[0] ?? editVariant);
   const ready = characters.filter((c) => missingPieces(c, library).length === 0);
+  const defaultFolderName = folderPresets.find((p) => p.id === getDefaultFolderId())?.name || '';
 
   const create = () => {
     const c = addCharacter(newName);
@@ -252,6 +282,32 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
       setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const submitVideos = async (music: MusicGender | null, zoom: boolean, regrade: 0 | 1 | 2) => {
+    setAskMusic(false);
+    setError(null);
+    setDone(false);
+    setVideosDone(0);
+    setVideoProgress({ done: 0, total: runnable.length * count });
+    try {
+      await onGenerateVideos({
+        characterIds: runnable,
+        count,
+        streakKey: streakKey || undefined,
+        hookTemplate: hookTemplate || undefined,
+        captionStyle,
+        music,
+        zoom,
+        regrade,
+        onProgress: (d, total) => setVideoProgress({ done: d, total }),
+      });
+      setVideosDone(runnable.length * count);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setVideoProgress(null);
     }
   };
 
@@ -456,6 +512,34 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
                     Proof slides come from the “{variantLabel(c.skin, c.gender)}” shared packages above.
                   </p>
 
+                  {folderPresets.length > 0 && (
+                    <div>
+                      <div className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5">
+                        Export folder
+                      </div>
+                      <label className="flex items-center gap-2 h-9 px-2.5 rounded-lg border border-line bg-card">
+                        <Folder size={13} className="shrink-0 text-ink-5" />
+                        <select
+                          value={c.folderId}
+                          onChange={(e) => setCharacterFolder(c.id, e.target.value)}
+                          className="flex-1 bg-transparent text-[13px] text-ink outline-none cursor-pointer"
+                        >
+                          <option value="">
+                            Default{defaultFolderName ? ` (${defaultFolderName})` : ' (Downloads folder)'}
+                          </option>
+                          {folderPresets.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <p className="text-[11px] text-ink-6 mt-1">
+                        Where “Generate videos” writes this character's videos. Manage folders in Brain.
+                      </p>
+                    </div>
+                  )}
+
                   <PackageSelect
                     label="Before"
                     hint="the addict shots"
@@ -611,25 +695,58 @@ export function CharactersView({ generating, onGenerate }: CharactersViewProps) 
                 <Check size={13} /> Added to the Queue.
               </p>
             )}
+            {videosDone > 0 && !videoProgress && (
+              <p className="text-[12px] text-emerald-600 flex items-center gap-1">
+                <Check size={13} /> {videosDone} video{videosDone === 1 ? '' : 's'} exported to the
+                characters' folders.
+              </p>
+            )}
+            {folderPresets.length === 0 && supportsFolderPresets() && (
+              <p className="text-[11px] text-ink-6">
+                No download folders yet — add some in Brain to send each character's videos straight
+                into their own folder. Until then videos land in your browser's Downloads folder.
+              </p>
+            )}
 
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] text-ink-6 flex items-center gap-1">
                 <Shuffle size={11} /> {runnable.length} character{runnable.length === 1 ? '' : 's'} selected
               </span>
-              <Button
-                variant="primary"
-                icon={<Sparkles size={13} />}
-                onClick={submit}
-                disabled={generating || runnable.length === 0}
-              >
-                {generating
-                  ? 'Building…'
-                  : `Generate ${runnable.length * count} deck${runnable.length * count === 1 ? '' : 's'}`}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  icon={videoProgress ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
+                  onClick={() => setAskMusic(true)}
+                  disabled={generating || runnable.length === 0}
+                  title="Build the decks and render them straight to video into each character's export folder — skipping the queue"
+                >
+                  {videoProgress
+                    ? `Rendering ${videoProgress.done}/${videoProgress.total}…`
+                    : `Generate ${runnable.length * count} video${runnable.length * count === 1 ? '' : 's'}`}
+                </Button>
+                <Button
+                  variant="primary"
+                  icon={<Sparkles size={13} />}
+                  onClick={submit}
+                  disabled={generating || runnable.length === 0}
+                >
+                  {generating && !videoProgress
+                    ? 'Building…'
+                    : `Generate ${runnable.length * count} deck${runnable.length * count === 1 ? '' : 's'}`}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {askMusic && (
+        <MusicChoiceModal
+          count={runnable.length * count}
+          onClose={() => setAskMusic(false)}
+          onChoose={submitVideos}
+        />
+      )}
     </>
   );
 }
