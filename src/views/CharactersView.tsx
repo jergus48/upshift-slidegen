@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Trash2, Sparkles, Check, UserRound, Images, Shuffle, RefreshCw, Film, Folder, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Sparkles, Check, UserRound, Images, Shuffle, RefreshCw, Film, Folder, HardDrive, Loader2 } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
@@ -12,6 +12,11 @@ import {
 } from '../lib/downloadFolders';
 import type { MusicGender } from '../lib/music';
 import { serverRenderStatus } from '../lib/serverRender';
+import {
+  listServerFolders,
+  subscribeServerFolders,
+  type ServerFolder,
+} from '../lib/serverFolders';
 import { ServerRenderQueue } from '../components/ServerRenderQueue';
 import { getMergedLibrary, getMergedPacks } from '../lib/mergedLibrary';
 import { makeToken } from '../lib/subfolders';
@@ -218,6 +223,9 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
   // progress and done messages can say the right thing.
   const [target, setTarget] = useState<'tab' | 'server'>('tab');
   const [serverOk, setServerOk] = useState(false);
+  // Named paths on the render machine, managed in Brain - the server output
+  // folder is a pick from this list, never a hand-typed path.
+  const [serverFolders, setServerFolders] = useState<ServerFolder[]>(listServerFolders);
 
   // The packages are ordinary library packs, so pull the library once and let
   // "Reload library" pick up anything added in the Library view meanwhile.
@@ -243,6 +251,9 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
       .then((st) => setServerOk(st.supported))
       .catch(() => undefined);
   }, [loadLibrary]);
+
+  // Brain can add or drop a folder while this view is open.
+  useEffect(() => subscribeServerFolders(() => setServerFolders(listServerFolders())), []);
 
   const reload = () => {
     setLoading(true);
@@ -535,17 +546,29 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
                       <div className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5">
                         Server output folder
                       </div>
-                      <input
-                        defaultValue={c.outDir}
-                        onBlur={(e) => setCharacterOutDir(c.id, e.target.value)}
-                        placeholder="C:\Users\you\Videos\Character"
-                        spellCheck={false}
-                        className="w-full h-9 bg-card border border-line rounded-lg px-2.5 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
-                      />
+                      <label className="flex items-center gap-2 h-9 px-2.5 rounded-lg border border-line bg-card">
+                        <HardDrive size={13} className="shrink-0 text-ink-5" />
+                        <select
+                          value={c.outDir || ''}
+                          onChange={(e) => setCharacterOutDir(c.id, e.target.value)}
+                          className="flex-1 bg-transparent text-[13px] text-ink outline-none cursor-pointer"
+                        >
+                          <option value="">Default (~/.slidesmith/render-jobs)</option>
+                          {serverFolders.map((f) => (
+                            <option key={f.id} value={f.path}>
+                              {f.name}
+                            </option>
+                          ))}
+                          {/* A path saved before this was a dropdown, or one whose
+                              Brain entry was deleted, stays selectable. */}
+                          {c.outDir && !serverFolders.some((f) => f.path === c.outDir) && (
+                            <option value={c.outDir}>{c.outDir}</option>
+                          )}
+                        </select>
+                      </label>
                       <p className="text-[11px] text-ink-6 mt-1">
-                        A full path on the machine running the server — that's where a background
-                        render job writes this character's videos. Left empty they land in
-                        ~/.slidesmith/render-jobs.
+                        Where a background render job writes this character's videos, on the
+                        machine running the server. Add folders in Brain.
                       </p>
                     </div>
                   )}

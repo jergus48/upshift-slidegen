@@ -7,6 +7,7 @@ import { getMergedPacks } from '../lib/mergedLibrary';
 import { MusicStartsEditor } from '../components/MusicStartsEditor';
 import { DownloadFoldersEditor } from '../components/DownloadFoldersEditor';
 import { supportsFolderPresets } from '../lib/downloadFolders';
+import { ServerFoldersEditor } from '../components/ServerFoldersEditor';
 
 interface BrainViewProps {
   brain: BrainState;
@@ -170,6 +171,14 @@ export function BrainView({ brain, onChange, povPackMen, povPackWomen, onChangeP
               <DownloadFoldersEditor />
             </Section>
           )}
+
+          {/* Server output folders — paths on the render server, not this browser */}
+          <Section
+            title="Server output folders"
+            description="Folders on the machine running the render server. Add the paths you use once here, and every character can be pointed at one by name instead of retyping a path. Left unused, server renders land in ~/.slidesmith/render-jobs."
+          >
+            <ServerFoldersEditor />
+          </Section>
 
           {/* Video music start points */}
           <Section
