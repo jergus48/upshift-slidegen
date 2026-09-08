@@ -9,6 +9,8 @@ import type { GenBatch } from '../lib/localBatches';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
 import { MusicChoiceModal } from '../components/MusicChoiceModal';
+import { ServerRenderQueue } from '../components/ServerRenderQueue';
+import { serverRenderStatus, submitServerRender } from '../lib/serverRender';
 import { downloadSlideshow, downloadSlideshowsZip, downloadSlideshowsVideo } from '../lib/render';
 import type { MusicGender } from '../lib/music';
 import {
@@ -70,9 +72,15 @@ export function QueueView({
   // default; changing it here also updates that default so it sticks.
   const [folderPresets, setFolderPresets] = useState<FolderPreset[]>([]);
   const [destId, setDestId] = useState<string | null>(getDefaultFolderId());
+  // Whether the local server can render for us. Only then is the background
+  // queue offered in the export popup.
+  const [serverOk, setServerOk] = useState(false);
 
   useEffect(() => {
     if (supportsFolderPresets()) listFolderPresets().then(setFolderPresets).catch(() => undefined);
+    serverRenderStatus()
+      .then((st) => setServerOk(st.supported))
+      .catch(() => undefined);
   }, []);
 
   const chooseDest = (id: string | null) => {
@@ -102,10 +110,30 @@ export function QueueView({
     }
   };
 
-  const downloadSelectedVideo = async (music: MusicGender | null, zoom: boolean, regrade: 0 | 1 | 2) => {
+  const downloadSelectedVideo = async (
+    music: MusicGender | null,
+    zoom: boolean,
+    regrade: 0 | 1 | 2,
+    target: 'tab' | 'server',
+    outDir: string,
+  ) => {
     setAskMusic(false);
     setVideoProgress({ done: 0, total: selectedCount });
     try {
+      // Handed to the server: this only uploads the photos and queues the job,
+      // so the tab is free (and closable) the moment it returns.
+      if (target === 'server') {
+        const shows = selectedShows();
+        await submitServerRender(shows, {
+          name: `Queue — ${shows.length} video${shows.length === 1 ? '' : 's'}`,
+          outDir,
+          music,
+          zoom,
+          regrade,
+          onUpload: (done, total) => setVideoProgress({ done, total }),
+        });
+        return;
+      }
       const dir = await resolveWritableFolder(destId);
       await downloadSlideshowsVideo(
         selectedShows(),
@@ -248,9 +276,12 @@ export function QueueView({
         />
       </div>
 
+      <ServerRenderQueue enabled={serverOk} />
+
       {askMusic && (
         <MusicChoiceModal
           count={selectedCount}
+          askOutDir
           onClose={() => setAskMusic(false)}
           onChoose={downloadSelectedVideo}
         />
@@ -284,10 +315,26 @@ function SlideshowCard({ slideshow, selected, destId, onToggleSelect, onApprove,
     }
   };
 
-  const downloadVideo = async (music: MusicGender | null, zoom: boolean, regrade: 0 | 1 | 2) => {
+  const downloadVideo = async (
+    music: MusicGender | null,
+    zoom: boolean,
+    regrade: 0 | 1 | 2,
+    target: 'tab' | 'server',
+    outDir: string,
+  ) => {
     setAskMusic(false);
     setRenderingVideo(true);
     try {
+      if (target === 'server') {
+        await submitServerRender([slideshow], {
+          name: slideshow.hook || 'Queue video',
+          outDir,
+          music,
+          zoom,
+          regrade,
+        });
+        return;
+      }
       const dir = await resolveWritableFolder(destId);
       await downloadSlideshowsVideo([slideshow], undefined, music, dir, { zoom, regrade });
     } finally {
@@ -382,6 +429,7 @@ function SlideshowCard({ slideshow, selected, destId, onToggleSelect, onApprove,
       {askMusic && (
         <MusicChoiceModal
           count={1}
+          askOutDir
           onClose={() => setAskMusic(false)}
           onChoose={downloadVideo}
         />

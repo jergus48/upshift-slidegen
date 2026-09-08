@@ -50,6 +50,28 @@ export async function serverRenderStatus(): Promise<{ supported: boolean; ffmpeg
   }
 }
 
+// The folder a Queue-side server render writes into. Characters have one per
+// character; everything else shares this single remembered path, since there is
+// nothing else to hang it off.
+const OUT_DIR_KEY = 'slidesmith:serverOutDir';
+
+export function getDefaultOutDir(): string {
+  try {
+    return localStorage.getItem(OUT_DIR_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function setDefaultOutDir(dir: string): void {
+  try {
+    if (dir.trim()) localStorage.setItem(OUT_DIR_KEY, dir.trim());
+    else localStorage.removeItem(OUT_DIR_KEY);
+  } catch {
+    /* storage unavailable — the path just won't stick */
+  }
+}
+
 export const listRenderJobs = () => json<RenderJob[]>('/render/jobs');
 export const cancelRenderJob = (id: string) =>
   json<RenderJob>(`/render/jobs/${id}/cancel`, { method: 'POST' });

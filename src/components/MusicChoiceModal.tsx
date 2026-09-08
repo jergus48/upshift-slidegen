@@ -1,15 +1,26 @@
-import { Film, Music, Square, User, UserRound, VolumeX, ZoomIn } from 'lucide-react';
+import { Film, Monitor, Music, Server, Square, User, UserRound, VolumeX, ZoomIn } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getRegradeStatus } from '../lib/api';
 import type { MusicGender } from '../lib/music';
+import { serverRenderStatus, getDefaultOutDir, setDefaultOutDir } from '../lib/serverRender';
 import { Button } from './Button';
 
 interface MusicChoiceModalProps {
   count: number;
   onClose: () => void;
+  // Ask for the folder the server should write into. Off where the caller
+  // already knows the destination (Characters keeps one per character).
+  askOutDir?: boolean;
   // null → export with no music. A gender → pick a random track from that pool
-  // for each video.
-  onChoose: (music: MusicGender | null, zoom: boolean, regrade: 0 | 1 | 2) => void;
+  // for each video. `target` says where the render runs: in this tab, or on the
+  // local server's background queue.
+  onChoose: (
+    music: MusicGender | null,
+    zoom: boolean,
+    regrade: 0 | 1 | 2,
+    target: 'tab' | 'server',
+    outDir: string,
+  ) => void;
 }
 
 // How hard to post-process the finished video (see server/regrade.js). Off is
@@ -38,10 +49,38 @@ const ZOOM_CHOICES: { value: boolean; label: string; hint: string; icon: typeof 
   },
 ];
 
+// Where the render runs. Only offered when the local server answers — a hosted
+// deployment has no browser to drive and no folder to write into.
+const TARGET_CHOICES: {
+  value: 'tab' | 'server';
+  label: string;
+  hint: string;
+  icon: typeof Server;
+}[] = [
+  {
+    value: 'server',
+    label: 'On the server',
+    hint: 'Runs in the background — close the tab',
+    icon: Server,
+  },
+  {
+    value: 'tab',
+    label: 'In this tab',
+    hint: 'Keep the tab visible until it finishes',
+    icon: Monitor,
+  },
+];
+
 // Small popup shown right before a video export: pick which soundtrack pool to
 // draw from (a random track is chosen per video) or opt out of music entirely.
-export function MusicChoiceModal({ count, onClose, onChoose }: MusicChoiceModalProps) {
+export function MusicChoiceModal({ count, onClose, askOutDir, onChoose }: MusicChoiceModalProps) {
   const [zoom, setZoom] = useState(true);
+  // Where the render runs. The server queue is the better default wherever it
+  // exists: it can't be throttled by switching tabs, and it survives this page
+  // being closed. Only the local server offers it, never a hosted deployment.
+  const [target, setTarget] = useState<'tab' | 'server'>('tab');
+  const [serverOk, setServerOk] = useState(false);
+  const [outDir, setOutDir] = useState(getDefaultOutDir());
   // Heavy ffmpeg post-process. Off by default: it visibly costs quality and
   // roughly quadruples export time, so it has to be asked for.
   const [regrade, setRegrade] = useState<0 | 1 | 2>(0);
@@ -52,10 +91,22 @@ export function MusicChoiceModal({ count, onClose, onChoose }: MusicChoiceModalP
     getRegradeStatus()
       .then((r) => live && setFfmpegOk(!!r?.ok))
       .catch(() => {});
+    serverRenderStatus()
+      .then((st) => {
+        if (!live) return;
+        setServerOk(st.supported);
+        if (st.supported) setTarget('server');
+      })
+      .catch(() => {});
     return () => {
       live = false;
     };
   }, []);
+
+  const choose = (music: MusicGender | null) => {
+    if (target === 'server' && askOutDir) setDefaultOutDir(outDir);
+    onChoose(music, zoom, regrade, target, outDir.trim());
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
@@ -73,6 +124,50 @@ export function MusicChoiceModal({ count, onClose, onChoose }: MusicChoiceModalP
             Pick a soundtrack vibe for {count === 1 ? 'this video' : `these ${count} videos`}. A
             viral motivational track is chosen at random from the pool for each video.
           </p>
+
+          {serverOk && (
+            <div className="mb-4">
+              <div className="grid grid-cols-2 gap-2">
+                {TARGET_CHOICES.map(({ value, label, hint, icon: Icon }) => {
+                  const active = target === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setTarget(value)}
+                      aria-pressed={active}
+                      className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                        active
+                          ? 'border-ink bg-raised text-ink'
+                          : 'border-line bg-transparent text-ink-3 hover:bg-raised hover:text-ink-2 hover:border-line-2'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Icon size={13} />
+                        <span className="text-[12px] font-medium">{label}</span>
+                      </span>
+                      <span className="text-[11px] leading-tight text-ink-5">{hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {target === 'server' && askOutDir && (
+                <>
+                  <input
+                    value={outDir}
+                    onChange={(e) => setOutDir(e.target.value)}
+                    placeholder="C:\Users\you\Videos\SlideGen"
+                    spellCheck={false}
+                    className="w-full h-9 mt-2 bg-transparent border border-line rounded-lg px-2.5 text-[12px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
+                  />
+                  <p className="text-[11px] leading-tight text-ink-5 mt-1.5">
+                    A full path on the machine running the server — it writes the videos there
+                    itself. Left empty they land in ~/.slidesmith/render-jobs.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-2 mb-4">
             {ZOOM_CHOICES.map(({ value, label, hint, icon: Icon }) => {
@@ -136,7 +231,7 @@ export function MusicChoiceModal({ count, onClose, onChoose }: MusicChoiceModalP
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => onChoose('male', zoom, regrade)}
+              onClick={() => choose('male')}
               className="flex flex-col items-center gap-1.5 rounded-xl border border-line bg-transparent px-3 py-4 text-ink-3 hover:bg-raised hover:text-ink-2 hover:border-line-2 transition-colors"
             >
               <User size={20} />
@@ -144,7 +239,7 @@ export function MusicChoiceModal({ count, onClose, onChoose }: MusicChoiceModalP
             </button>
             <button
               type="button"
-              onClick={() => onChoose('female', zoom, regrade)}
+              onClick={() => choose('female')}
               className="flex flex-col items-center gap-1.5 rounded-xl border border-line bg-transparent px-3 py-4 text-ink-3 hover:bg-raised hover:text-ink-2 hover:border-line-2 transition-colors"
             >
               <UserRound size={20} />
@@ -154,7 +249,7 @@ export function MusicChoiceModal({ count, onClose, onChoose }: MusicChoiceModalP
         </div>
 
         <div className="flex items-center justify-between px-5 py-3 border-t border-line">
-          <Button variant="ghost" icon={<VolumeX size={13} />} onClick={() => onChoose(null, zoom, regrade)}>
+          <Button variant="ghost" icon={<VolumeX size={13} />} onClick={() => choose(null)}>
             No music
           </Button>
           <Button variant="ghost" onClick={onClose}>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Trash2, Sparkles, Check, UserRound, Images, Shuffle, RefreshCw, Film, Folder, Loader2, Server, Monitor, X } from 'lucide-react';
+import { Plus, Trash2, Sparkles, Check, UserRound, Images, Shuffle, RefreshCw, Film, Folder, Loader2 } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
@@ -11,13 +11,8 @@ import {
   type FolderPreset,
 } from '../lib/downloadFolders';
 import type { MusicGender } from '../lib/music';
-import {
-  serverRenderStatus,
-  listRenderJobs,
-  cancelRenderJob,
-  deleteRenderJob,
-  type RenderJob,
-} from '../lib/serverRender';
+import { serverRenderStatus } from '../lib/serverRender';
+import { ServerRenderQueue } from '../components/ServerRenderQueue';
 import { getMergedLibrary, getMergedPacks } from '../lib/mergedLibrary';
 import { makeToken } from '../lib/subfolders';
 import { HOOKS, fillHook, hookUsesStreak } from '../lib/transformationHooks';
@@ -219,11 +214,10 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
   const [askMusic, setAskMusic] = useState(false);
   const [videoProgress, setVideoProgress] = useState<{ done: number; total: number } | null>(null);
   const [videosDone, setVideosDone] = useState(0);
-  // Where the render actually runs. 'server' hands the decks to the local
-  // server's background queue, so this tab is free the moment they're uploaded.
+  // Where the last export was sent — chosen in the music popup, kept only so the
+  // progress and done messages can say the right thing.
   const [target, setTarget] = useState<'tab' | 'server'>('tab');
   const [serverOk, setServerOk] = useState(false);
-  const [jobs, setJobs] = useState<RenderJob[]>([]);
 
   // The packages are ordinary library packs, so pull the library once and let
   // "Reload library" pick up anything added in the Library view meanwhile.
@@ -246,30 +240,9 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
     loadLibrary();
     if (supportsFolderPresets()) listFolderPresets().then(setFolderPresets).catch(() => undefined);
     serverRenderStatus()
-      .then((st) => {
-        setServerOk(st.supported);
-        if (st.supported) setTarget('server');
-      })
+      .then((st) => setServerOk(st.supported))
       .catch(() => undefined);
   }, [loadLibrary]);
-
-  // Poll the server's render queue while it has anything live in it. The jobs
-  // outlive this tab, so the list is also how you check on a batch you left
-  // running earlier.
-  useEffect(() => {
-    if (!serverOk) return;
-    let live = true;
-    const tick = () =>
-      listRenderJobs()
-        .then((js) => live && setJobs(js))
-        .catch(() => undefined);
-    tick();
-    const t = setInterval(tick, 2500);
-    return () => {
-      live = false;
-      clearInterval(t);
-    };
-  }, [serverOk]);
 
   const reload = () => {
     setLoading(true);
@@ -323,8 +296,14 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
     }
   };
 
-  const submitVideos = async (music: MusicGender | null, zoom: boolean, regrade: 0 | 1 | 2) => {
+  const submitVideos = async (
+    music: MusicGender | null,
+    zoom: boolean,
+    regrade: 0 | 1 | 2,
+    where: 'tab' | 'server',
+  ) => {
     setAskMusic(false);
+    setTarget(where);
     setError(null);
     setDone(false);
     setVideosDone(0);
@@ -339,11 +318,10 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
         music,
         zoom,
         regrade,
-        target,
+        target: where,
         onProgress: (d, total) => setVideoProgress({ done: d, total }),
       });
       setVideosDone(runnable.length * count);
-      if (target === 'server') listRenderJobs().then(setJobs).catch(() => undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -743,49 +721,6 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
               </div>
             </div>
 
-            {serverOk && (
-              <div>
-                <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
-                  Render on
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(
-                    [
-                      {
-                        key: 'server' as const,
-                        label: 'The server',
-                        hint: 'Runs in the background — close the tab',
-                        icon: Server,
-                      },
-                      {
-                        key: 'tab' as const,
-                        label: 'This tab',
-                        hint: 'Keep the tab visible until it finishes',
-                        icon: Monitor,
-                      },
-                    ]
-                  ).map(({ key, label, hint, icon: Icon }) => (
-                    <button
-                      key={key}
-                      onClick={() => setTarget(key)}
-                      disabled={generating}
-                      className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-50 ${
-                        target === key
-                          ? 'border-ink bg-raised text-ink'
-                          : 'border-line bg-card text-ink-5 hover:border-line-2'
-                      }`}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <Icon size={13} />
-                        <span className="text-[12px] font-medium">{label}</span>
-                      </span>
-                      <span className="text-[11px] leading-tight text-ink-6">{hint}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {selected.length > runnable.length && (
               <p className="text-[12px] text-amber-600">
                 {selected.length - runnable.length} selected character
@@ -845,58 +780,7 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
         </div>
       </div>
 
-      {serverOk && jobs.length > 0 && (
-        <div className="border-t border-line bg-surface px-4 sm:px-8 py-3">
-          <div className="max-w-5xl mx-auto space-y-1.5">
-            <div className="flex items-center gap-2">
-              <Server size={13} className="text-ink-5" />
-              <span className="text-[12px] font-semibold text-ink">Server render queue</span>
-              <span className="text-[11px] text-ink-6">
-                keeps going with this tab closed
-              </span>
-            </div>
-            {jobs.slice(0, 6).map((j) => (
-              <div
-                key={j.id}
-                className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-line bg-card"
-              >
-                <span className="text-[12px] text-ink font-medium truncate flex-1">{j.name}</span>
-                <span
-                  className={`text-[11px] tabular-nums ${
-                    j.status === 'error' ? 'text-red-600' : 'text-ink-5'
-                  }`}
-                  title={j.error || j.outDir}
-                >
-                  {j.status === 'error'
-                    ? j.error || 'failed'
-                    : j.status === 'running'
-                      ? `rendering ${j.done}/${j.total}`
-                      : j.status === 'done'
-                        ? `done · ${j.done} file${j.done === 1 ? '' : 's'}`
-                        : j.status}
-                </span>
-                {j.status === 'running' || j.status === 'queued' ? (
-                  <button
-                    onClick={() => cancelRenderJob(j.id).then(() => listRenderJobs().then(setJobs))}
-                    className="text-[11px] text-ink-6 hover:text-ink px-1.5"
-                    title="Stop after the video it's on"
-                  >
-                    Stop
-                  </button>
-                ) : (
-                  <IconButton
-                    variant="ghost"
-                    size="sm"
-                    icon={<X size={12} />}
-                    label="Clear"
-                    onClick={() => deleteRenderJob(j.id).then(() => listRenderJobs().then(setJobs))}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <ServerRenderQueue enabled={serverOk} />
 
       {askMusic && (
         <MusicChoiceModal
