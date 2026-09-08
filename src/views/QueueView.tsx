@@ -127,6 +127,7 @@ export function QueueView({
         await submitServerRender(shows, {
           name: `Queue — ${shows.length} video${shows.length === 1 ? '' : 's'}`,
           outDir,
+          folderId: outDir ? '' : destId || '',
           music,
           zoom,
           regrade,
@@ -329,6 +330,7 @@ function SlideshowCard({ slideshow, selected, destId, onToggleSelect, onApprove,
         await submitServerRender([slideshow], {
           name: slideshow.hook || 'Queue video',
           outDir,
+          folderId: outDir ? '' : destId || '',
           music,
           zoom,
           regrade,

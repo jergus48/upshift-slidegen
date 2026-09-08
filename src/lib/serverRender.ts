@@ -23,6 +23,9 @@ export interface RenderJob {
   done: number;
   total: number;
   outDir: string;
+  // The browser folder preset this job's videos belong in, when the server has
+  // no path of its own to write to. The queue copies them across.
+  folderId: string;
   error: string | null;
   files: string[];
   createdAt: string;
@@ -109,6 +112,24 @@ export const cancelRenderJob = (id: string) =>
 export const deleteRenderJob = (id: string) =>
   json<{ ok: true }>(`/render/jobs/${id}`, { method: 'DELETE' });
 
+// The finished files of a job the browser has to collect itself — only the ones
+// that job wrote, never the rest of the folder.
+export interface RenderJobFile {
+  name: string;
+  size: number;
+}
+
+export const listRenderJobFiles = (id: string) =>
+  json<RenderJobFile[]>(`/render/jobs/${id}/files`);
+
+export async function fetchRenderJobFile(id: string, name: string): Promise<Blob> {
+  const res = await fetch(`/api/render/jobs/${id}/files/${encodeURIComponent(name)}`, {
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error(`Could not read ${name} back from the server (${res.status}).`);
+  return res.blob();
+}
+
 // A file extension the render page's <img>/decodeAudioData will accept. The
 // name only has to be unique and typed — the server serves it back with a
 // content-type guessed from exactly this.
@@ -149,6 +170,11 @@ export interface ServerRenderOpts {
   // Absolute path on the machine running the server. Empty = the job's own
   // folder under ~/.slidesmith.
   outDir: string;
+  // A browser folder preset id (lib/downloadFolders). The server cannot write
+  // into one — a File System Access handle carries no path — so when this is
+  // set the videos stay in the job's own folder and the queue copies them into
+  // the folder as soon as a tab is open. Set outDir to have Node write direct.
+  folderId: string;
   music: MusicGender | null;
   zoom: boolean;
   regrade: 0 | 1 | 2;
@@ -166,7 +192,7 @@ export async function submitServerRender(
   if (!shows.length) throw new Error('Nothing to render.');
   const job = await json<{ id: string; token: string }>('/render/jobs', {
     method: 'POST',
-    body: JSON.stringify({ name: opts.name, outDir: opts.outDir }),
+    body: JSON.stringify({ name: opts.name, outDir: opts.outDir, folderId: opts.folderId }),
   });
 
   // Every distinct photo is uploaded once, however many decks or slides use it.
@@ -229,6 +255,6 @@ export async function submitServerRender(
 
   return json<RenderJob>(`/render/jobs/${job.id}/start`, {
     method: 'POST',
-    body: JSON.stringify({ items, outDir: opts.outDir }),
+    body: JSON.stringify({ items, outDir: opts.outDir, folderId: opts.folderId }),
   });
 }

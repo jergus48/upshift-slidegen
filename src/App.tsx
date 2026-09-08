@@ -527,6 +527,10 @@ export default function App() {
             await submitServerRender(shows, {
               name: `${character.name} — ${shows.length} video${shows.length === 1 ? '' : 's'}`,
               outDir: character.outDir,
+              // With no server path set, the videos can still reach the
+              // character's Export folder — the queue copies them there once
+              // the job is done, rather than stranding them under ~/.slidesmith.
+              folderId: character.outDir ? '' : character.folderId,
               music: opts.music,
               zoom: opts.zoom,
               regrade: opts.regrade,

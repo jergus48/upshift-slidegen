@@ -29,7 +29,7 @@
 // deck it had reached, so the videos already written are not rendered twice.
 import express from 'express'
 import { randomBytes } from 'node:crypto'
-import { mkdir, writeFile, rm, readFile, readdir, rename } from 'node:fs/promises'
+import { mkdir, writeFile, rm, readFile, readdir, rename, stat } from 'node:fs/promises'
 import { existsSync, createReadStream } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -88,6 +88,7 @@ const publicJob = (j) => ({
   done: j.done,
   total: j.total,
   outDir: j.outDir,
+  folderId: j.folderId || '',
   error: j.error || null,
   files: j.files,
   createdAt: j.createdAt,
@@ -115,6 +116,11 @@ async function sweepDrafts() {
 }
 
 const jobDir = (id) => join(JOBS_DIR, id)
+
+// Where a job's finished videos land. An empty outDir is not an error: the job
+// keeps them in its own folder, and the tab pulls them out over /files into the
+// browser folder the character picked.
+const outDirFor = (job) => job.outDir || join(jobDir(job.id), 'out')
 
 // Filenames come from the browser; never let one climb out of the job folder.
 const safeName = (n) => String(n).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120)
@@ -189,7 +195,7 @@ async function restoreJobs() {
 // drive and /tmp is wiped between invocations anyway.
 if (RENDER_SUPPORTED) restoreJobs()
 
-async function createJob({ name, outDir }) {
+async function createJob({ name, outDir, folderId }) {
   await sweepDrafts()
   const id = `rj-${Date.now()}-${randomBytes(4).toString('hex')}`
   const token = randomBytes(16).toString('hex')
@@ -199,6 +205,12 @@ async function createJob({ name, outDir }) {
     token,
     name: String(name || 'Render'),
     outDir: outDir ? resolvePath(String(outDir)) : '',
+    // Opaque to the server: the id of a browser folder preset (an OS folder the
+    // user picked in this browser). Node can't write there — a File System
+    // Access handle has no path — so the tab collects the finished videos over
+    // /files and writes them into it itself. Stored here only so the queue UI
+    // knows, after a restart or in another tab, where a job was meant to land.
+    folderId: folderId ? String(folderId) : '',
     status: 'draft',
     items: [],
     done: 0,
@@ -328,7 +340,7 @@ async function runJob(job) {
         }
       }
       const base = safeName(item.filename || `video-${job.done + 1}`)
-      const target = job.outDir || join(jobDir(job.id), 'out')
+      const target = outDirFor(job)
       await mkdir(target, { recursive: true })
       await writeFile(join(target, `${base}.${ext}`), bytes)
       if (item.meta) await writeFile(join(target, `${base}.json`), String(item.meta))
@@ -342,7 +354,7 @@ async function runJob(job) {
   }
   if (job.status !== 'cancelled') job.status = 'done'
   await saveJob(job)
-  log.ok(`${job.name} — ${job.done}/${job.total} written to ${job.outDir || jobDir(job.id)}`)
+  log.ok(`${job.name} — ${job.done}/${job.total} written to ${outDirFor(job)}`)
   // The uploaded photos are only needed while the job runs.
   await rm(join(jobDir(job.id), 'assets'), { recursive: true, force: true }).catch(() => {})
 }
@@ -416,7 +428,11 @@ router.post('/api/render/jobs', async (req, res) => {
   if (!RENDER_SUPPORTED) {
     return res.status(400).json({ error: 'Server rendering needs the local server.' })
   }
-  const job = await createJob({ name: req.body?.name, outDir: req.body?.outDir })
+  const job = await createJob({
+    name: req.body?.name,
+    outDir: req.body?.outDir,
+    folderId: req.body?.folderId,
+  })
   res.json({ id: job.id, token: job.token })
 })
 
@@ -440,10 +456,46 @@ router.post('/api/render/jobs/:id/start', async (req, res) => {
   job.items = items
   job.total = items.length
   if (req.body?.outDir) job.outDir = resolvePath(String(req.body.outDir))
+  if (req.body?.folderId) job.folderId = String(req.body.folderId)
   job.status = 'queued'
   await saveJob(job)
   pump()
   res.json(publicJob(job))
+})
+
+// The finished videos, for a job the browser has to collect itself (see
+// job.folderId). Listing and streaming only — nothing here deletes.
+router.get('/api/render/jobs/:id/files', async (req, res) => {
+  const job = jobs.get(req.params.id)
+  if (!job) return res.status(404).json({ error: 'No such job.' })
+  const dir = outDirFor(job)
+  // Only the files THIS job wrote: a shared outDir may hold other jobs' videos
+  // (and, for a character folder, months of older ones).
+  const mine = new Set(job.files.map((f) => f.split(/[\\/]/).pop()))
+  for (const name of [...mine]) mine.add(`${name.replace(/\.[^.]+$/, '')}.json`)
+  let names = []
+  try {
+    names = (await readdir(dir)).filter((n) => mine.has(n))
+  } catch {
+    return res.json([])
+  }
+  const out = []
+  for (const name of names.sort()) {
+    out.push({ name, size: await stat(join(dir, name)).then((s) => s.size).catch(() => 0) })
+  }
+  res.json(out)
+})
+
+const FILE_TYPES = { mp4: 'video/mp4', webm: 'video/webm', json: 'application/json' }
+
+router.get('/api/render/jobs/:id/files/:name', (req, res) => {
+  const job = jobs.get(req.params.id)
+  if (!job) return res.status(404).end()
+  const name = safeName(req.params.name)
+  const file = join(outDirFor(job), name)
+  if (!existsSync(file)) return res.status(404).end()
+  res.type(FILE_TYPES[name.split('.').pop().toLowerCase()] || 'application/octet-stream')
+  createReadStream(file).pipe(res)
 })
 
 router.post('/api/render/jobs/:id/cancel', async (req, res) => {

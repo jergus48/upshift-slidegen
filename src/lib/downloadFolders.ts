@@ -187,6 +187,39 @@ export async function resolveWritableFolder(
   return (await ensureReadWrite(rec.handle)) ? rec.handle : null;
 }
 
+// A one-shot folder choice that is NOT saved as a preset — for moving files
+// somewhere once (the render queue rescuing a job that was never given a
+// folder). MUST be called from a click, like every other picker.
+export async function pickFolderOnce(): Promise<FileSystemDirectoryHandle | null> {
+  const picker = (window as unknown as DirectoryPickerWindow).showDirectoryPicker;
+  if (!picker) return null;
+  try {
+    return await picker({ id: 'slidesmith-downloads', mode: 'readwrite' });
+  } catch {
+    return null; // AbortError — the picker was closed without choosing.
+  }
+}
+
+// Like resolveWritableFolder, but never prompts: it only reports a permission
+// the browser is already holding. For work that starts on its own rather than
+// from a click (the render queue copying finished videos in), where a prompt
+// would be blocked anyway — the caller falls back to offering a button.
+export async function resolveGrantedFolder(
+  id: string | null,
+): Promise<FileSystemDirectoryHandle | null> {
+  if (!id || !supportsFolderPresets()) return null;
+  const recs = await getAllRecords().catch(() => []);
+  const rec = recs.find((r) => r.id === id);
+  if (!rec) return null;
+  const h = rec.handle as unknown as PermissionedHandle;
+  try {
+    if (!h.queryPermission) return rec.handle; // no permission API — let the write decide
+    return (await h.queryPermission({ mode: 'readwrite' })) === 'granted' ? rec.handle : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Writing files into a chosen folder ───────────────────────────────────────
 // Walk/create a nested subdirectory path (["post-1"] etc.) under `root`.
 async function dirForSegments(
