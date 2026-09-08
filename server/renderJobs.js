@@ -21,12 +21,15 @@
 // from, which matters: a cross-origin photo would taint the canvas and break
 // toDataURL()/getImageData() in the slide renderer.
 //
-// Jobs live in memory (plus their assets on disk) — a server restart drops the
-// queue. That is deliberate for now: a render is minutes, not hours, and a
-// half-finished job is better re-run than resumed.
+// Jobs are written to disk (job.json next to their assets) and reloaded on
+// boot, because the local server does get restarted — a second launcher window,
+// a crash, `node --watch` reloading — and an in-memory-only queue meant that
+// every restart silently threw away a submitted render along with the ~100MB of
+// photos the browser had just uploaded for it. A restored job picks up at the
+// deck it had reached, so the videos already written are not rendered twice.
 import express from 'express'
 import { randomBytes } from 'node:crypto'
-import { mkdir, writeFile, rm, readFile } from 'node:fs/promises'
+import { mkdir, writeFile, rm, readFile, readdir, rename } from 'node:fs/promises'
 import { existsSync, createReadStream } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -116,6 +119,76 @@ const jobDir = (id) => join(JOBS_DIR, id)
 // Filenames come from the browser; never let one climb out of the job folder.
 const safeName = (n) => String(n).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120)
 
+// ── Persistence ──────────────────────────────────────────────────────────────
+// The whole job (including its items, so a restored job can keep rendering)
+// goes next to its assets. Writes are fire-and-forget: losing the last progress
+// tick to a disk error is not worth failing a render over.
+const jobFile = (id) => join(jobDir(id), 'job.json')
+
+// Job ids carry their creation time (`rj-<ms>-<hex>`), which is all the age a
+// leftover folder needs — no stat, and it survives a copied folder.
+const STALE_MS = 60 * 60 * 1000
+const idAge = (id) => {
+  const ms = Number(String(id).split('-')[1])
+  return Number.isFinite(ms) ? Date.now() - ms : Infinity
+}
+
+async function saveJob(job) {
+  try {
+    // Write-then-rename: the process can be killed at any moment (that is the
+    // whole reason this file exists), and a half-written job.json would lose
+    // the job it was meant to save.
+    const tmp = `${jobFile(job.id)}.tmp`
+    await writeFile(tmp, JSON.stringify(job))
+    await rename(tmp, jobFile(job.id))
+  } catch (e) {
+    log.warn(`could not save job ${job.id}: ${e?.message || e}`)
+  }
+}
+
+// Reload whatever the last process left behind. A job that was mid-render comes
+// back queued — runJob resumes it from job.done, so finished videos stay done.
+async function restoreJobs() {
+  let dirs = []
+  try {
+    dirs = await readdir(JOBS_DIR)
+  } catch {
+    return // no jobs folder yet
+  }
+  for (const id of dirs) {
+    let saved = null
+    try {
+      saved = JSON.parse(await readFile(jobFile(id), 'utf8'))
+    } catch {
+      /* no job.json (a folder from before this existed) or an unreadable one */
+    }
+    // An abandoned upload (the tab or the server went away mid-submit) can't be
+    // resumed — the browser that was feeding it is gone — so its photos are
+    // dead weight on disk. Only sweep once it is old enough that no submit
+    // could still be in flight, and never on the strength of a file we merely
+    // failed to read: deleting someone's queued render is far worse than
+    // leaving a folder behind.
+    if (!saved?.id || saved.status === 'draft') {
+      if (idAge(id) > STALE_MS) await rm(jobDir(id), { recursive: true, force: true }).catch(() => {})
+      continue
+    }
+    if (saved.status === 'running' || saved.status === 'queued') {
+      saved.status = 'queued'
+      saved.error = ''
+    }
+    jobs.set(saved.id, saved)
+  }
+  const resumable = [...jobs.values()].filter((j) => j.status === 'queued')
+  if (resumable.length) {
+    log.step(`resuming ${resumable.length} render job${resumable.length === 1 ? '' : 's'} after a restart`)
+    pump()
+  }
+}
+
+// Only the real server has a queue to restore; on Vercel there is no browser to
+// drive and /tmp is wiped between invocations anyway.
+if (RENDER_SUPPORTED) restoreJobs()
+
 async function createJob({ name, outDir }) {
   await sweepDrafts()
   const id = `rj-${Date.now()}-${randomBytes(4).toString('hex')}`
@@ -135,6 +208,7 @@ async function createJob({ name, outDir }) {
     createdAt: new Date().toISOString(),
   }
   jobs.set(id, job)
+  await saveJob(job)
   return job
 }
 
@@ -151,6 +225,7 @@ function pump() {
     })
     .finally(() => {
       next.finishedAt = new Date().toISOString()
+      saveJob(next)
       running = false
       pump()
     })
@@ -159,6 +234,7 @@ function pump() {
 // One job: open the render page once, then render every deck in it in turn.
 async function runJob(job) {
   job.status = 'running'
+  await saveJob(job)
   log.start(`${job.name} — ${job.total} video${job.total === 1 ? '' : 's'}`)
   const { chromium } = await import('playwright-core').catch(() => {
     throw new Error(
@@ -219,7 +295,9 @@ async function runJob(job) {
     await page.goto(url, { waitUntil: 'load', timeout: 60_000 })
     await page.waitForFunction('!!window.slidesmithRender', null, { timeout: 30_000 })
 
-    for (const item of job.items) {
+    // A job restored after a restart re-enters here with job.done already past
+    // the decks whose files are on disk — render only what is left.
+    for (const item of job.items.slice(job.done)) {
       if (job.status === 'cancelled') break
       // The page renders and hands the bytes straight back as base64. It could
       // POST them here instead, but going through the return value keeps the
@@ -256,12 +334,14 @@ async function runJob(job) {
       if (item.meta) await writeFile(join(target, `${base}.json`), String(item.meta))
       job.files.push(join(target, `${base}.${ext}`))
       job.done += 1
+      await saveJob(job)
       log.progress(job.done, job.total, base)
     }
   } finally {
     await browser.close().catch(() => {})
   }
   if (job.status !== 'cancelled') job.status = 'done'
+  await saveJob(job)
   log.ok(`${job.name} — ${job.done}/${job.total} written to ${job.outDir || jobDir(job.id)}`)
   // The uploaded photos are only needed while the job runs.
   await rm(join(jobDir(job.id), 'assets'), { recursive: true, force: true }).catch(() => {})
@@ -352,7 +432,7 @@ router.put(
   },
 )
 
-router.post('/api/render/jobs/:id/start', (req, res) => {
+router.post('/api/render/jobs/:id/start', async (req, res) => {
   const job = jobs.get(req.params.id)
   if (!job) return res.status(404).json({ error: 'No such job.' })
   const items = Array.isArray(req.body?.items) ? req.body.items : []
@@ -361,16 +441,18 @@ router.post('/api/render/jobs/:id/start', (req, res) => {
   job.total = items.length
   if (req.body?.outDir) job.outDir = resolvePath(String(req.body.outDir))
   job.status = 'queued'
+  await saveJob(job)
   pump()
   res.json(publicJob(job))
 })
 
-router.post('/api/render/jobs/:id/cancel', (req, res) => {
+router.post('/api/render/jobs/:id/cancel', async (req, res) => {
   const job = jobs.get(req.params.id)
   if (!job) return res.status(404).json({ error: 'No such job.' })
   // A running job stops after the deck it is on — killing mid-encode would just
   // leave a truncated file behind.
   job.status = 'cancelled'
+  await saveJob(job)
   res.json(publicJob(job))
 })
 

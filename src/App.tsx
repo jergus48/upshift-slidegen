@@ -519,16 +519,24 @@ export default function App() {
         const totalUploads = jobs.length;
         let queued = 0;
         opts.onProgress?.(0, totalUploads);
+        // One character failing (a dropped connection, a folder the server
+        // can't write) must not throw away the characters that already made it
+        // onto the queue — submit the rest and report what didn't land.
         for (const { character, shows } of jobs) {
-          await submitServerRender(shows, {
-            name: `${character.name} — ${shows.length} video${shows.length === 1 ? '' : 's'}`,
-            outDir: character.outDir,
-            music: opts.music,
-            zoom: opts.zoom,
-            regrade: opts.regrade,
-          });
+          try {
+            await submitServerRender(shows, {
+              name: `${character.name} — ${shows.length} video${shows.length === 1 ? '' : 's'}`,
+              outDir: character.outDir,
+              music: opts.music,
+              zoom: opts.zoom,
+              regrade: opts.regrade,
+            });
+          } catch (e) {
+            failures.push(`${character.name}: ${e instanceof Error ? e.message : String(e)}`);
+          }
           opts.onProgress?.(++queued, totalUploads);
         }
+        if (queued && failures.length === jobs.length) throw new Error(failures.join(' '));
         if (failures.length) setError(failures.join(' '));
         return;
       }

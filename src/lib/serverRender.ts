@@ -29,15 +29,46 @@ export interface RenderJob {
   finishedAt: string | null;
 }
 
+// A submit is a hundred-odd requests and a hundred-odd megabytes, and the local
+// server does get restarted underneath it (a second launcher window, a crash, a
+// --watch reload). A dropped connection surfaces as a bare TypeError("Failed to
+// fetch"), which used to abandon the whole batch — every photo uploaded so far
+// included. So: retry a few times, then fail with a message that says which
+// step died and why.
+const RETRIES = 4;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function withRetry<T>(what: string, attempt: () => Promise<T>): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < RETRIES; i++) {
+    try {
+      return await attempt();
+    } catch (e) {
+      last = e;
+      // Only a network-level failure is worth retrying; a 4xx/5xx the server
+      // deliberately returned will just come back the same.
+      if (!(e instanceof TypeError)) throw e;
+      if (i < RETRIES - 1) await sleep(400 * 2 ** i);
+    }
+  }
+  throw new Error(
+    `Lost the connection to the local server while ${what} ` +
+      `(${last instanceof Error ? last.message : String(last)}). ` +
+      'Check that the SlideGen window is still open and that only one copy is running, then try again.',
+  );
+}
+
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: { 'content-type': 'application/json' },
-    cache: 'no-store',
-    ...init,
+  return withRetry(`calling ${path}`, async () => {
+    const res = await fetch(`/api${path}`, {
+      headers: { 'content-type': 'application/json' },
+      cache: 'no-store',
+      ...init,
+    });
+    const body = (await res.json().catch(() => ({}))) as T & { error?: string };
+    if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`);
+    return body;
   });
-  const body = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`);
-  return body;
 }
 
 // Whether this deployment can render server-side at all — false on Vercel,
@@ -101,13 +132,16 @@ async function uploadAsset(
   name: string,
   blob: Blob,
 ): Promise<string> {
-  const res = await fetch(`/api/render/assets/${job.id}/${job.token}/${name}`, {
-    method: 'PUT',
-    headers: { 'content-type': blob.type || 'application/octet-stream' },
-    body: blob,
+  const url = `/api/render/assets/${job.id}/${job.token}/${name}`;
+  await withRetry(`uploading ${name}`, async () => {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'content-type': blob.type || 'application/octet-stream' },
+      body: blob,
+    });
+    if (!res.ok) throw new Error(`Could not upload ${name} to the render job (${res.status}).`);
   });
-  if (!res.ok) throw new Error(`Could not upload ${name} to the render job.`);
-  return `/api/render/assets/${job.id}/${job.token}/${name}`;
+  return url;
 }
 
 export interface ServerRenderOpts {
