@@ -181,7 +181,14 @@ export interface AppConfig extends Workspace {
 
 // Write-only: real secret values, sent up to replace a key. Settings only
 // includes a field here if the user actually typed something new.
-export type KeysPatch = Partial<{ postbridge: string; openrouter: string; apify: string; fmp: string }>;
+// A null value deletes the saved key; a string sets it, and an absent field
+// leaves whatever is already saved alone.
+export type KeysPatch = Partial<{
+  postbridge: string | null;
+  openrouter: string | null;
+  apify: string | null;
+  fmp: string | null;
+}>;
 
 // ── Stock analyzer ───────────────────────────────────────────────────────────
 // A holding the user entered by hand (persisted in localStorage; see

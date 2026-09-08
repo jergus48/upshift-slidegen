@@ -33,13 +33,16 @@ export async function getKeys() {
 }
 
 // Save keys typed into Settings (self-hosting). Blank/omitted fields are
-// ignored so clearing a field never wipes an already-saved key. No-op in
-// practice on Vercel, where env vars take precedence anyway.
+// ignored so clearing a field never wipes an already-saved key; an explicit
+// null is the one way to DELETE a saved key (Settings' "Remove" button), for
+// dropping an integration you no longer use. No-op in practice on Vercel,
+// where env vars take precedence anyway.
 export async function saveKeys(patch) {
   const s = await readData(KEYS_KEY, {})
   const keys = { ...s.keys }
   for (const k of ['postbridge', 'openrouter', 'apify', 'fmp']) {
-    if (patch?.[k]) keys[k] = patch[k]
+    if (patch?.[k] === null) delete keys[k]
+    else if (patch?.[k]) keys[k] = patch[k]
   }
   await writeData(KEYS_KEY, { ...s, keys })
   return getKeys()

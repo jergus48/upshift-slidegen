@@ -50,6 +50,8 @@ export function SettingsView({
   // Real key values never come back from the server (see AppConfig) — these
   // start blank and only carry a NEW value if the user types one.
   const [postbridge, setPostbridge] = useState('');
+  // Set by the post-bridge "Remove" button; the next Save deletes the key.
+  const [dropPostbridge, setDropPostbridge] = useState(false);
   const [openrouter, setOpenrouter] = useState('');
   const [apify, setApify] = useState('');
   const [fmp, setFmp] = useState('');
@@ -86,7 +88,8 @@ export function SettingsView({
     // Only send keys the user actually typed something new for — blank
     // fields must never overwrite an already-saved key.
     const keys: KeysPatch = {};
-    if (postbridge.trim()) keys.postbridge = postbridge.trim();
+    if (dropPostbridge) keys.postbridge = null;
+    else if (postbridge.trim()) keys.postbridge = postbridge.trim();
     if (openrouter.trim()) keys.openrouter = openrouter.trim();
     if (apify.trim()) keys.apify = apify.trim();
     if (fmp.trim()) keys.fmp = fmp.trim();
@@ -102,6 +105,7 @@ export function SettingsView({
       // Clear typed values — they're saved now, and the field goes back to
       // showing "already set" via its placeholder.
       setPostbridge('');
+      setDropPostbridge(false);
       setOpenrouter('');
       setApify('');
       setFmp('');
@@ -214,11 +218,34 @@ export function SettingsView({
               hint={<>Handles scheduling, posting &amp; analytics. Get one at <PostBridgeLink>post-bridge.com</PostBridgeLink>.</>}
             >
               <input
-                value={postbridge}
-                onChange={(e) => setPostbridge(e.target.value)}
-                placeholder={config.keys.postbridge ? '•••• already set — leave blank to keep' : 'pb_...'}
+                value={dropPostbridge ? '' : postbridge}
+                onChange={(e) => {
+                  setPostbridge(e.target.value);
+                  setDropPostbridge(false);
+                }}
+                placeholder={
+                  dropPostbridge
+                    ? 'will be removed on Save'
+                    : config.keys.postbridge
+                      ? '•••• already set — leave blank to keep'
+                      : 'pb_...'
+                }
                 className={`${inputClass} font-mono`}
               />
+              {config.keys.postbridge && (
+                <button
+                  onClick={() => setDropPostbridge((d) => !d)}
+                  className="text-[11px] text-ink-5 hover:text-ink underline underline-offset-2 mt-1"
+                >
+                  {dropPostbridge ? 'Keep the saved key' : 'Remove saved key'}
+                </button>
+              )}
+              {dropPostbridge && (
+                <p className="text-[11px] text-ink-6 mt-1">
+                  Save to delete it. Scheduling, connected accounts and analytics stop working
+                  — generating and exporting videos are unaffected.
+                </p>
+              )}
               <TestBadge ok={test?.postbridge} error={test?.errors?.postbridge} />
             </Field>
             <Field label="OpenRouter API key" hint="Runs the AI that writes your slideshows — one key, any model. Get one at openrouter.ai/keys.">
