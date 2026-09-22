@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Trash2, Sparkles, Check, UserRound, Images, Shuffle, RefreshCw, Film, Folder, HardDrive, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Sparkles, Check, UserRound, Images, Shuffle, RefreshCw, Film, Folder, HardDrive, Loader2, Download } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
@@ -19,9 +19,10 @@ import {
 } from '../lib/serverFolders';
 import { ServerRenderQueue } from '../components/ServerRenderQueue';
 import { getMergedLibrary, getMergedPacks } from '../lib/mergedLibrary';
-import { makeToken } from '../lib/subfolders';
+import { makeToken, parseToken, tokenMatches } from '../lib/subfolders';
+import { buildLibraryZip, fileSlug, saveZip, type ExportGroup } from '../lib/libraryExport';
 import { HOOKS, fillHook, hookUsesStreak } from '../lib/transformationHooks';
-import { missingPieces, poolFor, usableStreaksIn } from '../lib/transformationDeck';
+import { clipPoolFor, missingPieces, poolFor, usableStreaksIn } from '../lib/transformationDeck';
 import {
   STREAKS,
   SKINS,
@@ -49,6 +50,52 @@ import {
 import type { CaptionStyle } from '../lib/captionStyle';
 import type { LibraryImage, LibraryPack } from '../types';
 
+// A character's packages, in the order they read in the UI. Each one becomes a
+// folder in a character download, so what unzips is the same tree Slidegen
+// shows: Character / package / pack / subfolder / files.
+const PACKAGE_ROLES: { label: string; tokens: (c: Character) => string[] }[] = [
+  { label: 'Before', tokens: (c) => c.beforeToken },
+  { label: 'After', tokens: (c) => c.afterToken },
+  { label: 'With girlfriend', tokens: (c) => c.girlfriendToken },
+  { label: 'Gym', tokens: (c) => c.gymToken },
+  { label: 'Videos', tokens: (c) => c.videoToken },
+  { label: 'Stats - into the drop', tokens: (c) => c.statsInToken },
+  { label: 'Stats - closing', tokens: (c) => c.statsOutToken },
+];
+
+// Every image a package selects, whatever kind it is — a download takes the
+// photos AND the clips, unlike the deck helpers which split them apart.
+function packageImages(library: LibraryImage[], tokens: string[]): LibraryImage[] {
+  if (!tokens.length) return [];
+  return library.filter((img) => tokens.some((t) => tokenMatches(t, img)));
+}
+
+// The export tree for one character: their own packages plus the shared
+// blocked/streak screenshots their variant resolves to, each split by the pack
+// it came from so a package drawing on several packs keeps them apart.
+function characterGroups(c: Character, library: LibraryImage[]): ExportGroup[] {
+  const variant = variantOf(c);
+  const roles: { label: string; tokens: string[] }[] = [
+    ...PACKAGE_ROLES.map((r) => ({ label: r.label, tokens: r.tokens(c) })),
+    { label: 'Blocked', tokens: getBlockedToken(variant) },
+    ...STREAKS.map((s) => ({ label: `Upshift streak ${s.label}`, tokens: getStreakToken(variant, s.key) })),
+  ];
+  const groups: ExportGroup[] = [];
+  for (const role of roles) {
+    const images = packageImages(library, role.tokens);
+    if (!images.length) continue;
+    const byPack = new Map<string, LibraryImage[]>();
+    for (const img of images) {
+      if (!byPack.has(img.pack)) byPack.set(img.pack, []);
+      byPack.get(img.pack)!.push(img);
+    }
+    for (const [pack, list] of byPack) {
+      groups.push({ path: [c.name || 'Character', role.label, pack], images: list });
+    }
+  }
+  return groups;
+}
+
 const COUNT_OPTIONS = [1, 3, 5, 10];
 
 // The fixed deck shape, shown to the user so they can see what they're getting
@@ -68,67 +115,109 @@ const SHAPE = [
 function PackageSelect({
   label,
   hint,
-  token,
+  tokens,
   packs,
   library,
+  kinds = 'photos',
   onChange,
 }: {
   label: string;
   hint: string;
-  token: string;
+  // SEVERAL folders, not one. A character's shots are usually spread across a
+  // few packs/subfolders, and the alternative — merging them in the Library, or
+  // picking one and losing the rest — was the reason material went unused.
+  tokens: string[];
   packs: LibraryPack[];
   library: LibraryImage[];
-  onChange: (token: string) => void;
+  // What the package is counted and previewed by. 'photos' is every package
+  // that feeds a slide. 'clips' is the Videos package. 'both' is Stats and
+  // Chopped, which take either — the renderer decides per asset whether a slot
+  // shows a still or a moving shot.
+  kinds?: 'photos' | 'clips' | 'both';
+  onChange: (tokens: string[]) => void;
 }) {
-  const pool = poolFor(library, token);
+  const [open, setOpen] = useState(false);
+  const photos = kinds === 'clips' ? [] : poolFor(library, tokens);
+  const clipList = kinds === 'photos' ? [] : clipPoolFor(library, tokens);
+  const pool = [...photos, ...clipList];
+  const noun = kinds === 'clips' ? 'clip' : kinds === 'both' ? 'shot' : 'photo';
+
+  const toggle = (token: string) =>
+    onChange(tokens.includes(token) ? tokens.filter((t) => t !== token) : [...tokens, token]);
+
+  // Every pack, and every subfolder of every pack, as one flat list of choices.
+  // A pack with subfolders still offers the whole pack — picking both it and one
+  // of its subfolders is harmless (an image matched twice is still one image),
+  // so there is nothing to guard against.
+  const choices: { token: string; label: string; count: number; indent: boolean }[] = [];
+  for (const p of packs) {
+    const subs = p.subfolders || [];
+    const total =
+      kinds === 'clips' ? p.videoCount || 0 : kinds === 'both' ? p.count : p.count - (p.videoCount || 0);
+    choices.push({ token: makeToken(p.name), label: p.name, count: total, indent: false });
+    for (const sub of subs) {
+      choices.push({ token: makeToken(p.name, sub.name), label: sub.name, count: sub.count, indent: true });
+    }
+  }
+
+  const summary =
+    tokens.length === 0
+      ? 'None picked'
+      : tokens.length === 1
+        ? (parseToken(tokens[0]).subfolder ?? parseToken(tokens[0]).pack)
+        : `${tokens.length} folders`;
+
   return (
     <div>
       <div className="flex items-baseline gap-2 mb-1.5">
         <span className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold">{label}</span>
-        <span className={`text-[11px] ${token && !pool.length ? 'text-amber-600' : 'text-ink-6'}`}>
-          {token ? `${pool.length} photo${pool.length === 1 ? '' : 's'} to draw from` : hint}
+        <span className={`text-[11px] ${tokens.length && !pool.length ? 'text-amber-600' : 'text-ink-6'}`}>
+          {tokens.length ? `${pool.length} ${noun}${pool.length === 1 ? '' : 's'} to draw from` : hint}
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <select
-          value={token}
-          onChange={(e) => onChange(e.target.value)}
-          className="flex-1 h-9 bg-card border border-line rounded-lg px-2.5 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
-        >
-          <option value="">— none —</option>
-          {packs.map((p) => {
-            const subs = p.subfolders || [];
-            if (!subs.length) {
-              return (
-                <option key={p.name} value={makeToken(p.name)}>
-                  {p.name} ({p.count})
-                </option>
-              );
-            }
-            // A pack with subfolders offers the whole pack AND each subfolder,
-            // so a single "Upshift streaks" pack can be split per duration.
-            return (
-              <optgroup key={p.name} label={p.name}>
-                <option value={makeToken(p.name)}>Whole pack ({p.count})</option>
-                {subs.map((s) => (
-                  <option key={s.name} value={makeToken(p.name, s.name)}>
-                    {s.name} ({s.count})
-                  </option>
-                ))}
-              </optgroup>
-            );
-          })}
-        </select>
+        <div className="flex-1 min-w-0">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="w-full h-9 bg-card border border-line rounded-lg px-2.5 text-[13px] text-ink text-left outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 flex items-center justify-between gap-2"
+          >
+            <span className="truncate">{summary}</span>
+            <span className="text-ink-6 shrink-0">{open ? '▴' : '▾'}</span>
+          </button>
+          {open && (
+            <div className="mt-1 max-h-56 overflow-y-auto border border-line rounded-lg bg-card p-1">
+              {choices.length === 0 && (
+                <p className="text-[11px] text-ink-6 px-2 py-1.5">No packs in the library yet.</p>
+              )}
+              {choices.map((c) => (
+                <label
+                  key={c.token}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-raised ${
+                    c.indent ? 'pl-6' : ''
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={tokens.includes(c.token)}
+                    onChange={() => toggle(c.token)}
+                    className="accent-ink"
+                  />
+                  <span className="text-[12px] text-ink truncate flex-1">{c.label}</span>
+                  <span className="text-[11px] text-ink-6 tabular-nums">{c.count}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex gap-1 shrink-0">
-          {pool.slice(0, 4).map((img) => (
-            <img
-              key={img.id}
-              src={img.url}
-              alt=""
-              loading="lazy"
-              className="w-7 h-11 object-cover rounded-md bg-raised"
-            />
-          ))}
+          {pool.slice(0, 4).map((img) =>
+            img.kind === 'video' ? (
+              <video key={img.id} src={img.url} muted playsInline preload="metadata" className="w-7 h-11 object-cover rounded-md bg-raised" />
+            ) : (
+              <img key={img.id} src={img.url} alt="" loading="lazy" className="w-7 h-11 object-cover rounded-md bg-raised" />
+            )
+          )}
         </div>
       </div>
     </div>
@@ -212,6 +301,9 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
   // concern — a deck always uses its own character's variant.
   const [editVariant, setEditVariant] = useState<string>(VARIANTS[0].key);
   const [error, setError] = useState<string | null>(null);
+  // Character id currently being zipped, and a note about a partial download.
+  const [zipping, setZipping] = useState<string | null>(null);
+  const [zipNote, setZipNote] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   // Direct-to-video export: the folder presets each character can be pointed at,
   // the music/zoom popup, and live render progress.
@@ -282,6 +374,30 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
     const c = addCharacter(newName);
     setNewName('');
     setSelected((s) => [...s, c.id]);
+  };
+
+  // Download every package this character uses as one zip, foldered exactly as
+  // Slidegen shows it: Character / package / pack / subfolder. Clips come out as
+  // real .mp4/.mov files; photos are stripped of metadata on the way out.
+  const downloadCharacter = async (c: Character) => {
+    if (zipping) return;
+    setError(null);
+    setZipNote(null);
+    setZipping(c.id);
+    try {
+      const groups = characterGroups(c, library);
+      if (!groups.length) throw new Error(`${c.name || 'This character'} has no packages with anything in them.`);
+      const total = groups.reduce((n, g) => n + g.images.length, 0);
+      const { blob, written, failed } = await buildLibraryZip(groups);
+      saveZip(blob, `${fileSlug(c.name || 'character')}.zip`);
+      if (failed.length) {
+        setZipNote(`Zipped ${written} of ${total} — skipped ${failed.length}: ${failed.slice(0, 3).join(', ')}${failed.length > 3 ? '…' : ''}`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setZipping(null);
+    }
   };
 
   const toggle = (id: string) =>
@@ -417,7 +533,7 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
             <PackageSelect
               label="Blocked 🌽"
               hint="the blocked-site screenshots"
-              token={blockedToken}
+              tokens={blockedToken}
               packs={packs}
               library={library}
               onChange={(t) => setBlockedToken(editVariant, t)}
@@ -438,7 +554,7 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
                     key={s.key}
                     label={s.label}
                     hint="not used"
-                    token={getStreakToken(editVariant, s.key)}
+                    tokens={getStreakToken(editVariant, s.key)}
                     packs={packs}
                     library={library}
                     onChange={(t) => setStreakToken(editVariant, s.key, t)}
@@ -513,10 +629,18 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
                     <span className="text-[11px] text-ink-6">
                       {missing.length ? `missing ${missing.join(', ')}` : 'ready'}
                     </span>
+                    <button
+                      onClick={() => downloadCharacter(c)}
+                      disabled={zipping !== null}
+                      className="ml-auto flex items-center gap-1 text-[11px] text-ink-5 hover:text-ink transition-colors disabled:opacity-50"
+                      title="Download every package this character uses, foldered as it is here"
+                    >
+                      {zipping === c.id ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                      {zipping === c.id ? 'Zipping…' : 'Download'}
+                    </button>
                     <IconButton
                       variant="danger-ghost"
                       size="sm"
-                      className="ml-auto"
                       icon={<Trash2 size={13} />}
                       label={`Delete ${c.name}`}
                       onClick={() => removeCharacter(c.id)}
@@ -604,7 +728,7 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
                   <PackageSelect
                     label="Before"
                     hint="the addict shots"
-                    token={c.beforeToken}
+                    tokens={c.beforeToken}
                     packs={packs}
                     library={library}
                     onChange={(t) => setCharacterToken(c.id, 'before', t)}
@@ -612,7 +736,7 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
                   <PackageSelect
                     label="After"
                     hint="the glow-up shots"
-                    token={c.afterToken}
+                    tokens={c.afterToken}
                     packs={packs}
                     library={library}
                     onChange={(t) => setCharacterToken(c.id, 'after', t)}
@@ -620,11 +744,53 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
                   <PackageSelect
                     label="With girlfriend"
                     hint="the closing shot"
-                    token={c.girlfriendToken}
+                    tokens={c.girlfriendToken}
                     packs={packs}
                     library={library}
                     onChange={(t) => setCharacterToken(c.id, 'girlfriend', t)}
                   />
+                  <PackageSelect
+                    label="Gym"
+                    hint="training shots — Video tool only"
+                    tokens={c.gymToken}
+                    packs={packs}
+                    library={library}
+                    onChange={(t) => setCharacterToken(c.id, 'gym', t)}
+                  />
+                  <PackageSelect
+                    label="Videos"
+                    hint="the clips that play after the drop — Video tool only"
+                    tokens={c.videoToken}
+                    packs={packs}
+                    library={library}
+                    kinds="clips"
+                    onChange={(t) => setCharacterToken(c.id, 'video', t)}
+                  />
+                  <PackageSelect
+                    label="Stats — into the drop"
+                    hint="their own screen, held just before the drop"
+                    tokens={c.statsInToken}
+                    packs={packs}
+                    library={library}
+                    kinds="both"
+                    onChange={(t) => setCharacterToken(c.id, 'statsIn', t)}
+                  />
+                  <PackageSelect
+                    label="Stats — closing"
+                    hint="their own screen, closing the video"
+                    tokens={c.statsOutToken}
+                    packs={packs}
+                    library={library}
+                    kinds="both"
+                    onChange={(t) => setCharacterToken(c.id, 'statsOut', t)}
+                  />
+                  <p className="text-[11px] text-ink-6 -mt-2">
+                    Gym, Videos and Stats are not used by a slideshow deck — they feed the Video tool, which chops the
+                    photos to the beat and cuts to these clips on the drop. The shared blocked/streak screenshots are
+                    added for you. The two Stats packages are this character's own — stills or short clips. They are
+                    separate on purpose: one is held into the drop and one closes the video, and those aren't
+                    interchangeable. Make two subfolders in their stats pack and point one at each.
+                  </p>
                 </div>
               );
             })}
@@ -751,6 +917,7 @@ export function CharactersView({ generating, onGenerate, onGenerateVideos }: Cha
               </p>
             )}
             {error && <p className="text-[12px] text-red-600">{error}</p>}
+            {zipNote && <p className="text-[12px] text-ink-6">{zipNote}</p>}
             {done && (
               <p className="text-[12px] text-emerald-600 flex items-center gap-1">
                 <Check size={13} /> Added to the Queue.

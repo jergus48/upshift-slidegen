@@ -1,4 +1,4 @@
-export type ViewKey = 'queue' | 'create' | 'photopack' | 'characters' | 'library' | 'reddit' | 'reply' | 'write' | 'subreddit' | 'prompt' | 'clean' | 'schedule' | 'results' | 'channels' | 'stocks' | 'brain' | 'settings';
+export type ViewKey = 'queue' | 'create' | 'photopack' | 'characters' | 'video' | 'library' | 'reddit' | 'reply' | 'write' | 'subreddit' | 'prompt' | 'clean' | 'schedule' | 'results' | 'channels' | 'stocks' | 'brain' | 'settings';
 
 // ── YouTube channel dashboard (public data, no API key) ──────────────────────
 export interface YtVideo {
@@ -315,6 +315,10 @@ export interface LibraryImage {
   id: string;
   url: string;
   pack: string;
+  // What the file actually is. Packs hold photos AND video clips — the clips
+  // are what the Video tool cuts in after the drop, while slideshows only ever
+  // draw the photos. Absent means 'image' (every bundled/scraped item).
+  kind?: 'image' | 'video';
   // Sub-group inside the pack (local images only). Absent = Unfiled. See
   // src/lib/subfolders.ts.
   subfolder?: string;
@@ -331,6 +335,8 @@ export interface LibraryPack {
   subfolders?: { name: string; count: number; covers: string[] }[];
   // Images in the pack not assigned to any subfolder.
   unfiledCount?: number;
+  // How many of `count` are video clips, so a picker can say "12 photos, 3 clips".
+  videoCount?: number;
 }
 
 export interface ModelOption {

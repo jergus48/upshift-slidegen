@@ -151,11 +151,15 @@ export interface Character {
   name: string;
   skin: string;
   gender: string;
-  beforeToken: string; // library selection token, '' = not picked yet
-  afterToken: string;
+  // Every package is a LIST of library selection tokens — a character's shots
+  // are often spread over several folders, and making them pick one meant
+  // either merging folders in the Library or losing half the material. Empty
+  // list = not picked yet. See lib/transformationDeck.ts `Selection`.
+  beforeToken: string[];
+  afterToken: string[];
   // The closing slide: a shot of the character with their girlfriend. It takes
   // the place of the last after photo, so every deck ends on the same beat.
-  girlfriendToken: string;
+  girlfriendToken: string[];
   // Export destination: a download folder preset id (lib/downloadFolders.ts), so
   // "Generate videos" can write this character's videos straight into their own
   // folder. '' = fall back to the global default folder / browser downloads.
@@ -165,14 +169,39 @@ export interface Character {
   // there itself, so no browser folder permission is involved. '' = the job's
   // own folder under ~/.slidesmith.
   outDir: string;
+  // Gym shots. Not used by the slideshow decks — the Video tool cuts them into
+  // the chopped first half, between the before photos and the app screenshots.
+  gymToken: string[];
+  // The character's video clips. These are what the Video tool cuts to after
+  // the drop, each trimmed to its beat slot. Pick a pack holding clips (upload
+  // them in the Library the same way you upload photos).
+  videoToken: string[];
+  // This character's OWN app screenshots — their stats screen, their streak,
+  // their numbers. Unlike the blocked/streak packages (which are shared per
+  // variant and interchangeable), these belong to one face, so they are picked
+  // here rather than resolved through the variant.
+  //
+  // TWO packages, not one ordered package, because the Video tool's 'showcase'
+  // style shows them in two places that are NOT interchangeable: one holds into
+  // the drop, one closes the video. Making that a role rather than a position
+  // is the same thing this file already does for before/after/gym/video — and
+  // it is the only version that survives the library having no filenames and no
+  // manual ordering, where "which one is first" has nothing to read it off.
+  //
+  // Point them at two subfolders of the same pack. Either may hold stills,
+  // short clips or both — poolFor()/clipPoolFor() split by kind and whichever
+  // is dealt is what that slot shows. Showcase needs BOTH; a character missing
+  // either one rolls the other styles instead.
+  statsInToken: string[];
+  statsOutToken: string[];
 }
 
 interface Store {
   characters: Character[];
-  // variant key → library selection token
-  blockedTokens: Record<string, string>;
-  // variant key → (streak key → library selection token)
-  streakTokens: Record<string, Record<string, string>>;
+  // variant key → library selection tokens
+  blockedTokens: Record<string, string[]>;
+  // variant key → (streak key → library selection tokens)
+  streakTokens: Record<string, Record<string, string[]>>;
 }
 
 const EMPTY: Store = { characters: [], blockedTokens: {}, streakTokens: {} };
@@ -189,6 +218,20 @@ export function subscribeCharacters(fn: Listener): () => void {
 // Stores written before variants existed held a single blockedToken and a flat
 // streakTokens map. Those picks were all of the white-male set, so they are read
 // back under that variant and everything else starts on its bundled default.
+// A character written before stats was split into two roles. Read for the one
+// field that moved; see statsInToken below.
+interface LegacyCharacter {
+  statsToken?: unknown;
+}
+
+// Every package field was a single token string before it became a list. One
+// non-empty string reads back as a one-element list; anything else as empty.
+function readTokens(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x)).filter(Boolean);
+  const one = String(v || '');
+  return one ? [one] : [];
+}
+
 interface LegacyStore {
   blockedToken?: unknown;
   streakTokens?: unknown;
@@ -198,11 +241,14 @@ const LEGACY_VARIANT = variantKey(DEFAULT_SKIN, DEFAULT_GENDER);
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-function readTokenMap(v: unknown): Record<string, string> {
+// Values written before a package could name several folders are single
+// strings; readTokens turns either shape into a list.
+function readTokenMap(v: unknown): Record<string, string[]> {
   if (!v || typeof v !== 'object') return {};
-  const out: Record<string, string> = {};
+  const out: Record<string, string[]> = {};
   for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-    if (typeof val === 'string' && val) out[k] = val;
+    const list = readTokens(val);
+    if (list.length) out[k] = list;
   }
   return out;
 }
@@ -215,31 +261,39 @@ function read(): Store {
     if (!raw) return { ...EMPTY, characters: [], blockedTokens: {}, streakTokens: {} };
 
     const characters: Character[] = Array.isArray(raw.characters)
-      ? raw.characters.map((c) => ({
+      ? raw.characters.map((c: Character & LegacyCharacter) => ({
           id: String(c.id),
           name: String(c.name || ''),
           skin: str(c.skin) || DEFAULT_SKIN,
           gender: str(c.gender) || DEFAULT_GENDER,
-          beforeToken: String(c.beforeToken || ''),
-          afterToken: String(c.afterToken || ''),
-          girlfriendToken: String(c.girlfriendToken || ''),
+          beforeToken: readTokens(c.beforeToken),
+          afterToken: readTokens(c.afterToken),
+          girlfriendToken: readTokens(c.girlfriendToken),
           folderId: String(c.folderId || ''),
           outDir: String(c.outDir || ''),
+          gymToken: readTokens(c.gymToken),
+          videoToken: readTokens(c.videoToken),
+          // Stores written while stats was a single package read that pick back
+          // as the INTO-THE-DROP one. It can't be both — the two slots would
+          // then draw from one pool and could land the same shot twice — so the
+          // closing package starts unset and is pointed at a folder by hand.
+          statsInToken: readTokens(c.statsInToken ?? c.statsToken),
+          statsOutToken: readTokens(c.statsOutToken),
         }))
       : [];
 
     const blockedTokens = readTokenMap(raw.blockedTokens);
     const legacyBlocked = str(raw.blockedToken);
-    if (legacyBlocked && !blockedTokens[LEGACY_VARIANT]) blockedTokens[LEGACY_VARIANT] = legacyBlocked;
+    if (legacyBlocked && !blockedTokens[LEGACY_VARIANT]) blockedTokens[LEGACY_VARIANT] = [legacyBlocked];
 
-    const streakTokens: Record<string, Record<string, string>> = {};
+    const streakTokens: Record<string, Record<string, string[]>> = {};
     const rawStreaks = raw.streakTokens as Record<string, unknown> | undefined;
     if (rawStreaks && typeof rawStreaks === 'object') {
       for (const [k, val] of Object.entries(rawStreaks)) {
         // Flat legacy map: streak key → token. Nested current map: variant → map.
         if (typeof val === 'string') {
           if (val) {
-            streakTokens[LEGACY_VARIANT] = { ...(streakTokens[LEGACY_VARIANT] || {}), [k]: val };
+            streakTokens[LEGACY_VARIANT] = { ...(streakTokens[LEGACY_VARIANT] || {}), [k]: [val] };
           }
         } else {
           const nested = readTokenMap(val);
@@ -272,26 +326,32 @@ export function getCharacters(): Character[] {
 // ── Shared packages, per variant ────────────────────────────────────────────
 // An explicit pick wins; otherwise the variant's bundled pack, so the tool works
 // before anyone has chosen anything.
-export function getBlockedToken(variant: string): string {
-  return read().blockedTokens[variant] || defaultBlockedFor(variant);
+export function getBlockedToken(variant: string): string[] {
+  const picked = read().blockedTokens[variant];
+  if (picked?.length) return picked;
+  const fallback = defaultBlockedFor(variant);
+  return fallback ? [fallback] : [];
 }
 
-export function setBlockedToken(variant: string, token: string): void {
+export function setBlockedToken(variant: string, tokens: string[]): void {
   const store = read();
   const next = { ...store.blockedTokens };
-  if (token) next[variant] = token;
+  if (tokens.length) next[variant] = tokens;
   else delete next[variant];
   write({ ...store, blockedTokens: next });
 }
 
-export function getStreakToken(variant: string, streakKey: string): string {
-  return read().streakTokens[variant]?.[streakKey] || defaultStreakFor(variant, streakKey);
+export function getStreakToken(variant: string, streakKey: string): string[] {
+  const picked = read().streakTokens[variant]?.[streakKey];
+  if (picked?.length) return picked;
+  const fallback = defaultStreakFor(variant, streakKey);
+  return fallback ? [fallback] : [];
 }
 
-export function setStreakToken(variant: string, streakKey: string, token: string): void {
+export function setStreakToken(variant: string, streakKey: string, tokens: string[]): void {
   const store = read();
   const forVariant = { ...(store.streakTokens[variant] || {}) };
-  if (token) forVariant[streakKey] = token;
+  if (tokens.length) forVariant[streakKey] = tokens;
   else delete forVariant[streakKey];
   write({ ...store, streakTokens: { ...store.streakTokens, [variant]: forVariant } });
 }
@@ -299,7 +359,7 @@ export function setStreakToken(variant: string, streakKey: string, token: string
 // Durations that have a package assigned for this variant — the only ones a deck
 // can be built for, since every deck carries a streak slide.
 export function getUsableStreaks(variant: string): Streak[] {
-  return STREAKS.filter((s) => !!getStreakToken(variant, s.key));
+  return STREAKS.filter((s) => getStreakToken(variant, s.key).length > 0);
 }
 
 // ── Characters ──────────────────────────────────────────────────────────────
@@ -310,11 +370,15 @@ export function addCharacter(name: string): Character {
     name: name.trim() || `Character ${store.characters.length + 1}`,
     skin: DEFAULT_SKIN,
     gender: DEFAULT_GENDER,
-    beforeToken: '',
-    afterToken: '',
-    girlfriendToken: '',
+    beforeToken: [],
+    afterToken: [],
+    girlfriendToken: [],
     folderId: '',
     outDir: '',
+    gymToken: [],
+    videoToken: [],
+    statsInToken: [],
+    statsOutToken: [],
   };
   write({ ...store, characters: [...store.characters, character] });
   return character;
@@ -349,18 +413,17 @@ export function setCharacterLook(id: string, look: { skin?: string; gender?: str
   });
 }
 
-// Point one of a character's own packages at a library pack/subfolder.
+// Point one of a character's own packages at a set of library packs/subfolders.
 export function setCharacterToken(
   id: string,
-  kind: 'before' | 'after' | 'girlfriend',
-  token: string
+  kind: 'before' | 'after' | 'girlfriend' | 'gym' | 'video' | 'statsIn' | 'statsOut',
+  tokens: string[]
 ): void {
-  const field =
-    kind === 'before' ? 'beforeToken' : kind === 'after' ? 'afterToken' : 'girlfriendToken';
+  const field = `${kind}Token` as const;
   const store = read();
   write({
     ...store,
-    characters: store.characters.map((c) => (c.id === id ? { ...c, [field]: token } : c)),
+    characters: store.characters.map((c) => (c.id === id ? { ...c, [field]: tokens } : c)),
   });
 }
 

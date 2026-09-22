@@ -31,3 +31,6 @@ dist-ssr
 
 # TikTok mining output (raw HTML dumps + corpus)
 scripts/.tiktok/
+
+# Claude Code scratch worktrees
+.claude/worktrees/

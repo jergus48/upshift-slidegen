@@ -1,25 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Flag, RotateCcw, Music, Trash2, Plus, EyeOff, Loader2, Activity } from 'lucide-react';
+import { Play, Pause, Flag, RotateCcw, Music, Trash2, Plus, EyeOff, Loader2, FileJson } from 'lucide-react';
 import { listAllTracks, type MusicListItem, type MusicGender } from '../lib/music';
 import { getAllStarts, setStart } from '../lib/musicStarts';
 import { getAllDrops, setDrop } from '../lib/musicDrops';
 import { addLocalTrack, removeLocalTrack, hideTrack, type MusicScope } from '../lib/localMusic';
-import {
-  loadTrackBuffer,
-  detectBeats,
-  detectOnsets,
-  detectChanges,
-  nearestBeat,
-  type BeatBand,
-} from '../lib/beatDetect';
+import { nearestBeat } from '../lib/beatDetect';
 import { BeatTimeline } from './BeatTimeline';
+import { parseCapCutDraft } from '../lib/capcutDraft';
 import { listPlans, savePlan, deletePlan, planLength, planCuts, type BeatPlan } from '../lib/beatPlans';
 import {
   getAllBeats,
   setBeats,
   setBeatList,
   addBeat,
+  moveBeat,
   removeBeatNear,
+  removeBeatsBetween,
   setBeatRange,
   beatsInRange,
   rangeDuration,
@@ -79,14 +75,14 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
   const [busy, setBusy] = useState(false);
   // Detected beat grids per track, and which track is being analysed right now.
   const [grids, setGrids] = useState<Record<string, SavedBeats>>({});
-  const [detecting, setDetecting] = useState<string | null>(null);
-  // What the next detection listens to, and whether it looks at the whole track
-  // or only the selected range.
-  const [band, setBand] = useState<BeatBand>('kick');
-  const [source, setSource] = useState<'grid' | 'onsets' | 'changes'>('grid');
+  // Playback speed. Half speed is the point of it: at 1× the ear can tell a
+  // marker is wrong but not by how much, and at 0.5× the gap between the marker
+  // and the kick is twice as wide in time and plainly audible — which is how a
+  // dragged marker gets placed accurately.
+  const [rate, setRate] = useState(1);
+
+  // Whether the timeline shows the whole track or only the selected range.
   const [trim, setTrim] = useState(false);
-  // Cut density: 1 = one cut per beat, 2 = eighths, 0.5 = every other beat.
-  const [subdivision, setSubdivision] = useState(1);
   const [plans, setPlans] = useState<BeatPlan[]>([]);
   // Why the library came up empty, when it did. Without this the editor showed
   // an empty list for a load failure and for an empty pool alike.
@@ -112,6 +108,23 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
     void reload();
   }, []);
 
+  // Tap the beat with the T key while the track plays — the fastest way to lay
+  // a grid by ear. Ignored while typing in a field, so it can't fire from a
+  // rename box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 't' && e.key !== 'T') return;
+      const el = e.target as HTMLElement | null;
+      if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+      const audio = audioRef.current;
+      if (!audio || !loaded) return;
+      e.preventDefault();
+      tapBeat(audio.currentTime);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   const load = (t: MusicListItem, seekTo = 0) => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -120,6 +133,7 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
       setLoaded(t);
     }
     audio.currentTime = seekTo;
+    audio.playbackRate = rate;
     void audio.play();
   };
 
@@ -138,6 +152,10 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
     setTimeout(() => setSavedFlash(false), 1200);
   };
 
+  // What the last CapCut import did (or why it didn't), shown under the beat row.
+  const [capcutNote, setCapcutNote] = useState<string | null>(null);
+  const capcutRef = useRef<HTMLInputElement>(null);
+
   const grid: SavedBeats | undefined = loaded ? grids[loaded.file] : undefined;
 
   // The window a detection (and the timeline view) is limited to when the user
@@ -147,31 +165,53 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
       ? { start: grid.beats[grid.from ?? 0], end: grid.beats[Math.min(grid.to ?? grid.beats.length, grid.beats.length - 1)] }
       : undefined;
 
-  // Analyse the loaded track with the current source/band, over the whole track
-  // or just the selected window. The decoded buffer is cached, so re-running
-  // with different settings is near-instant after the first pass.
-  const detect = async () => {
+  // Drop a marker at a moment — the manual equivalent of what detection used
+  // to do, and the reason the speed control exists: at 0.5× a person can tap
+  // the beat accurately, then drag it those last few milliseconds.
+  const tapBeat = (sec: number) => {
     if (!loaded) return;
-    setDetecting(loaded.file);
+    addBeat(loaded.file, sec);
+    setGrids(getAllBeats());
+  };
+
+  // Throw away every marker on this track. The Clear button next to the player
+  // only ever cleared the pinned start/drop — there was no way to start the
+  // beats over, which read as Clear being broken.
+  const clearBeats = () => {
+    if (!loaded) return;
+    setBeats(loaded.file, null);
+    setTrim(false);
+    setGrids(getAllBeats());
+  };
+
+  // ── Importing a grid from CapCut ─────────────────────────────────────────
+  // An edit already cut in CapCut has a hand-marked grid sitting in its
+  // draft_info.json, and marking the same song twice is work for nothing. The
+  // markers replace this track's grid outright (source 'manual' — they were
+  // placed by a person, not detected) and any saved range goes with them, since
+  // a range is indexes into the list it was made against.
+  //
+  // A project CapCut beat-matched itself keeps its markers in a cache file we
+  // can't read; for those the CUTS are imported instead, which is the same
+  // edit's rhythm read off where it actually cut.
+  const importCapCut = async (file: File | null | undefined) => {
+    if (!file || !loaded) return;
+    setCapcutNote(null);
     try {
-      const buf = await loadTrackBuffer(loaded.url);
-      if (!buf) {
-        setBeats(loaded.file, null);
-        return;
-      }
-      const opts = { band, subdivision, from: view?.start, to: view?.end };
-      if (source === 'grid') {
-        const found = detectBeats(buf, opts);
-        if (found) setBeatList(loaded.file, found.beats, { source: 'grid', band, bpm: found.bpm, confidence: found.confidence });
-        else setBeats(loaded.file, null);
-      } else if (source === 'onsets') {
-        setBeatList(loaded.file, detectOnsets(buf, opts), { source: 'onsets', band });
-      } else {
-        setBeatList(loaded.file, detectChanges(buf, opts), { source: 'changes', band });
-      }
+      const draft = parseCapCutDraft(await file.text());
+      const usedCuts = !draft.beats.length;
+      const list = usedCuts ? draft.cuts : draft.beats;
+      setBeatList(loaded.file, list, { source: 'manual', bpm: draft.bpm });
+      setTrim(false);
       setGrids(getAllBeats());
-    } finally {
-      setDetecting(null);
+      const song = draft.audioName ? ` from "${draft.audioName}"` : '';
+      setCapcutNote(
+        `${list.length} ${usedCuts ? 'cuts' : 'markers'}${song} · ${draft.bpm || '?'} BPM` +
+          (usedCuts ? ' — that project had no hand-placed markers, so its cuts were used.' : '') +
+          (draft.audioOffset ? ` · project starts ${fmt(draft.audioOffset)} into the song.` : ''),
+      );
+    } catch (e) {
+      setCapcutNote(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -325,13 +365,13 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
               </div>
             </div>
 
-            {grid && duration > 0 && (
+            {duration > 0 && (
               <div className="mb-2">
                 <BeatTimeline
                   duration={duration}
-                  beats={grid.beats}
-                  from={grid.from ?? 0}
-                  to={grid.to ?? grid.beats.length}
+                  beats={grid?.beats ?? []}
+                  from={grid?.from ?? 0}
+                  to={grid?.to ?? grid?.beats.length ?? 0}
                   point={pointOf(loaded)}
                   viewStart={view?.start}
                   viewEnd={view?.end}
@@ -343,6 +383,16 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
                   onPickBeat={saveBeat}
                   onAddBeat={editBeat(addBeat)}
                   onRemoveBeat={editBeat((f, sec) => removeBeatNear(f, sec))}
+                  onClearSpan={(from, to) => {
+                    if (!loaded) return;
+                    removeBeatsBetween(loaded.file, from, to);
+                    setGrids(getAllBeats());
+                  }}
+                  onMoveBeat={(from, to) => {
+                    if (!loaded) return;
+                    moveBeat(loaded.file, from, to);
+                    setGrids(getAllBeats());
+                  }}
                 />
               </div>
             )}
@@ -372,53 +422,45 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
               </button>
               <button
                 type="button"
-                onClick={detect}
-                disabled={detecting === loaded.file}
-                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-3 hover:bg-raised hover:text-ink-2 transition-colors disabled:opacity-50"
+                onClick={() => tapBeat(time)}
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-3 hover:bg-raised hover:text-ink-2 transition-colors"
+                title="Drop a beat marker at the playhead (or press T while it plays)"
               >
-                {detecting === loaded.file ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : (
-                  <Activity size={13} />
-                )}
-                {grid ? 'Re-detect' : 'Detect beats'}
+                <Plus size={13} /> Beat at {fmt(time)}
               </button>
-              <select
-                value={source}
-                onChange={(e) => setSource(e.target.value as typeof source)}
-                className="h-8 px-2 rounded-lg border border-line bg-card text-[12px] text-ink-2"
-                title="What the detection looks for"
+              <button
+                type="button"
+                onClick={() => capcutRef.current?.click()}
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-3 hover:bg-raised hover:text-ink-2 transition-colors"
+                title="Load the beat markers from a CapCut project's draft_info.json"
               >
-                <option value="grid">Beat grid</option>
-                <option value="onsets">Hits</option>
-                <option value="changes">Section changes</option>
+                <FileJson size={13} /> From CapCut
+              </button>
+              <input
+                ref={capcutRef}
+                type="file"
+                accept="application/json,.json"
+                hidden
+                onChange={(e) => {
+                  void importCapCut(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
+              />
+              <select
+                value={rate}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setRate(v);
+                  if (audioRef.current) audioRef.current.playbackRate = v;
+                }}
+                className="h-8 px-2 rounded-lg border border-line bg-card text-[12px] text-ink-2"
+                title="Slow the track down to place markers accurately"
+              >
+                <option value={1}>1× speed</option>
+                <option value={0.75}>0.75×</option>
+                <option value={0.5}>0.5×</option>
+                <option value={0.25}>0.25×</option>
               </select>
-              {source === 'grid' && (
-                <select
-                  value={subdivision}
-                  onChange={(e) => setSubdivision(Number(e.target.value))}
-                  className="h-8 px-2 rounded-lg border border-line bg-card text-[12px] text-ink-2"
-                  title="How often to cut, relative to the beat"
-                >
-                  <option value={0.5}>½× — every other beat</option>
-                  <option value={1}>1× — every beat</option>
-                  <option value={2}>2× — eighths</option>
-                  <option value={4}>4× — sixteenths</option>
-                </select>
-              )}
-              {source !== 'changes' && (
-                <select
-                  value={band}
-                  onChange={(e) => setBand(e.target.value as BeatBand)}
-                  className="h-8 px-2 rounded-lg border border-line bg-card text-[12px] text-ink-2"
-                  title="Which part of the sound to listen to"
-                >
-                  <option value="kick">Kick</option>
-                  <option value="clap">Claps / snare</option>
-                  <option value="hat">Hi-hats</option>
-                  <option value="full">Everything</option>
-                </select>
-              )}
               {pointOf(loaded) != null && (
                 <>
                   <button
@@ -433,20 +475,26 @@ export function MusicStartsEditor({ mode = 'start' }: { mode?: PointMode } = {})
                     onClick={() => clearStart(loaded.file)}
                     className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-transparent text-[12px] text-ink-5 hover:bg-raised hover:text-ink-2 transition-colors"
                   >
-                    <RotateCcw size={13} /> Clear
+                    <RotateCcw size={13} /> Clear {copy.verb}
                   </button>
                 </>
               )}
             </div>
 
-            {/* Grid summary + the slice of it a beat-cut video would use. */}
+            {capcutNote && <p className="mt-2 text-[11px] text-ink-5">{capcutNote}</p>}
+
+            {/* Beat summary + the slice of it a beat-cut video would use. */}
             {grid && (
               <div className="flex items-center gap-2 mt-2 flex-wrap text-[11px] text-ink-5">
-                <span className="text-ink-3 font-medium">{grid.bpm} BPM</span>
-                <span>· {grid.beats.length} beats</span>
-                {grid.confidence < 0.15 && (
-                  <span className="text-amber-600">· weak beat — check by hand</span>
-                )}
+                <span>{grid.beats.length} beats</span>
+                <button
+                  type="button"
+                  onClick={clearBeats}
+                  className="h-7 px-2 rounded-lg border border-line text-ink-3 hover:bg-raised hover:text-ink-2 transition-colors"
+                  title="Delete every beat marker on this track"
+                >
+                  Clear beats
+                </button>
                 <span className="ml-1 text-ink-4">
                   · use {beatsInRange(grid).length} beats ({fmt(rangeDuration(grid))})
                 </span>

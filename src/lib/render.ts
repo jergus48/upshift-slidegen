@@ -7,7 +7,8 @@
 // lib/captionStyle.ts — the SAME constants the editor preview uses — so the
 // scheduled PNG matches what the user saw when editing.
 import type { Slide, Slideshow } from '../types';
-import { FONT_SIZE_PCT, LINE_HEIGHT, SIDE_PAD_PCT, pct, captionStyleSpec, primaryFontFamily, cleanCaption } from './captionStyle';
+import { captionStyleSpec, cleanCaption } from './captionStyle';
+import { drawCaption, loadCaptionFont } from './drawCaption';
 import { resolveImageSrc } from './imageSrc';
 import { createZip, dataUrlToBytes, type ZipEntry } from './zip';
 import { writeFileToDir } from './downloadFolders';
@@ -17,27 +18,6 @@ import { regradeVideo as regradeVideoApi } from './api';
 
 const W = 1080;
 const H = 1920;
-
-// Word-wrap within hard newlines, mirroring the preview's wrapping.
-function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const out: string[] = [];
-  for (const paragraph of text.split('\n')) {
-    if (!paragraph.trim()) { out.push(''); continue; }
-    const words = paragraph.split(/\s+/);
-    let line = '';
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (ctx.measureText(test).width > maxWidth && line) {
-        out.push(line);
-        line = word;
-      } else {
-        line = test;
-      }
-    }
-    if (line) out.push(line);
-  }
-  return out;
-}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -100,18 +80,7 @@ function ditherInPlace(ctx: CanvasRenderingContext2D, w: number, h: number): voi
 export async function renderSlide(slide: Slide): Promise<string> {
   const style = captionStyleSpec(slide.captionStyle);
 
-  // Make sure the caption font is actually loaded before drawing — a web font
-  // that's declared but never used in the DOM isn't "pending", so awaiting
-  // fonts.ready alone can still bake with a fallback. Explicitly request the
-  // exact weight/family this slide uses.
-  // Load by the PRIMARY family only (e.g. "Poppins") — passing the whole
-  // fallback list can make fonts.load() throw, which would silently leave the
-  // canvas baking in Arial instead of the caption font the user picked.
-  const primary = primaryFontFamily(style.fontFamily);
-  try {
-    await document.fonts?.load(`${style.fontWeight} 100px "${primary}"`);
-  } catch { /* fonts API unavailable — fall through to whatever's loaded */ }
-  if (document.fonts?.ready) await document.fonts.ready;
+  await loadCaptionFont(style);
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -151,35 +120,9 @@ export async function renderSlide(slide: Slide): Promise<string> {
     ctx.fillRect(0, 0, W, H);
   }
 
-  // Caption: white bold text, black outline, centered — driven by the SAME
-  // percentages the editor preview uses, so the two always match. Font family,
-  // weight and outline thickness come from the slide's chosen caption style
-  // (resolved at the top of this function).
-  const fontPx = Math.round(H * pct(FONT_SIZE_PCT));
-  const lineHeight = Math.round(fontPx * LINE_HEIGHT);
-  const strokeW = Math.max(2, Math.round(fontPx * style.strokeRatio));
-
-  ctx.font = `${style.fontWeight} ${fontPx}px ${style.fontFamily}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.lineJoin = 'round';
-  ctx.miterLimit = 2;
-
-  const maxWidth = W * (1 - 2 * pct(SIDE_PAD_PCT));
-  const lines = wrap(ctx, cleanCaption(slide.text || ''), maxWidth);
-  const blockH = lines.length * lineHeight;
-  const startY = (H - blockH) / 2; // vertically centered, matching the preview
-  const x = W / 2;
-
-  for (let i = 0; i < lines.length; i++) {
-    const y = startY + i * lineHeight;
-    // Paint stroke first, fill on top — same effect as CSS paint-order: stroke fill.
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = strokeW;
-    ctx.strokeText(lines[i], x, y);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(lines[i], x, y);
-  }
+  // Caption: drawn by the shared overlay renderer (lib/drawCaption.ts), so a
+  // baked slide, the editor preview and a captioned video clip all match.
+  drawCaption(ctx, slide.text || '', W, H, slide.captionStyle);
 
   // Invisible watermark scrub, applied last so it covers the composited frame.
   ditherInPlace(ctx, W, H);
@@ -263,8 +206,15 @@ export async function downloadSlideshow(
 // then hashtags — each block on its own line with no labels, so the text can be
 // copied straight into a post.
 function captionFile(show: Slideshow): string {
-  const tags = show.hashtags.map((t) => `#${t}`).join(' ');
-  return [show.hook || '', '', show.caption || '', '', tags, ''].join('\n');
+  return captionFileText(show.hook || '', show.caption || '', show.hashtags);
+}
+
+// The same .txt a slideshow's folder carries, from the three parts rather than
+// from a Slideshow — beat videos are not slideshows but ship the identical
+// sidecar, so the file an uploader reads is the same whichever tool made it.
+export function captionFileText(hook: string, caption: string, hashtags: string[]): string {
+  const tags = (hashtags || []).map((t) => `#${t}`).join(' ');
+  return [hook || '', '', caption || '', '', tags, ''].join('\n');
 }
 
 // Per-video upload metadata — what a YouTube/Shorts uploader (post-bridge, the
@@ -280,16 +230,29 @@ export interface VideoMeta {
 }
 
 export function videoMeta(show: Slideshow): VideoMeta {
-  const tags = show.hashtags || [];
+  return videoMetaFrom(show.hook || '', show.caption || '', show.hashtags || []);
+}
+
+// The same metadata from the three parts rather than from a Slideshow — beat
+// videos are not slideshows but ship the identical sidecar, so the file an
+// uploader reads is the same whichever tool made it. (The parts-based twin of
+// captionFileText above.)
+export function videoMetaFrom(hook: string, caption: string, hashtags: string[]): VideoMeta {
+  const tags = hashtags || [];
   const hashLine = tags.map((t) => `#${t}`).join(' ');
-  const description = [show.caption || '', hashLine].filter(Boolean).join('\n\n');
-  return { title: show.hook || show.caption || 'Untitled', description, tags };
+  const description = [caption || '', hashLine].filter(Boolean).join('\n\n');
+  return { title: hook || caption || 'Untitled', description, tags };
 }
 
 // The JSON sidecar bundled next to each exported .mp4, so every video file
 // carries its own title/description/tags and an uploader needs no second export.
 export function videoMetaJson(show: Slideshow): string {
   return JSON.stringify(videoMeta(show), null, 2);
+}
+
+// The sidecar a beat video writes: same shape, built from its own parts.
+export function videoMetaJsonFrom(hook: string, caption: string, hashtags: string[]): string {
+  return JSON.stringify(videoMetaFrom(hook, caption, hashtags), null, 2);
 }
 
 // Bundle several slideshows into ONE zip — or, with a `dir` (a folder preset on
@@ -408,7 +371,7 @@ function easeInOut(p: number): number {
 // and — unlike MediaRecorder's WebM — carries a correct duration, so players
 // don't show a bogus "1 hour" length. WebM is only a fallback for browsers that
 // can't record MP4.
-function pickVideoMime(): string {
+export function pickVideoMime(): string {
   const candidates = [
     'video/mp4;codecs=avc1.42E01E', // H.264 baseline
     'video/mp4;codecs=h264',
@@ -426,7 +389,7 @@ function pickVideoMime(): string {
 }
 
 // File extension matching the recorded container.
-function extForMime(mime: string): string {
+export function extForMime(mime: string): string {
   return mime.includes('mp4') ? 'mp4' : 'webm';
 }
 

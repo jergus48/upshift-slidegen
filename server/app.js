@@ -16,6 +16,7 @@ import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
 import { fetchChannels } from './youtube.js'
 import { fetchCommentsBatch, fetchCommentCountsBatch } from './ytComments.js'
 import { regradeVideo, ffmpegAvailable } from './regrade.js'
+import { motionBlur } from './motionBlur.js'
 import { withViewDeltas } from './viewSnapshots.js'
 import { fetchProfiles } from './social.js'
 import { fetchQuotes, fetchFxRates, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
@@ -329,6 +330,24 @@ app.post('/api/video/regrade', h(async (req, res) => {
   const codec = req.body?.codec === 'h265' ? 'h265' : 'h264'
   const { video, params } = await regradeVideo(Buffer.from(b64, 'base64'), { strength, codec })
   res.json({ video: 'data:video/mp4;base64,' + video.toString('base64'), params })
+}))
+
+// ── Motion blur (local ffmpeg) ───────────────────────────────────────
+// Optical-flow motion blur, the RSMB look. Opt-in and slow (~10x real time),
+// so it is its own endpoint rather than part of the regrade chain — an export
+// can have one, both or neither.
+app.post('/api/video/motion-blur', h(async (req, res) => {
+  const raw = String(req.body?.video || '')
+  const b64 = raw.startsWith('data:') ? raw.slice(raw.indexOf(',') + 1) : raw
+  if (!b64) return res.status(400).json({ error: 'No video supplied.' })
+  const strength = ['light', 'medium', 'heavy', 'extreme'].includes(req.body?.strength) ? req.body.strength : 'medium'
+  // The caller knows its own cut times far better than scene detection can
+  // guess them — see the note in motionBlur.js.
+  const cuts = Array.isArray(req.body?.cuts) ? req.body.cuts.map(Number).filter(Number.isFinite) : []
+  // 'flow' is the slow optical-flow engine; 'fast' (default) blends instead.
+  const engine = req.body?.engine === 'flow' ? 'flow' : 'fast'
+  const video = await motionBlur(Buffer.from(b64, 'base64'), { strength, engine, cuts })
+  res.json({ video: 'data:video/mp4;base64,' + video.toString('base64') })
 }))
 
 // How many comments each video has, for the grid badges. One watch-page read

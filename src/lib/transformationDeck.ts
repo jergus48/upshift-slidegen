@@ -47,9 +47,37 @@ const PALETTE: [string, string][] = [
 
 const randInt = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
 
-// Every image in the library that a selection token covers.
-export function poolFor(library: LibraryImage[], token: string): LibraryImage[] {
-  return token ? library.filter((img) => tokenMatches(token, img)) : [];
+// Every PHOTO in the library that a selection token covers. Packs can hold
+// video clips too (the Video tool cuts those in after the drop), and a slide
+// background has to be a still — so clips are filtered out here rather than at
+// every call site.
+// A package is a LIST of selection tokens, not one — a character's chopped shots
+// may be spread over several folders and there is no reason to make them pick
+// one. A bare string is still accepted so the many call sites that resolve a
+// single shared token (blocked, streak) read the same as they always did.
+export type Selection = string | readonly string[];
+
+const selected = (sel: Selection): string[] =>
+  (typeof sel === 'string' ? [sel] : sel).filter(Boolean);
+
+// True if ANY of the selection's tokens covers this image. An image in two of
+// the selected folders is still one image — library images carry a single
+// pack/subfolder, so no de-duplication is needed.
+export function selectionMatches(sel: Selection, img: { pack: string; subfolder?: string | null }): boolean {
+  return selected(sel).some((t) => tokenMatches(t, img));
+}
+
+export function poolFor(library: LibraryImage[], sel: Selection): LibraryImage[] {
+  const tokens = selected(sel);
+  if (!tokens.length) return [];
+  return library.filter((img) => img.kind !== 'video' && selectionMatches(tokens, img));
+}
+
+// The other half of the same selection: just the video clips.
+export function clipPoolFor(library: LibraryImage[], sel: Selection): LibraryImage[] {
+  const tokens = selected(sel);
+  if (!tokens.length) return [];
+  return library.filter((img) => img.kind === 'video' && selectionMatches(tokens, img));
 }
 
 // ── Spreading a batch ───────────────────────────────────────────────────────
@@ -139,7 +167,8 @@ export function usableStreaksIn(library: LibraryImage[] | undefined, variant: st
 // packages are also checked for actually holding photos.
 export function missingPieces(character: Character, library?: LibraryImage[]): string[] {
   const missing: string[] = [];
-  const empty = (token: string) => !token || (library ? poolFor(library, token).length === 0 : false);
+  const empty = (sel: string | readonly string[]) =>
+    (typeof sel === 'string' ? !sel : !sel.length) || (library ? poolFor(library, sel).length === 0 : false);
   const variant = variantOf(character);
   if (empty(character.beforeToken)) missing.push('a before package');
   if (empty(character.afterToken)) missing.push('an after package');

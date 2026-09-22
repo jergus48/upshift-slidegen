@@ -5,72 +5,14 @@ import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { scrapePinterest } from '../lib/api';
 import { getMergedLibrary } from '../lib/mergedLibrary';
-import { addLocalImages, removeLocalImage, setImageSubfolder, moveSubfolderImages, renameLocalPack } from '../lib/localLibrary';
+import { addLocalFiles, addLocalImages, removeLocalImage, setImageSubfolder, moveSubfolderImages, renameLocalPack } from '../lib/localLibrary';
 import { getHiddenPacks, setPackHidden, renameHiddenPack } from '../lib/hiddenPacks';
 import { getSubfolders, addSubfolder, removeSubfolder, renamePackSubfolders } from '../lib/subfolders';
-import { createZip, dataUrlToBytes, type ZipEntry } from '../lib/zip';
+import { buildLibraryZip, fileSlug, saveZip } from '../lib/libraryExport';
 
 // Filter sentinels for the subfolder view within a pack.
 const ALL_SUB = '__all__';
 const UNFILED = '__unfiled__';
-
-// File extension for a downloaded image, from its blob MIME type.
-function extForImage(type: string): string {
-  const map: Record<string, string> = {
-    'image/jpeg': 'jpg',
-    'image/jpg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-    'image/avif': 'avif',
-  };
-  return map[type] || 'jpg';
-}
-
-// Filesystem-safe slug for a pack name, used as the zip filename.
-function packSlug(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'library';
-}
-
-// Re-encode an image blob through a canvas so the output carries NO metadata —
-// EXIF, XMP, GPS, and embedded provenance chunks (C2PA / "Content Credentials",
-// i.e. the AI label that Gemini/Imagen and others stamp on generated images) are
-// all dropped, because the canvas is redrawn from raw pixels into a brand-new
-// file. Drawing from an object URL of the blob we already fetched avoids any
-// cross-origin canvas tainting. Returns clean bytes plus the matching extension.
-// PNGs stay lossless PNG; everything else becomes high-quality JPEG.
-async function stripBlobMetadata(blob: Blob): Promise<{ bytes: Uint8Array; ext: string }> {
-  const isPng = blob.type === 'image/png';
-  const objUrl = URL.createObjectURL(blob);
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image();
-      el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error('Could not load image for cleaning.'));
-      el.src = objUrl;
-    });
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-    const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(img, 0, 0);
-    const type = isPng ? 'image/png' : 'image/jpeg';
-    const dataUrl = canvas.toDataURL(type, isPng ? undefined : 0.95);
-    return { bytes: dataUrlToBytes(dataUrl), ext: isPng ? 'png' : 'jpg' };
-  } finally {
-    URL.revokeObjectURL(objUrl);
-  }
-}
-
-// Read a File as a base64 data URL for shipping to the server as JSON.
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
-    reader.readAsDataURL(file);
-  });
-}
 
 interface LibraryViewProps {
   hasApify: boolean;
@@ -189,45 +131,21 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
     await load();
   };
 
-  // Zip every image in a pack (fetched as bytes — works for bundled paths,
-  // scraped/uploaded blob URLs and inline data URLs alike) and save it. Each
-  // image is re-encoded through a canvas first, which strips ALL metadata —
-  // including the C2PA "Content Credentials" AI label — from the exported files.
+  // Zip a whole pack and save it. The archive mirrors the library: a top folder
+  // named after the pack and a folder per subfolder inside it. Photos are
+  // stripped of metadata on the way out and clips keep their real extension —
+  // see lib/libraryExport.ts.
   const downloadPack = async (pack: string, imgs: LibraryImage[]) => {
     if (!imgs.length || downloading) return;
     setError(null);
     setNote(null);
     setDownloading(pack);
     try {
-      const pad = String(imgs.length).length;
-      const entries: ZipEntry[] = [];
-      for (let i = 0; i < imgs.length; i++) {
-        const res = await fetch(imgs[i].url);
-        if (!res.ok) throw new Error(`Could not fetch image ${i + 1} of ${imgs.length}`);
-        const blob = await res.blob();
-        // Re-encode to drop metadata (incl. the AI label); fall back to the raw
-        // bytes if a re-encode fails (e.g. an unsupported/broken image).
-        let data: Uint8Array;
-        let ext: string;
-        try {
-          const cleaned = await stripBlobMetadata(blob);
-          data = cleaned.bytes;
-          ext = cleaned.ext;
-        } catch {
-          data = new Uint8Array(await blob.arrayBuffer());
-          ext = extForImage(blob.type);
-        }
-        const name = `${String(i + 1).padStart(pad, '0')}.${ext}`;
-        entries.push({ name, data });
+      const { blob, written, failed } = await buildLibraryZip([{ path: [pack], images: imgs }]);
+      saveZip(blob, `${fileSlug(pack)}.zip`);
+      if (failed.length) {
+        setNote(`Zipped ${written} of ${imgs.length} — skipped ${failed.length}: ${failed.slice(0, 3).join(', ')}${failed.length > 3 ? '…' : ''}`);
       }
-      const url = URL.createObjectURL(createZip(entries));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${packSlug(pack)}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -242,9 +160,22 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
     setUploading(true);
     const pack = uploadTarget === NEW_PACK ? uploadPack.trim() || 'My Uploads' : uploadTarget;
     try {
-      const dataUrls = await Promise.all([...files].map(fileToDataUrl));
-      const added = await addLocalImages(pack, dataUrls, 'uploaded');
-      setNote(`Added ${added.length} image${added.length === 1 ? '' : 's'} to "${pack}".`);
+      const { added, skipped } = await addLocalFiles(pack, [...files], 'uploaded');
+      const clips = added.filter((a) => a.kind === 'video').length;
+      const photos = added.length - clips;
+      const counts = [photos && `${photos} photo${photos === 1 ? '' : 's'}`, clips && `${clips} clip${clips === 1 ? '' : 's'}`]
+        .filter(Boolean)
+        .join(' and ');
+      if (added.length) setNote(`Added ${counts} to "${pack}".`);
+      // Name every file that didn't make it and why. A silent skip used to look
+      // exactly like a bug in the picker — the user just saw fewer files appear
+      // than they chose, with nothing on screen to explain which or why.
+      if (skipped.length) {
+        setError(
+          `${skipped.length} file${skipped.length === 1 ? '' : 's'} skipped — ` +
+            skipped.map((s) => `${s.name} (${s.reason})`).join('; ')
+        );
+      }
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -353,7 +284,11 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                // Extensions alongside the wildcards on purpose: macOS resolves a
+                // file's type from its own database, and a download it can't place
+                // arrives as `type: ""` — greyed out in the picker under a bare
+                // "image/*,video/*". Naming the extensions keeps those selectable.
+                accept="image/*,video/*,.mp4,.mov,.m4v,.webm,.mkv,.avi,.mpeg,.mpg,.ogv,.3gp,.jpg,.jpeg,.png,.webp,.gif,.avif,.heic,.heif"
                 multiple
                 onChange={(e) => upload(e.target.files)}
                 className="hidden"
@@ -365,11 +300,12 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
               >
-                {uploading ? 'Uploading…' : 'Upload photos'}
+                {uploading ? 'Uploading…' : 'Upload photos or clips'}
               </Button>
             </div>
             <p className="text-[12px] text-ink-5 mt-2">
-              Upload your own images to use as slide backgrounds — drop them into an existing pack or start a new one.
+              Upload your own images to use as slide backgrounds, or video clips for the Video tool to cut in after the
+              drop — either way, drop them into an existing pack or start a new one.
             </p>
           </div>
         </div>
@@ -553,7 +489,27 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
                         onDragStart={(e) => { e.dataTransfer.setData('text/plain', img.id); e.dataTransfer.effectAllowed = 'move'; }}
                         className={`group relative aspect-[9/16] rounded-lg overflow-hidden bg-raised ${img.source !== 'bundled' ? 'cursor-grab active:cursor-grabbing' : ''}`}
                       >
-                        <img src={img.url} alt="" loading="lazy" className="w-full h-full object-cover pointer-events-none" />
+                        {img.kind === 'video' ? (
+                          // Clips preview on hover rather than autoplaying — a
+                          // pack of them all playing at once is unreadable.
+                          <video
+                            src={img.url}
+                            muted
+                            loop
+                            playsInline
+                            preload="metadata"
+                            onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})}
+                            onMouseLeave={(e) => e.currentTarget.pause()}
+                            className="w-full h-full object-cover pointer-events-auto"
+                          />
+                        ) : (
+                          <img src={img.url} alt="" loading="lazy" className="w-full h-full object-cover pointer-events-none" />
+                        )}
+                        {img.kind === 'video' && (
+                          <span className="absolute top-1 left-1 px-1 py-0.5 rounded bg-black/60 text-white text-[9px] leading-none">
+                            clip
+                          </span>
+                        )}
                         {view === ALL_SUB && img.subfolder && (
                           <span className="absolute bottom-1 left-1 max-w-[calc(100%-8px)] truncate px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] leading-none">
                             {img.subfolder}

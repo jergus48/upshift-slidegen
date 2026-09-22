@@ -11,7 +11,15 @@ import { IconButton } from '../components/IconButton';
 import { MusicChoiceModal } from '../components/MusicChoiceModal';
 import { ServerRenderQueue } from '../components/ServerRenderQueue';
 import { serverRenderStatus, submitServerRender } from '../lib/serverRender';
-import { downloadSlideshow, downloadSlideshowsZip, downloadSlideshowsVideo } from '../lib/render';
+import { videoMetaJsonFrom, downloadSlideshow, downloadSlideshowsZip, downloadSlideshowsVideo } from '../lib/render';
+import {
+  listQueuedVideos,
+  removeQueuedVideo,
+  setQueuedVideoFolder,
+  subscribeQueuedVideos,
+  type QueuedVideo,
+} from '../lib/localVideos';
+import { createZip, type ZipEntry } from '../lib/zip';
 import type { MusicGender } from '../lib/music';
 import {
   supportsFolderPresets,
@@ -19,6 +27,7 @@ import {
   getDefaultFolderId,
   setDefaultFolderId,
   resolveWritableFolder,
+  writeFileToDir,
   type FolderPreset,
 } from '../lib/downloadFolders';
 
@@ -64,6 +73,32 @@ export function QueueView({
   onBulkSetBackground,
 }: QueueViewProps) {
   const selectedCount = selectedIds.length;
+  // Finished beat videos from the Video tab. They live in IndexedDB rather than
+  // in `slideshows`, because a rendered file is not a recipe — see
+  // lib/localVideos.ts — so they are loaded and refreshed on their own.
+  const [videos, setVideos] = useState<QueuedVideo[]>([]);
+  // Which videos are ticked for a bulk save. A video is ticked the moment it
+  // arrives — a finished batch is meant to be downloadable as one zip without
+  // first clicking through thirty cards — and drops out of the set when it
+  // leaves the queue, so the count never counts something that isn't there.
+  const [pickedVideos, setPickedVideos] = useState<string[]>([]);
+  useEffect(() => {
+    const load = () =>
+      void listQueuedVideos().then((vs) => {
+        setVideos((prev) => {
+          const known = new Set(prev.map((v) => v.id));
+          const present = new Set(vs.map((v) => v.id));
+          setPickedVideos((picked) => [
+            ...picked.filter((id) => present.has(id)),
+            ...vs.filter((v) => !known.has(v.id)).map((v) => v.id),
+          ]);
+          return vs;
+        });
+      });
+    load();
+    return subscribeQueuedVideos(load);
+  }, []);
+  const [zippingVideos, setZippingVideos] = useState(false);
   const [downloadingBulk, setDownloadingBulk] = useState(false);
   const [videoProgress, setVideoProgress] = useState<{ done: number; total: number } | null>(null);
   const [askMusic, setAskMusic] = useState(false);
@@ -89,6 +124,60 @@ export function QueueView({
   };
 
   const selectedShows = () => slideshows.filter((s) => selectedIds.includes(s.id));
+
+  const pickedVideoList = videos.filter((v) => pickedVideos.includes(v.id));
+  const allVideosPicked = videos.length > 0 && pickedVideoList.length === videos.length;
+
+  const toggleVideo = (id: string) =>
+    setPickedVideos((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const toggleAllVideos = () =>
+    setPickedVideos(allVideosPicked ? [] : videos.map((v) => v.id));
+
+  // Every ticked video in one zip. Stored rather than deflated — the files are
+  // already compressed — and duplicate filenames are suffixed, since two
+  // renders of the same character in the same style share a name and a zip
+  // would otherwise keep only one of them.
+  const downloadPickedVideos = async () => {
+    setZippingVideos(true);
+    try {
+      const entries: ZipEntry[] = [];
+      const seen = new Map<string, number>();
+      for (const v of pickedVideoList) {
+        const dot = v.name.lastIndexOf('.');
+        const stem = dot > 0 ? v.name.slice(0, dot) : v.name;
+        const ext = dot > 0 ? v.name.slice(dot) : '';
+        const n = seen.get(v.name) ?? 0;
+        seen.set(v.name, n + 1);
+        const base = n ? `${stem}-${n + 1}` : stem;
+        entries.push({ name: `${base}${ext}`, data: new Uint8Array(await v.blob.arrayBuffer()) });
+        // The metadata sidecar beside it, same stem — the same pairing a
+        // slideshow video export ships, so the zip is upload-ready without a
+        // second export. JSON, not .txt: the genScript uploaders read a video's
+        // caption ONLY from a like-named .json, and fall back to the filename
+        // when there is none.
+        entries.push({
+          name: `${base}.json`,
+          data: new TextEncoder().encode(videoMetaJsonFrom(v.hook || '', v.caption || '', v.hashtags || [])),
+        });
+      }
+      const blob = createZip(entries);
+      const dir = await resolveWritableFolder(destId);
+      const fileName = `slidesmith-videos-${new Date().toISOString().slice(0, 10)}.zip`;
+      if (dir) {
+        await writeFileToDir(dir, fileName, blob);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }
+    } finally {
+      setZippingVideos(false);
+    }
+  };
 
   const removeSelected = () => {
     // Native Chrome confirm dialog before a destructive bulk removal.
@@ -220,7 +309,7 @@ export function QueueView({
 
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 flex flex-col min-w-0">
-      {slideshows.length === 0 ? (
+      {slideshows.length === 0 && videos.length === 0 ? (
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="text-center max-w-sm">
             <div className="w-12 h-12 rounded-full bg-raised flex items-center justify-center mx-auto mb-4">
@@ -250,6 +339,41 @@ export function QueueView({
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+          {videos.length > 0 && (
+            <div className="max-w-5xl mx-auto mb-6">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <span className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold">Videos</span>
+                <span className="text-[11px] text-ink-6 flex-1">
+                  {videos.length} from the Video tab · {fmtBytes(videos.reduce((n, v) => n + v.size, 0))}
+                </span>
+                <label className="flex items-center gap-1.5 text-[12px] text-ink-5 cursor-pointer select-none">
+                  <input type="checkbox" checked={allVideosPicked} onChange={toggleAllVideos} className="cursor-pointer" />
+                  Select all
+                </label>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={zippingVideos ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                  onClick={downloadPickedVideos}
+                  disabled={zippingVideos || pickedVideoList.length === 0}
+                >
+                  {zippingVideos ? 'Zipping…' : `Download ${pickedVideoList.length} as zip`}
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {videos.map((v) => (
+                  <QueuedVideoCard
+                    key={v.id}
+                    video={v}
+                    presets={folderPresets}
+                    destId={destId}
+                    selected={pickedVideos.includes(v.id)}
+                    onToggleSelect={() => toggleVideo(v.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-5xl mx-auto">
             {slideshows.map((s) => (
               <SlideshowCard
@@ -436,6 +560,178 @@ function SlideshowCard({ slideshow, selected, destId, onToggleSelect, onApprove,
           onChoose={downloadVideo}
         />
       )}
+    </div>
+  );
+}
+
+const fmtBytes = (n: number) =>
+  n >= 1024 * 1024 * 1024 ? `${(n / 1024 ** 3).toFixed(1)} GB` : `${Math.round(n / 1024 ** 2)} MB`;
+
+const fmtDuration = (s: number) => `${s.toFixed(1)}s`;
+
+// One finished beat video waiting to be approved.
+//
+// Deliberately NOT a SlideshowCard with a video in it. A slideshow in this queue
+// is unrendered — its card offers Edit, background swaps and a choice of music,
+// none of which mean anything once a file exists. What is left is: watch it,
+// decide where it goes, keep it or bin it.
+function QueuedVideoCard({
+  video,
+  presets,
+  destId,
+  selected,
+  onToggleSelect,
+}: {
+  video: QueuedVideo;
+  presets: FolderPreset[];
+  destId: string | null;
+  selected: boolean;
+  onToggleSelect: () => void;
+}) {
+  const [busy, setBusy] = useState<'save' | 'approve' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // The card's own folder wins over the Queue-wide one: these videos carry a
+  // destination from their character, which is the whole reason a character has
+  // an export folder at all.
+  const folderId = video.folderId || destId || '';
+
+  // Write the file out. Returns false when it couldn't be written, so Approve
+  // knows not to drop the video from the queue — silently deleting the only
+  // copy of something that failed to save is unrecoverable.
+  const save = async (): Promise<boolean> => {
+    setError(null);
+    try {
+      const sidecarName = `${video.name.replace(/\.[^.]+$/, '')}.json`;
+      const sidecar = videoMetaJsonFrom(video.hook || '', video.caption || '', video.hashtags || []);
+      const dir = await resolveWritableFolder(folderId || null);
+      if (dir) {
+        await writeFileToDir(dir, video.name, video.blob);
+        await writeFileToDir(dir, sidecarName, new TextEncoder().encode(sidecar));
+      } else {
+        // No folder preset (or the browser has no folder access) — fall back to
+        // the plain browser download, same as everything else here does.
+        const a = document.createElement('a');
+        a.href = video.url;
+        a.download = video.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Browsers throttle back-to-back saves, so space the sidecar out — the
+        // same pause the slideshow video export uses for its own.
+        await new Promise((r) => setTimeout(r, 200));
+        const txtUrl = URL.createObjectURL(new Blob([sidecar], { type: 'application/json' }));
+        const t = document.createElement('a');
+        t.href = txtUrl;
+        t.download = sidecarName;
+        document.body.appendChild(t);
+        t.click();
+        t.remove();
+        URL.revokeObjectURL(txtUrl);
+      }
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return false;
+    }
+  };
+
+  const download = async () => {
+    setBusy('save');
+    try {
+      await save();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Approve = save it, then let it go. The bytes are big enough that keeping
+  // approved videos around would fill the disk within a few batches.
+  const approve = async () => {
+    setBusy('approve');
+    try {
+      if (await save()) await removeQueuedVideo(video.id);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div
+      className={`bg-card border rounded-xl overflow-hidden flex flex-col transition-colors ${
+        selected ? 'border-ink ring-1 ring-ink' : 'border-line'
+      }`}
+    >
+      <div className="relative">
+        <label className="absolute top-2 left-2 z-10 w-6 h-6 rounded-md bg-card/90 border border-line flex items-center justify-center cursor-pointer shadow-sm">
+          <input type="checkbox" checked={selected} onChange={onToggleSelect} className="cursor-pointer" />
+        </label>
+        <video
+          src={video.url}
+          controls
+          playsInline
+          preload="metadata"
+          className="w-full bg-raised aspect-[9/16] max-h-[420px] object-contain"
+        />
+      </div>
+      <div className="p-3 space-y-2.5">
+        <div>
+          <div className="text-[13px] font-medium text-ink leading-tight">{video.title}</div>
+          <div className="text-[11px] text-ink-6 mt-0.5">
+            {video.characterName} · {video.style} · {fmtDuration(video.duration)} · {video.trackName} ·{' '}
+            {fmtBytes(video.size)}
+          </div>
+        </div>
+
+        {presets.length > 0 && (
+          <label
+            className="flex items-center gap-1.5 h-8 pl-2 pr-1 rounded-lg border border-line bg-bg text-ink-4"
+            title="Where this video is written when you approve or download it."
+          >
+            <Folder size={13} className="shrink-0 text-ink-5" />
+            <select
+              value={video.folderId}
+              onChange={(e) => void setQueuedVideoFolder(video.id, e.target.value)}
+              className="bg-transparent text-[12px] text-ink outline-none flex-1 cursor-pointer"
+            >
+              <option value="">{destId ? 'Queue folder' : 'Downloads folder'}</option>
+              {presets.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {error && <p className="text-[11px] text-amber-600">{error}</p>}
+
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            icon={busy === 'approve' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+            onClick={approve}
+            disabled={busy !== null}
+            fullWidth
+          >
+            Approve
+          </Button>
+          <IconButton
+            variant="secondary"
+            icon={busy === 'save' ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            label="Download without removing it from the queue"
+            onClick={download}
+            disabled={busy !== null}
+          />
+          <IconButton
+            variant="secondary"
+            icon={<Trash2 size={13} />}
+            label="Reject — deletes the file"
+            onClick={() => void removeQueuedVideo(video.id)}
+            disabled={busy !== null}
+          />
+        </div>
+      </div>
     </div>
   );
 }

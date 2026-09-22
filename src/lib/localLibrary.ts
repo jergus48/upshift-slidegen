@@ -18,6 +18,16 @@ interface StoredImage {
   source: 'scraped' | 'uploaded';
   addedAt: string;
   blob: Blob;
+  // Photos and video clips share this store — the blob's MIME type is the
+  // truth, and this is only a cached read of it for records written since
+  // clips were allowed. Older records have no field and are photos.
+  kind?: 'image' | 'video';
+}
+
+// A record's kind, falling back to the blob for anything written before clips
+// were a thing.
+function kindOf(r: StoredImage): 'image' | 'video' {
+  return r.kind ?? (r.blob?.type?.startsWith('video/') ? 'video' : 'image');
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -106,7 +116,14 @@ export async function listLocalImages(): Promise<LibraryImage[]> {
   const records = await getAllRecords();
   return records
     .sort((a, b) => b.addedAt.localeCompare(a.addedAt)) // newest first
-    .map((r) => ({ id: r.id, url: urlFor(r.id, r.blob), pack: r.pack, subfolder: r.subfolder, source: r.source }));
+    .map((r) => ({
+      id: r.id,
+      url: urlFor(r.id, r.blob),
+      pack: r.pack,
+      subfolder: r.subfolder,
+      source: r.source,
+      kind: kindOf(r),
+    }));
 }
 
 // Move an image into a subfolder of its pack (or back to Unfiled with null).
@@ -158,6 +175,90 @@ export async function addLocalImages(
     added.push({ id, url: urlFor(id, blob), pack: packName, source });
   }
   return added;
+}
+
+// Extensions we treat as video when the browser hands us no usable MIME type.
+// A file dragged in from a download folder can arrive with `type: ""` (the OS
+// couldn't resolve it) or with a container type that disagrees with the name —
+// a .mp4 that's really a QuickTime stream, say. The name is the tiebreaker.
+const VIDEO_EXTS = ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'mpeg', 'mpg', 'ogv', '3gp'];
+const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'heic', 'heif', 'bmp', 'tiff', 'tif'];
+
+function extOf(name: string): string {
+  const i = name.lastIndexOf('.');
+  return i === -1 ? '' : name.slice(i + 1).toLowerCase();
+}
+
+// Decide photo vs clip from the MIME type when there is one, falling back to
+// the file extension. Returns null for anything we don't recognise as media at
+// all, so the caller can say so instead of storing a junk record.
+function classify(file: File): 'image' | 'video' | null {
+  const type = (file.type || '').toLowerCase();
+  if (type.startsWith('video/')) return 'video';
+  if (type.startsWith('image/')) return 'image';
+  const ext = extOf(file.name);
+  if (VIDEO_EXTS.includes(ext)) return 'video';
+  if (IMAGE_EXTS.includes(ext)) return 'image';
+  return null;
+}
+
+// Why a file didn't make it in, so the Library view can name it rather than
+// leaving the user to guess which of their selection went missing.
+export interface SkippedFile {
+  name: string;
+  reason: string;
+}
+
+export interface AddFilesResult {
+  added: LibraryImage[];
+  skipped: SkippedFile[];
+}
+
+// Add files straight from a file picker, blob intact. Unlike addLocalImages
+// this never round-trips through a base64 data URL — which matters for video:
+// base64 is a third bigger than the bytes and would sit in memory as one giant
+// string per clip.
+//
+// Every file is handled independently: one bad file (a zero-byte export, a
+// clip that blows the storage quota) is recorded in `skipped` and the rest of
+// the batch still lands. Previously a single throw aborted the loop and the
+// remaining files vanished without a word.
+export async function addLocalFiles(
+  pack: string,
+  files: File[],
+  source: 'scraped' | 'uploaded'
+): Promise<AddFilesResult> {
+  const packName = pack.trim() || (source === 'uploaded' ? 'My Uploads' : 'Scraped');
+  const added: LibraryImage[] = [];
+  const skipped: SkippedFile[] = [];
+  for (const file of files) {
+    const kind = classify(file);
+    if (!kind) {
+      skipped.push({ name: file.name, reason: 'not a photo or video file' });
+      continue;
+    }
+    // A real clip is never this small. Failed downloads and error pages saved
+    // under a .mp4 name land here (e.g. a 14-byte file reading "File not found").
+    if (file.size < 100) {
+      skipped.push({ name: file.name, reason: `only ${file.size} bytes — the download looks broken` });
+      continue;
+    }
+    const id = `local:${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+    try {
+      await putRecord({ id, pack: packName, source, addedAt: new Date().toISOString(), blob: file, kind });
+    } catch (e) {
+      const err = e as { name?: string };
+      const reason =
+        err?.name === 'QuotaExceededError'
+          ? 'browser storage is full — remove some clips and retry'
+          : `couldn't be saved (${err?.name || String(e)})`;
+      skipped.push({ name: file.name, reason });
+      continue;
+    }
+    blobCache = null;
+    added.push({ id, url: urlFor(id, file), pack: packName, source, kind });
+  }
+  return { added, skipped };
 }
 
 export async function removeLocalImage(id: string): Promise<void> {

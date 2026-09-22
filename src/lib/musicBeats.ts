@@ -103,6 +103,33 @@ export function addBeat(file: string, seconds: number): void {
   write(map);
 }
 
+// Move an existing beat to a new second — what a drag on the timeline does.
+// The beat to move is found by its CURRENT second (within 20ms, so the caller
+// can pass the value it drew), and a move onto another beat is ignored rather
+// than silently merging two markers into one.
+export function moveBeat(file: string, from: number, to: number): void {
+  const map = read();
+  const entry = map[file];
+  if (!entry?.beats.length) return;
+  const t = Math.round(to * 1000) / 1000;
+  let idx = -1;
+  let best = 0.02;
+  entry.beats.forEach((b, i) => {
+    const d = Math.abs(b - from);
+    if (d <= best) {
+      best = d;
+      idx = i;
+    }
+  });
+  if (idx < 0) return;
+  const rest = entry.beats.filter((_, i) => i !== idx);
+  if (rest.some((b) => Math.abs(b - t) < 0.02)) return;
+  entry.beats = [...rest, t].sort((a, b) => a - b);
+  // Hand edits invalidate a range expressed as indexes into the old list.
+  delete entry.from;
+  delete entry.to;
+  write(map);
+}
 // Remove the beat nearest `seconds`, when one is close enough to have been the
 // intended target.
 export function removeBeatNear(file: string, seconds: number, tolerance = 0.25): void {
@@ -125,6 +152,24 @@ export function removeBeatNear(file: string, seconds: number, tolerance = 0.25):
   write(map);
 }
 
+// Remove every beat inside a span — a box-select delete, for clearing a stretch
+// that was detected badly. The span is taken either way round, so a backwards
+// drag deletes the same beats a forwards one would. Returns how many went, so
+// the caller can say; nothing is written when nothing matched.
+export function removeBeatsBetween(file: string, from: number, to: number): number {
+  const map = read();
+  const entry = map[file];
+  if (!entry?.beats.length) return 0;
+  const a = Math.min(from, to);
+  const b = Math.max(from, to);
+  const before = entry.beats.length;
+  entry.beats = entry.beats.filter((x) => x < a || x > b);
+  if (entry.beats.length === before) return 0;
+  delete entry.from;
+  delete entry.to;
+  write(map);
+  return before - entry.beats.length;
+}
 // Save the beat range a video should cut from. Indexes are clamped to the saved
 // grid and ordered, so a backwards drag can't produce a negative-length slice.
 // Passing null for both clears the range back to "use the whole track".

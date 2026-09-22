@@ -60,6 +60,10 @@ function entryDrop(entry: MusicEntry): number | undefined {
 // manifest, the second to start playback from (else undefined → auto-detect).
 export interface MusicTrack {
   url: string;
+  // The track's stable id (manifest filename, or a `local:…` id). Carried so a
+  // caller can look up the settings saved against it in Brain — the beat grid
+  // (lib/musicBeats.ts) especially, which the Video tool cuts on.
+  file?: string;
   start?: number;
   // The second of the track that must be heard on the before→after cut of a
   // Characters deck. Set in the Brain "Characters music" editor; the exporter
@@ -201,5 +205,5 @@ export async function pickMusicTrack(gender: MusicGender, scope: MusicScope = 'v
   const pool = await poolFor(gender, scope);
   if (!pool.length) return null;
   const c = pool[Math.floor(Math.random() * pool.length)];
-  return { url: c.url, start: c.start, drop: c.drop };
+  return { url: c.url, file: c.file, start: c.start, drop: c.drop };
 }

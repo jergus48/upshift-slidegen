@@ -10,6 +10,8 @@ import { QueueView } from './views/QueueView';
 import { CreateView } from './views/CreateView';
 import { PhotoPackView } from './views/PhotoPackView';
 import { CharactersView } from './views/CharactersView';
+import { VideoView } from './views/VideoView';
+import { listQueuedVideos, subscribeQueuedVideos } from './lib/localVideos';
 import { LibraryView } from './views/LibraryView';
 import { RedditView } from './views/RedditView';
 import { ReplyView } from './views/ReplyView';
@@ -167,6 +169,15 @@ export default function App() {
   // before its load effect has run.
   const activeProjectId = workspace?.activeProjectId;
   const [queueProject, setQueueProject] = useState<string | null>(null);
+  // Finished beat videos waiting in the Queue. They are stored apart from
+  // `queue` (IndexedDB, not localStorage — see lib/localVideos.ts), but the
+  // sidebar badge is a count of everything waiting, so it has to include them.
+  const [queuedVideoCount, setQueuedVideoCount] = useState(0);
+  useEffect(() => {
+    const load = () => void listQueuedVideos().then((v) => setQueuedVideoCount(v.length));
+    load();
+    return subscribeQueuedVideos(load);
+  }, []);
   useEffect(() => {
     if (!activeProjectId) return;
     setQueue(loadQueue(activeProjectId));
@@ -758,7 +769,7 @@ export default function App() {
       <Sidebar
         activeView={activeView}
         onSelectView={(v) => { setActiveView(v); setSidebarOpen(false); }}
-        queueCount={queue.length}
+        queueCount={queue.length + queuedVideoCount}
         scheduledCount={0}
         projects={config.projects}
         activeProjectId={config.activeProjectId}
@@ -828,6 +839,7 @@ export default function App() {
             onGenerateVideos={generateCharacterVideos}
           />
         )}
+        {activeView === 'video' && <VideoView onQueued={() => setActiveView('queue')} />}
         {activeView === 'library' && <LibraryView hasApify={hasApify} pinterestActor={config.pinterestActor} />}
         {activeView === 'reddit' && <RedditView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'reply' && <ReplyView canGenerate={hasOpenrouter} model={config.model} />}

@@ -29,13 +29,15 @@ export async function getMergedPacks(includeHidden = false): Promise<LibraryPack
   const unfiled = new Map<string, number>();
   for (const img of images) {
     if (!map.has(img.pack)) {
-      map.set(img.pack, { name: img.pack, source: img.source, count: 0, covers: [] });
+      map.set(img.pack, { name: img.pack, source: img.source, count: 0, covers: [], videoCount: 0 });
       subAcc.set(img.pack, new Map());
       unfiled.set(img.pack, 0);
     }
     const p = map.get(img.pack)!;
     p.count++;
-    if (p.covers.length < 4) p.covers.push(img.url);
+    if (img.kind === 'video') p.videoCount = (p.videoCount || 0) + 1;
+    // Covers are thumbnails — a clip has no still to show, so photos fill them.
+    if (p.covers.length < 4 && img.kind !== 'video') p.covers.push(img.url);
     if (img.subfolder) {
       const subs = subAcc.get(img.pack)!;
       if (!subs.has(img.subfolder)) subs.set(img.subfolder, { count: 0, covers: [] });

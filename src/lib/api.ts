@@ -175,6 +175,16 @@ export const regradeVideo = (video: string, strength: 1 | 2, codec: 'h264' | 'h2
     body: JSON.stringify({ video, strength, codec }),
   });
 
+// Optical-flow motion blur (the RSMB look), run by the local ffmpeg. Slow —
+// budget roughly 10x the video's length — so callers should say what's
+// happening rather than looking hung. `cuts` are the export's own cut times in
+// seconds; passing them beats the server detecting them.
+export const motionBlurVideo = (video: string, strength: 'light' | 'medium' | 'heavy' | 'extreme' = 'medium', cuts: number[] = []) =>
+  req<{ video: string }>('/video/motion-blur', {
+    method: 'POST',
+    body: JSON.stringify({ video, strength, cuts }),
+  });
+
 // Comment counts for a grid of videos — one cheap watch-page read each, so the
 // cards can show which uploads have comments without opening them.
 export const getYoutubeCommentCounts = (videos: string[], noCache = false) =>
