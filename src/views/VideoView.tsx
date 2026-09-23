@@ -74,6 +74,9 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
   // styles, which is the only way to compare them on the same characters and
   // the same songs.
   const [style, setStyle] = useState<VideoStyle | ''>('');
+  // A track's name, or '' to roll one per video. Names are unique across the
+  // ready pool — a format's carries its label — so they double as the key.
+  const [trackName, setTrackName] = useState('');
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>('app');
   // Motion blur, on or off — nothing in between. The four strengths that used
   // to be here were a false choice: light is too subtle to see on a 0.3s cut,
@@ -232,7 +235,8 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
           // characters are selected.
           if (n >= MAX_PER_BATCH) break outer;
           const jobId = `job-${Date.now()}-${n++}`;
-          const track = tracks[Math.floor(Math.random() * tracks.length)];
+          const track =
+            tracks.find((t) => t.name === trackName) ?? tracks[Math.floor(Math.random() * tracks.length)];
           setJobs((js) => [...js, { id: jobId, label: `${character.name} · ${track.name}`, stage: 'Building…' }]);
           try {
             const build = buildVideo(character, library, track, {
@@ -581,6 +585,28 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
 
             <div>
               <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
+                Song
+              </label>
+              <select
+                value={trackName}
+                disabled={rendering}
+                onChange={(e) => setTrackName(e.target.value)}
+                className="w-full h-9 bg-bg border border-line rounded-lg px-2.5 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10 disabled:opacity-50"
+              >
+                <option value="">Random per video</option>
+                {tracks.map((t) => (
+                  <option key={t.name} value={t.name}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-ink-6 mt-1">
+                Out of the character tracks with a drop and a beat grid, and the formats cut to them.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
                 Streak
               </label>
               <select
@@ -620,7 +646,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
                 ))}
               </select>
               <p className="text-[11px] text-ink-6 mt-1">
-                On screen for the whole chopped half. From the drop on, every clip carries “{previewStreak.label} clean”.
+                On screen for the whole video.
               </p>
             </div>
 

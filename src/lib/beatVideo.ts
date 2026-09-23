@@ -560,19 +560,10 @@ export async function renderBeatVideo(
     recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
   });
 
-  // The caption for time `t`: the hook until the drop, the clean line after it,
-  // and the closing line on the final clip.
-  const lastClip = clipSegments[clipSegments.length - 1];
-  // The closing line belongs to whatever the video actually ends on. With a
-  // stats close that is the stats slot, not the last clip — otherwise the
-  // payoff line would come up and then be replaced by the clean line for the
-  // final two seconds.
-  const statsClose = plan.segments.find((x) => x.kind === 'stats' && x.index === 1);
-  const closer = statsClose ?? lastClip;
-  const captionAt = (t: number, seg: Segment | undefined): string => {
-    if (seg && closer && seg === closer) return captions.closing;
-    return t < plan.dropAt ? captions.hook : captions.clean;
-  };
+  // The caption: the hook, on screen for the whole video. It used to switch to
+  // the clean line at the drop and a closing line on the final shot; one line
+  // held throughout reads better than three swapped under the viewer.
+  const captionAt = (_t: number, _seg: Segment | undefined): string => captions.hook;
 
   onStage('Recording…');
   try {

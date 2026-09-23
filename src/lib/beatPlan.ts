@@ -548,10 +548,26 @@ export function buildBeatPlan(beats: number[], drop: number, opts: BeatPlanOptio
   }
 
   for (const gap of opts.gaps ?? []) {
-    for (const seg of segments) {
-      const from = seg.from + audioFrom;
-      const to = seg.to + audioFrom;
-      if (from >= gap.from - 0.01 && to <= gap.to + 0.01) seg.kind = 'gap';
+    const gapFrom = gap.from - audioFrom;
+    const gapTo = gap.to - audioFrom;
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      if (seg.from >= gapFrom - 0.01 && seg.to <= gapTo + 0.01) {
+        seg.kind = 'gap';
+        continue;
+      }
+      // A longer segment the hole sits across — a stats hold running into the
+      // drop — is cut at the hole's edges, the same way a fill window cuts its
+      // host above. Without this the hold swallowed the hole whole.
+      const cutFrom = Math.max(seg.from, gapFrom);
+      const cutTo = Math.min(seg.to, gapTo);
+      if (cutTo - cutFrom <= 0.01) continue;
+      const pieces: Segment[] = [];
+      if (cutFrom - seg.from > 0.01) pieces.push({ ...seg, to: cutFrom });
+      pieces.push({ ...seg, kind: 'gap', from: cutFrom, to: cutTo });
+      if (seg.to - cutTo > 0.01) pieces.push({ ...seg, from: cutTo });
+      segments.splice(i, 1, ...pieces);
+      i += pieces.length - 1;
     }
   }
 
