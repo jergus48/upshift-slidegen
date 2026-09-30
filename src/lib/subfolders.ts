@@ -39,6 +39,12 @@ export function getSubfolders(pack: string): string[] {
   return read()[pack] || [];
 }
 
+// Every pack with declared subfolders — including packs with no images yet,
+// such as a character's pack created before anything was uploaded to it.
+export function listRegisteredPacks(): string[] {
+  return Object.keys(read());
+}
+
 // Add a subfolder name to a pack. Trimmed; no-op on blank or duplicate.
 export function addSubfolder(pack: string, name: string): void {
   const clean = name.trim();

@@ -7,7 +7,7 @@ import { scrapePinterest } from '../lib/api';
 import { getMergedLibrary } from '../lib/mergedLibrary';
 import { addLocalFiles, addLocalImages, removeLocalImage, setImageSubfolder, moveSubfolderImages, renameLocalPack } from '../lib/localLibrary';
 import { getHiddenPacks, setPackHidden, renameHiddenPack } from '../lib/hiddenPacks';
-import { getSubfolders, addSubfolder, removeSubfolder, renamePackSubfolders } from '../lib/subfolders';
+import { getSubfolders, addSubfolder, removeSubfolder, renamePackSubfolders, listRegisteredPacks, subscribeSubfolders } from '../lib/subfolders';
 import { buildLibraryZip, fileSlug, saveZip } from '../lib/libraryExport';
 
 // Filter sentinels for the subfolder view within a pack.
@@ -35,6 +35,7 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
   const [hidden, setHidden] = useState<Set<string>>(() => getHiddenPacks());
   const [downloading, setDownloading] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   // Which subfolder is being viewed per pack (ALL_SUB default), the new-subfolder
   // input text per pack, and the drop target currently hovered ("pack::bin").
   const [viewSub, setViewSub] = useState<Record<string, string>>({});
@@ -185,15 +186,60 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
     }
   };
 
-  // Group by pack, scraped packs first.
+  // A whole folder: its name becomes the pack, the folders inside it become
+  // the pack's subfolders. This is how a character's material goes in — a
+  // folder named after the character holding clip_chopped/, clip_buffed/, …
+  // (see the Video tab). Anything deeper is filed under its top subfolder.
+  const uploadFolder = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setError(null);
+    setNote(null);
+    setUploading(true);
+    const list = [...files].filter((f) => !f.name.startsWith('.'));
+    const parts = (f: File) => (f.webkitRelativePath || f.name).split('/');
+    const pack = parts(list[0])[0] || 'My Uploads';
+    const subOf = (f: File) => {
+      const p = parts(f);
+      return p.length > 2 ? p[1] : undefined;
+    };
+    try {
+      const { added, skipped } = await addLocalFiles(pack, list, 'uploaded', subOf);
+      const subs = [...new Set(added.map((a) => a.subfolder).filter((x): x is string => Boolean(x)))];
+      for (const sub of subs) addSubfolder(pack, sub);
+      if (added.length) {
+        setNote(`Added ${added.length} file${added.length === 1 ? '' : 's'} to "${pack}"${subs.length ? ` in ${subs.join(', ')}` : ''}.`);
+      }
+      if (skipped.length) {
+        setError(
+          `${skipped.length} file${skipped.length === 1 ? '' : 's'} skipped — ` +
+            skipped.map((s) => `${s.name} (${s.reason})`).join('; ')
+        );
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+      if (folderInputRef.current) folderInputRef.current.value = '';
+    }
+  };
+
+  // Re-render when subfolders are declared elsewhere (a new character).
+  const [subTick, setSubTick] = useState(0);
+  useEffect(() => subscribeSubfolders(() => setSubTick((n) => n + 1)), []);
+
+  // Group by pack, scraped packs first. Packs that only exist as declared
+  // subfolders (a character's, before anything is uploaded) show up empty.
   const groups = useMemo(() => {
     const map = new Map<string, LibraryImage[]>();
     for (const img of images || []) {
       if (!map.has(img.pack)) map.set(img.pack, []);
       map.get(img.pack)!.push(img);
     }
+    for (const pack of listRegisteredPacks()) if (!map.has(pack)) map.set(pack, []);
     return [...map.entries()];
-  }, [images]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [images, subTick]);
 
   const existingPacks = useMemo(() => groups.map(([pack]) => pack), [groups]);
 
@@ -302,6 +348,24 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
               >
                 {uploading ? 'Uploading…' : 'Upload photos or clips'}
               </Button>
+              <input
+                ref={folderInputRef}
+                type="file"
+                // @ts-expect-error — non-standard but supported by every current browser
+                webkitdirectory=""
+                multiple
+                onChange={(e) => uploadFolder(e.target.files)}
+                className="hidden"
+              />
+              <Button
+                variant="secondary"
+                size="lg"
+                icon={<Upload size={13} />}
+                onClick={() => folderInputRef.current?.click()}
+                disabled={uploading}
+              >
+                Upload a folder
+              </Button>
             </div>
             <p className="text-[12px] text-ink-5 mt-2">
               Upload your own images to use as slide backgrounds, or video clips for the Video tool to cut in after the
@@ -322,7 +386,7 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
                 const isHidden = hidden.has(pack);
                 // Subfolders exist only for the user's own (local) images — the
                 // bundled aesthetic packs are read-only and can't be re-organised.
-                const isLocal = imgs.some((i) => i.source !== 'bundled');
+                const isLocal = imgs.length === 0 || imgs.some((i) => i.source !== 'bundled');
                 // Renaming re-tags image records, which only exist for local
                 // images — a pack holding any bundled file can't be renamed.
                 const isRenameable = imgs.every((i) => i.source !== 'bundled');

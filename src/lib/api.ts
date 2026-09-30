@@ -185,6 +185,22 @@ export const motionBlurVideo = (video: string, strength: 'light' | 'medium' | 'h
     body: JSON.stringify({ video, strength, cuts }),
   });
 
+// Cut a recording to exactly [start, start + duration] seconds.
+// `song`/`songFrom`/`speed` let the server find where the music really starts.
+export const trimVideo = (
+  video: string,
+  opts: { start: number; duration: number; song?: string; songFrom?: number; speed?: number },
+) => req<{ video: string; onset: number; found: boolean }>('/video/trim', { method: 'POST', body: JSON.stringify({ video, ...opts }) });
+
+// CapCut format projects: what's there, and importing them into the app.
+export interface CapcutProject { project: string; song: string; format: string; modified: string }
+export const getCapcutProjects = () => req<{ dir: string; projects: CapcutProject[] }>('/formats/capcut');
+export const importCapcutFormats = () =>
+  req<{ imported: { id: string; warnings: string[] }[]; errors: { project: string; error: string }[] }>(
+    '/formats/capcut/import',
+    { method: 'POST' },
+  );
+
 // Comment counts for a grid of videos — one cheap watch-page read each, so the
 // cards can show which uploads have comments without opening them.
 export const getYoutubeCommentCounts = (videos: string[], noCache = false) =>

@@ -179,6 +179,19 @@ export function QueueView({
     }
   };
 
+  // Delete every ticked video — the same confirm as the slideshows' bulk remove.
+  const [deletingVideos, setDeletingVideos] = useState(false);
+  const deletePickedVideos = async () => {
+    const n = pickedVideoList.length;
+    if (!n || !window.confirm(`Delete ${n} video${n === 1 ? '' : 's'} from the queue? This can't be undone.`)) return;
+    setDeletingVideos(true);
+    try {
+      for (const v of pickedVideoList) await removeQueuedVideo(v.id);
+    } finally {
+      setDeletingVideos(false);
+    }
+  };
+
   const removeSelected = () => {
     // Native Chrome confirm dialog before a destructive bulk removal.
     const ok = window.confirm(
@@ -358,6 +371,15 @@ export function QueueView({
                   disabled={zippingVideos || pickedVideoList.length === 0}
                 >
                   {zippingVideos ? 'Zipping…' : `Download ${pickedVideoList.length} as zip`}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={deletingVideos ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                  onClick={() => void deletePickedVideos()}
+                  disabled={deletingVideos || pickedVideoList.length === 0}
+                >
+                  {deletingVideos ? 'Deleting…' : `Delete ${pickedVideoList.length}`}
                 </Button>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

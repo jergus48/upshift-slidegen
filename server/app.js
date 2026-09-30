@@ -17,6 +17,8 @@ import { fetchChannels } from './youtube.js'
 import { fetchCommentsBatch, fetchCommentCountsBatch } from './ytComments.js'
 import { regradeVideo, ffmpegAvailable } from './regrade.js'
 import { motionBlur } from './motionBlur.js'
+import { scanProjects, importAll, draftsDir } from './capcutImport.js'
+import { trimVideo } from './trimVideo.js'
 import { withViewDeltas } from './viewSnapshots.js'
 import { fetchProfiles } from './social.js'
 import { fetchQuotes, fetchFxRates, analyzeSymbol, fetchNews, searchSymbols, rankIdeaCandidates, buildPortfolioPrompt, buildIdeasPrompt, buildWhyPrompt } from './stocks.js'
@@ -349,6 +351,34 @@ app.post('/api/video/motion-blur', h(async (req, res) => {
   const video = await motionBlur(Buffer.from(b64, 'base64'), { strength, engine, cuts })
   res.json({ video: 'data:video/mp4;base64,' + video.toString('base64') })
 }))
+
+// The video formats, read out of CapCut projects named <song>-<format>
+// (server/capcutImport.js). Scanning is cheap and only lists them; importing
+// rewrites public/formats/capcut/ from whatever is there now.
+app.get('/api/formats/capcut', h(async (_req, res) => {
+  res.json({ dir: draftsDir(), projects: await scanProjects() })
+}))
+// Cut a recording to exactly the music: [start, start + duration].
+app.post('/api/video/trim', h(async (req, res) => {
+  const raw = String(req.body?.video || '')
+  const b64 = raw.startsWith('data:') ? raw.slice(raw.indexOf(',') + 1) : raw
+  if (!b64) return res.status(400).json({ error: 'No video supplied.' })
+  const start = Math.max(0, Number(req.body?.start) || 0)
+  const duration = Number(req.body?.duration)
+  // The format's song, by file name only — it is always one of the assets the
+  // CapCut import copied, never an arbitrary path.
+  const name = req.body?.song ? String(req.body.song).split('/').pop() : ''
+  const song = name ? join(__dirname, '..', 'public/formats/capcut/assets', name) : undefined
+  const { video, onset, found } = await trimVideo(Buffer.from(b64, 'base64'), {
+    start,
+    duration,
+    song: song && existsSync(song) ? song : undefined,
+    songFrom: Number(req.body?.songFrom) || 0,
+    speed: Number(req.body?.speed) || 1,
+  })
+  res.json({ video: 'data:video/mp4;base64,' + video.toString('base64'), onset, found })
+}))
+app.post('/api/formats/capcut/import', h(async (_req, res) => res.json(await importAll())))
 
 // How many comments each video has, for the grid badges. One watch-page read
 // per video (see fetchCommentCountsBatch), so the panel can show what needs a

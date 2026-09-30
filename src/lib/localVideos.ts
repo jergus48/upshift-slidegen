@@ -28,7 +28,8 @@ export interface QueuedVideoMeta {
   characterId: string;
   characterName: string;
   trackName: string;
-  style: VideoStyle;
+  // A beat-plan style, or the id of the CapCut format it was rendered into.
+  style: VideoStyle | string;
   // Seconds, from the plan rather than the file.
   duration: number;
   // Where this video should be written — a download folder preset id, or ''

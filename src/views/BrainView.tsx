@@ -8,6 +8,7 @@ import { MusicStartsEditor } from '../components/MusicStartsEditor';
 import { DownloadFoldersEditor } from '../components/DownloadFoldersEditor';
 import { supportsFolderPresets } from '../lib/downloadFolders';
 import { ServerFoldersEditor } from '../components/ServerFoldersEditor';
+import { CapcutFormatsEditor } from '../components/CapcutFormatsEditor';
 
 interface BrainViewProps {
   brain: BrainState;
@@ -178,6 +179,14 @@ export function BrainView({ brain, onChange, povPackMen, povPackWomen, onChangeP
             description="Folders on the machine running the render server. Add the paths you use once here, and every character can be pointed at one by name instead of retyping a path. Left unused, server renders land in ~/.slidesmith/render-jobs."
           >
             <ServerFoldersEditor />
+          </Section>
+
+          {/* Video formats, collected from CapCut */}
+          <Section
+            title="Video formats"
+            description="The edits the Video tab renders — each one a CapCut project cut by hand to a song, with placeholder clips where the character's material goes. Every cut, speed, filter and effect is kept exactly; only the clips change from video to video. Name projects <song>-scoreboard, <song>-rating or <song>-rating-app, then import."
+          >
+            <CapcutFormatsEditor />
           </Section>
 
           {/* Video music start points */}

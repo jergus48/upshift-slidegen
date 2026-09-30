@@ -1,0 +1,334 @@
+{
+  "id": "here-slowed-scoreboard",
+  "song": "here-slowed",
+  "format": "scoreboard",
+  "project": "here-slowed-scoreboard",
+  "importedAt": "2026-09-29T22:40:52.920Z",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "duration": 16,
+  "drop": 7.067,
+  "audio": {
+    "file": "assets/Koenissegg-in-Monaco-monaco-fyp-viral-cars-luxurycars-.mp3",
+    "name": "Koenissegg in Monaco monaco fyp viral cars luxurycars .mp3",
+    "segments": [
+      {
+        "from": 0,
+        "to": 16,
+        "src": 0.1,
+        "speed": 1,
+        "volume": 1
+      }
+    ]
+  },
+  "video": [
+    {
+      "from": 0,
+      "to": 1.033,
+      "src": 0,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 1.033,
+      "to": 2.067,
+      "src": 1.033,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 2.067,
+      "to": 3.033,
+      "src": 2.067,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 3.033,
+      "to": 4,
+      "src": 3.033,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 4,
+      "to": 5.1,
+      "src": 4,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 5.1,
+      "to": 6.067,
+      "src": 5.1,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 6.067,
+      "to": 7.067,
+      "src": 0,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "rating_chopped"
+    },
+    {
+      "from": 7.067,
+      "to": 7.967,
+      "src": 0,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 7.967,
+      "to": 8.9,
+      "src": 0.9,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 8.9,
+      "to": 9.833,
+      "src": 1.833,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 9.833,
+      "to": 10.933,
+      "src": 2.767,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 10.933,
+      "to": 11.9,
+      "src": 3.867,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 11.9,
+      "to": 12.867,
+      "src": 4.833,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 12.867,
+      "to": 13.833,
+      "src": 5.8,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 13.833,
+      "to": 14.933,
+      "src": 6.767,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 14.933,
+      "to": 16,
+      "src": 0,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "rating_buffed"
+    }
+  ],
+  "overlays": [],
+  "filters": [
+    {
+      "from": 0,
+      "to": 7.067,
+      "name": "BW 3",
+      "intensity": 0.402,
+      "luts": [
+        {
+          "png": "assets/lut-BW-3-6857709401382326792-0.png",
+          "scaled": true
+        }
+      ]
+    }
+  ],
+  "effects": [
+    {
+      "from": 7.033,
+      "to": 7.1,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 7.933,
+      "to": 8,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 8.867,
+      "to": 8.933,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 9.8,
+      "to": 9.867,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 10.9,
+      "to": 10.967,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 11.867,
+      "to": 11.933,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 12.833,
+      "to": 12.9,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 13.8,
+      "to": 13.867,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 14.9,
+      "to": 14.967,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    }
+  ],
+  "warnings": []
+}

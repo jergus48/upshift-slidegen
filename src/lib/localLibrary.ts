@@ -226,7 +226,10 @@ export interface AddFilesResult {
 export async function addLocalFiles(
   pack: string,
   files: File[],
-  source: 'scraped' | 'uploaded'
+  source: 'scraped' | 'uploaded',
+  // Which subfolder each file lands in — for a folder upload, where the
+  // folders on disk become the pack's subfolders. Absent = Unfiled.
+  subfolderOf?: (file: File) => string | undefined
 ): Promise<AddFilesResult> {
   const packName = pack.trim() || (source === 'uploaded' ? 'My Uploads' : 'Scraped');
   const added: LibraryImage[] = [];
@@ -245,7 +248,8 @@ export async function addLocalFiles(
     }
     const id = `local:${Date.now()}-${Math.round(Math.random() * 1e6)}`;
     try {
-      await putRecord({ id, pack: packName, source, addedAt: new Date().toISOString(), blob: file, kind });
+      const subfolder = subfolderOf?.(file) || undefined;
+      await putRecord({ id, pack: packName, subfolder, source, addedAt: new Date().toISOString(), blob: file, kind });
     } catch (e) {
       const err = e as { name?: string };
       const reason =
@@ -256,7 +260,7 @@ export async function addLocalFiles(
       continue;
     }
     blobCache = null;
-    added.push({ id, url: urlFor(id, file), pack: packName, source, kind });
+    added.push({ id, url: urlFor(id, file), pack: packName, subfolder: subfolderOf?.(file) || undefined, source, kind });
   }
   return { added, skipped };
 }

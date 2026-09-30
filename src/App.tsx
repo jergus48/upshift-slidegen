@@ -37,7 +37,10 @@ import { libraryRef } from './lib/imageSrc';
 import { getQuitPresets, type Gender } from './lib/quitPresets';
 import { buildFixedShows } from './lib/fixedDeck';
 import { buildTransformationShows } from './lib/transformationDeck';
-import { getCharacters } from './lib/characters';
+import { ensureAllCharacterFolders, getCharacters } from './lib/characters';
+
+// Existing characters get their placeholder subfolders once per load.
+ensureAllCharacterFolders();
 import { resolveWritableFolder, getDefaultFolderId } from './lib/downloadFolders';
 import { submitServerRender } from './lib/serverRender';
 import type { MusicGender } from './lib/music';

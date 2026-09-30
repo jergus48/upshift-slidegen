@@ -1,0 +1,728 @@
+{
+  "id": "tesla-scoreboard",
+  "song": "tesla",
+  "format": "scoreboard",
+  "project": "tesla-scoreboard",
+  "importedAt": "2026-09-29T22:40:52.928Z",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "duration": 17.433,
+  "drop": 8.733,
+  "audio": {
+    "file": "assets/tesla-slowed-electro-mix-.mp3",
+    "name": "tesla (slowed electro mix).mp3",
+    "segments": [
+      {
+        "from": 0,
+        "to": 17.433,
+        "src": 10.8,
+        "speed": 1,
+        "volume": 1
+      }
+    ]
+  },
+  "video": [
+    {
+      "from": 0,
+      "to": 0.3,
+      "src": 0,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 0.3,
+      "to": 0.7,
+      "src": 0.3,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 0.7,
+      "to": 1.3,
+      "src": 0.7,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 1.3,
+      "to": 1.6,
+      "src": 1.3,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 1.6,
+      "to": 2.067,
+      "src": 1.6,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 2.067,
+      "to": 2.3,
+      "src": 2.067,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 2.3,
+      "to": 2.867,
+      "src": 2.3,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 2.867,
+      "to": 3.433,
+      "src": 2.867,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 3.433,
+      "to": 3.733,
+      "src": 3.433,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 3.733,
+      "to": 4.167,
+      "src": 3.733,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 4.167,
+      "to": 4.5,
+      "src": 4.167,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 4.5,
+      "to": 5,
+      "src": 4.5,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 5,
+      "to": 5.6,
+      "src": 5,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 5.6,
+      "to": 5.967,
+      "src": 5.6,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 5.967,
+      "to": 6.333,
+      "src": 5.967,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 6.333,
+      "to": 6.667,
+      "src": 6.333,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_chopped"
+    },
+    {
+      "from": 6.667,
+      "to": 8.1,
+      "src": 0,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "scoreboard_chopped"
+    },
+    {
+      "from": 8.733,
+      "to": 9.167,
+      "src": 0,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 9.167,
+      "to": 9.4,
+      "src": 0.433,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 9.4,
+      "to": 9.933,
+      "src": 0.667,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 9.933,
+      "to": 10.433,
+      "src": 1.2,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 10.433,
+      "to": 11.067,
+      "src": 1.7,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 11.067,
+      "to": 11.567,
+      "src": 2.333,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 11.567,
+      "to": 12.067,
+      "src": 2.833,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 12.067,
+      "to": 12.367,
+      "src": 3.333,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 12.367,
+      "to": 12.633,
+      "src": 3.633,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 12.633,
+      "to": 12.867,
+      "src": 3.9,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 12.867,
+      "to": 13.167,
+      "src": 4.133,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 13.167,
+      "to": 13.667,
+      "src": 4.433,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 13.667,
+      "to": 14.2,
+      "src": 4.933,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 14.2,
+      "to": 14.767,
+      "src": 0,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "scoreboard_buffed"
+    },
+    {
+      "from": 14.767,
+      "to": 15.1,
+      "src": 6.033,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 15.1,
+      "to": 15.4,
+      "src": 6.367,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 15.4,
+      "to": 15.633,
+      "src": 6.667,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 15.633,
+      "to": 15.833,
+      "src": 6.9,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 15.833,
+      "to": 16.1,
+      "src": 7.1,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 16.1,
+      "to": 16.467,
+      "src": 7.367,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    },
+    {
+      "from": 16.467,
+      "to": 17.433,
+      "src": 7.733,
+      "speed": 1,
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "alpha": 1,
+      "flip": false,
+      "role": "clip_buffed"
+    }
+  ],
+  "overlays": [],
+  "filters": [
+    {
+      "from": 0,
+      "to": 6.667,
+      "name": "BW 3",
+      "intensity": 0.397,
+      "luts": [
+        {
+          "png": "assets/lut-BW-3-6857709401382326792-0.png",
+          "scaled": true
+        }
+      ]
+    }
+  ],
+  "effects": [
+    {
+      "from": 8.7,
+      "to": 8.767,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 9.133,
+      "to": 9.2,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 9.367,
+      "to": 9.433,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 9.9,
+      "to": 9.967,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 10.4,
+      "to": 10.467,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 11.033,
+      "to": 11.1,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 11.533,
+      "to": 11.6,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 12.033,
+      "to": 12.1,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 12.333,
+      "to": 12.4,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 12.6,
+      "to": 12.667,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 12.833,
+      "to": 12.9,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 13.133,
+      "to": 13.2,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 13.633,
+      "to": 13.7,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 14.167,
+      "to": 14.233,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 14.733,
+      "to": 14.8,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 15.067,
+      "to": 15.133,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 15.367,
+      "to": 15.433,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 15.6,
+      "to": 15.667,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 15.8,
+      "to": 15.867,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 16.067,
+      "to": 16.133,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    },
+    {
+      "from": 16.433,
+      "to": 16.5,
+      "effect": "shake",
+      "params": {
+        "effects_adjust_speed": 0.333,
+        "effects_adjust_blur": 0.5
+      }
+    }
+  ],
+  "warnings": []
+}

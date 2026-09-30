@@ -13,6 +13,7 @@
 // server + this browser's scraped/uploaded ones), so a package is curated in the
 // Library view like every other pack, and a deck draws random images out of it.
 import { setPackHidden } from './hiddenPacks';
+import { ensureRoleFolders } from './capcutFormats';
 
 const KEY = 'slidesmith:characters';
 
@@ -381,6 +382,7 @@ export function addCharacter(name: string): Character {
     statsOutToken: [],
   };
   write({ ...store, characters: [...store.characters, character] });
+  ensureRoleFolders(character.name);
   return character;
 }
 
@@ -390,6 +392,12 @@ export function renameCharacter(id: string, name: string): void {
     ...store,
     characters: store.characters.map((c) => (c.id === id ? { ...c, name: name.trim() || c.name } : c)),
   });
+  if (name.trim()) ensureRoleFolders(name);
+}
+
+// Characters made before their folders were created up front get them too.
+export function ensureAllCharacterFolders(): void {
+  for (const c of read().characters) ensureRoleFolders(c.name);
 }
 
 // Only the character is dropped — the library packs it pointed at are untouched,
