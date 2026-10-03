@@ -17,6 +17,7 @@ import {
   type CapcutFormat,
 } from '../lib/capcutFormats';
 import { renderCapcutVideo } from '../lib/capcutVideo';
+import { HASHTAGS, pickScript } from '../lib/capcutScripts';
 import { beatVideoFileName, downloadBlob } from '../lib/beatVideo';
 import { addQueuedVideo } from '../lib/localVideos';
 import { createZip, type ZipEntry } from '../lib/zip';
@@ -123,6 +124,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
       outer: for (const character of runnable) {
         const usable = fits(character);
         let deck: CapcutFormat[] = [];
+        let lastScript: string | undefined;
         for (let i = 0; i < count; i++) {
           if (n >= MAX_PER_BATCH) break outer;
           // A random format each video, drawn from a shuffled deck so none
@@ -132,8 +134,11 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
           const jobId = `job-${Date.now()}-${n++}`;
           const label = `${character.name} · ${formatLabel(format)}`;
           setJobs((js) => [...js, { id: jobId, label, stage: 'Starting…' }]);
+          const script = pickScript(lastScript);
+          lastScript = script.id;
           try {
             const blob = await renderCapcutVideo(format, pools.get(character.id) || {}, {
+              script,
               onStage: (stage) => patch(jobId, { stage }),
               onProgress: (progress) => patch(jobId, { progress }),
             });
@@ -151,6 +156,9 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
                   style: format.id,
                   duration: format.duration,
                   folderId: character.folderId || '',
+                  hook: script.ch[0],
+                  caption: script.caption,
+                  hashtags: HASHTAGS,
                 },
                 blob,
               );

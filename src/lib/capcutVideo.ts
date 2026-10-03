@@ -36,6 +36,7 @@ import {
   type RolePools,
 } from './capcutFormats';
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+import type { TextScript } from './capcutScripts';
 
 const BITRATE = 10_000_000;
 
@@ -56,6 +57,8 @@ interface Shot {
 }
 
 export interface CapcutRenderOptions {
+  // The words on screen; none when left out.
+  script?: TextScript;
   onStage?: (stage: string) => void;
   onProgress?: (p: number) => void;
 }
@@ -349,7 +352,7 @@ function place(
 export async function renderCapcutVideo(
   format: CapcutFormat,
   pools: RolePools,
-  { onStage = () => {}, onProgress = () => {} }: CapcutRenderOptions = {},
+  { script, onStage = () => {}, onProgress = () => {} }: CapcutRenderOptions = {},
 ): Promise<Blob> {
   const W = format.width;
   const H = format.height;
@@ -423,6 +426,7 @@ export async function renderCapcutVideo(
   }
   const audio = await oac.startRendering();
 
+  const cues = script ? cuesFor(format, script) : [];
   const shotAt = (t: number) => shots.find((s) => t >= s.piece.from && t < s.piece.to);
   const filterAt = (t: number) => format.filters.find((f) => t >= f.from && t < f.to);
   const effectsAt = (t: number) => format.effects.filter((e) => t >= e.from && t < e.to);
@@ -482,6 +486,9 @@ export async function renderCapcutVideo(
         ctx.globalCompositeOperation = 'source-over';
       }
     }
+
+    const cue = cues.find((c) => t >= c.from && t < c.to);
+    if (cue) drawText(ctx, cue.text, W, H);
 
     pass?.draw(comp, filterAt(t));
   };
@@ -583,4 +590,90 @@ function aacConfig(sampleRate: number, channels: number): Uint8Array {
   let idx = RATES.indexOf(sampleRate);
   if (idx < 0) idx = 4;
   return new Uint8Array([(2 << 3) | (idx >> 1), ((idx & 1) << 7) | (channels << 3)]);
+}
+
+// ── On-screen text ───────────────────────────────────────────────────────────
+interface Cue {
+  from: number;
+  to: number;
+  text: string;
+}
+
+// Lay a script over the format's phases: `ch` across the chopped clips, `gap`
+// over the black gap before the drop (or the last stretch of chopped when
+// there's none), `bf` across the buffed clips, `sc` over the screens. Lines
+// change on a cut, never mid-shot.
+export function cuesFor(format: CapcutFormat, script: TextScript): Cue[] {
+  const v = format.video;
+  const cuts = [...new Set(v.flatMap((p) => [p.from, p.to]))].sort((a, b) => a - b);
+  const isClip = (p: FormatPiece) => p.role === 'clip_chopped' || p.role === 'clip_buffed';
+  const before = v.filter((p) => p.to <= format.drop + 0.01);
+  const after = v.filter((p) => p.from >= format.drop - 0.01);
+
+  const spread = (lines: string[], from: number, to: number): Cue[] => {
+    if (!lines.length || to - from < 0.1) return [];
+    const marks = [from];
+    for (let k = 1; k < lines.length; k++) {
+      const target = from + ((to - from) * k) / lines.length;
+      const inside = cuts.filter((c) => c > marks[marks.length - 1] + 0.2 && c < to - 0.2);
+      marks.push(inside.length ? inside.reduce((a, b) => (Math.abs(b - target) < Math.abs(a - target) ? b : a)) : target);
+    }
+    marks.push(to);
+    return lines.map((text, i) => ({ from: marks[i], to: marks[i + 1], text }));
+  };
+
+  const cues: Cue[] = [];
+  const chClips = before.filter(isClip);
+  let chEnd = chClips.length ? Math.max(...chClips.map((p) => p.to)) : 0;
+  const lastShown = before.length ? Math.max(...before.map((p) => p.to)) : 0;
+  if (script.gap) {
+    if (format.drop - lastShown > 0.25) {
+      cues.push({ from: lastShown, to: format.drop, text: script.gap });
+    } else {
+      // No gap: the turn takes the last chopped shot.
+      const last = chClips.filter((p) => p.from < chEnd - 0.2).pop();
+      const from = last ? last.from : chEnd;
+      if (chEnd - from > 0.2) cues.push({ from, to: chEnd, text: script.gap });
+      chEnd = from;
+    }
+  }
+  cues.push(...spread(script.ch, 0, chEnd));
+
+  const bfClips = after.filter(isClip);
+  if (bfClips.length) {
+    cues.push(...spread(script.bf, format.drop, Math.max(...bfClips.map((p) => p.to))));
+  }
+  if (script.sc) {
+    for (const p of v) if (!isClip(p) && p.role !== 'asset') cues.push({ from: p.from, to: p.to, text: script.sc });
+  }
+  return cues.sort((a, b) => a.from - b.from);
+}
+
+// White, lightly shadowed, centred a little below the middle — the TikTok
+// caption look the reference accounts use.
+function drawText(ctx: CanvasRenderingContext2D, text: string, W: number, H: number) {
+  const size = Math.round(W * 0.052);
+  ctx.save();
+  ctx.font = `600 ${size}px "Proxima Nova", "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let line = '';
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (ctx.measureText(next).width > W * 0.8 && line) {
+      lines.push(line);
+      line = w;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  const lh = size * 1.2;
+  const y0 = H * 0.62 - ((lines.length - 1) * lh) / 2;
+  ctx.shadowColor = 'rgba(0,0,0,0.75)';
+  ctx.shadowBlur = size * 0.25;
+  ctx.shadowOffsetY = size * 0.04;
+  ctx.fillStyle = '#fff';
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, y0 + i * lh));
+  ctx.restore();
 }
