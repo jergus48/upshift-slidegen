@@ -52,6 +52,8 @@ interface Shot {
   media: Media | null;
   // Where in the media the piece starts.
   offset: number;
+  // A still: the media stays on `offset` for the whole piece.
+  hold?: boolean;
   // Character material fills the frame; format assets keep CapCut's fit.
   cover: boolean;
 }
@@ -137,9 +139,27 @@ function shuffle<T>(a: T[]): T[] {
 interface Plan {
   item: LibraryImage | null;
   offset: number;
+  hold?: boolean;
 }
 
 const isClipRole = (r: Role) => r === 'clip_chopped' || r === 'clip_buffed';
+
+// A screen cut straight against its other half (rating_chopped ↔
+// rating_buffed, back and forth on the beat). Replaying the screen's
+// animation from the top on every flick looks broken, so these show only the
+// screen's final frame — the score it lands on.
+function flickers(video: FormatPiece[], i: number): boolean {
+  const p = video[i];
+  if (p.role === 'asset' || isClipRole(p.role)) return false;
+  const kind = p.role.replace(/_(chopped|buffed)$/, '');
+  return [video[i - 1], video[i + 1]].some(
+    (q) =>
+      q &&
+      q.role !== p.role &&
+      q.role.startsWith(`${kind}_`) &&
+      (Math.abs(q.from - p.to) < 0.02 || Math.abs(p.from - q.to) < 0.02),
+  );
+}
 
 // Pieces cut back to back on the same placeholder.
 function runsOf(video: FormatPiece[]): number[][] {
@@ -192,7 +212,12 @@ export async function dealPieces(format: CapcutFormat, pools: RolePools): Promis
       const item = next(pool, lastOf.get(role));
       lastOf.set(role, item.id);
       const base = video[run[0]].src;
-      for (const i of run) out[i] = { item, offset: item.kind === 'video' ? Math.max(0, video[i].src - base) : 0 };
+      const L = item.kind === 'video' ? await lengthOf(item) : Infinity;
+      for (const i of run) {
+        if (item.kind !== 'video') out[i] = { item, offset: 0 };
+        else if (flickers(video, i) && isFinite(L)) out[i] = { item, offset: Math.max(0, L - 0.05), hold: true };
+        else out[i] = { item, offset: Math.max(0, video[i].src - base) };
+      }
       continue;
     }
 
@@ -379,7 +404,7 @@ export async function renderCapcutVideo(
         media = await loadMedia(url, 'video');
         await seek(media.el as HTMLVideoElement, plan.offset);
       }
-      return { piece, media, offset: plan.offset, cover: Boolean(plan.item) };
+      return { piece, media, offset: plan.offset, hold: plan.hold, cover: Boolean(plan.item) };
     }),
   );
 
@@ -439,7 +464,7 @@ export async function renderCapcutVideo(
     const waits: Promise<void>[] = [];
     const shot = shotAt(t);
     if (shot?.media?.kind === 'video') {
-      waits.push(seek(shot.media.el, shot.offset + (t - shot.piece.from) * (shot.piece.speed || 1)));
+      waits.push(seek(shot.media.el, shot.hold ? shot.offset : shot.offset + (t - shot.piece.from) * (shot.piece.speed || 1)));
     }
     for (const { o, media } of overlays) {
       if (media.kind === 'video' && t >= o.from && t < o.to) {
@@ -613,6 +638,27 @@ interface Cue {
 // there's none), `bf` across the buffed clips, `sc` over the screens. Lines
 // change on a cut, never mid-shot.
 export function cuesFor(format: CapcutFormat, script: TextScript): Cue[] {
+  return clearOfScreens(format, layCues(format, script));
+}
+
+// No words over the app recording or the scoreboard / rating screens: they
+// carry their own text. A cue that crosses one is cut around it.
+function clearOfScreens(format: CapcutFormat, cues: Cue[]): Cue[] {
+  const screens = format.video.filter((p) => p.role !== 'clip_chopped' && p.role !== 'clip_buffed');
+  let out = cues;
+  for (const sc of screens) {
+    out = out.flatMap((c) => {
+      if (c.to <= sc.from || c.from >= sc.to) return [c];
+      const parts: Cue[] = [];
+      if (sc.from - c.from > 0.1) parts.push({ ...c, to: sc.from });
+      if (c.to - sc.to > 0.1) parts.push({ ...c, from: sc.to });
+      return parts;
+    });
+  }
+  return out;
+}
+
+function layCues(format: CapcutFormat, script: TextScript): Cue[] {
   if (script.all) return [{ from: 0, to: format.duration, text: script.all }];
   const v = format.video;
   const cuts = [...new Set(v.flatMap((p) => [p.from, p.to]))].sort((a, b) => a - b);
@@ -652,9 +698,6 @@ export function cuesFor(format: CapcutFormat, script: TextScript): Cue[] {
   const bfClips = after.filter(isClip);
   if (bfClips.length) {
     cues.push(...spread(script.bf, format.drop, Math.max(...bfClips.map((p) => p.to))));
-  }
-  if (script.sc) {
-    for (const p of v) if (!isClip(p) && p.role !== 'asset') cues.push({ from: p.from, to: p.to, text: script.sc });
   }
   return cues.sort((a, b) => a.from - b.from);
 }
