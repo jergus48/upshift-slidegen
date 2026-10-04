@@ -3,7 +3,7 @@
   "song": "here",
   "format": "scoreboard",
   "project": "here-scoreboard",
-  "importedAt": "2026-10-03T17:03:25.137Z",
+  "importedAt": "2026-10-04T10:07:01.843Z",
   "fps": 30,
   "width": 1080,
   "height": 1920,
@@ -505,22 +505,7 @@
       "role": "rating_buffed"
     }
   ],
-  "overlays": [
-    {
-      "from": 7.233,
-      "to": 22.5,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.237,
-      "x": 0,
-      "y": 0.662,
-      "rotation": 0,
-      "alpha": 1,
-      "flip": false
-    }
-  ],
+  "overlays": [],
   "filters": [
     {
       "from": 0,

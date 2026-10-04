@@ -10,6 +10,7 @@ import {
   FORMAT_LABEL,
   formatLabel,
   listCapcutFormats,
+  folderFor,
   missingFor,
   poolsFor,
   ROLES,
@@ -17,7 +18,7 @@ import {
   type CapcutFormat,
 } from '../lib/capcutFormats';
 import { renderCapcutVideo } from '../lib/capcutVideo';
-import { HASHTAGS, pickScript } from '../lib/capcutScripts';
+import { HASHTAGS, TOPICS, pickScript, type ScriptTopic } from '../lib/capcutScripts';
 import { beatVideoFileName, downloadBlob } from '../lib/beatVideo';
 import { addQueuedVideo } from '../lib/localVideos';
 import { createZip, type ZipEntry } from '../lib/zip';
@@ -50,6 +51,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
   const [pickedFormats, setPickedFormats] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [count, setCount] = useState(1);
+  const [topic, setTopic] = useState<ScriptTopic>('screen');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [rendering, setRendering] = useState(false);
   const [zipping, setZipping] = useState(false);
@@ -62,6 +64,8 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
         .then(([imgs, fs]) => {
           setLibrary(imgs);
           setFormats(fs);
+          // Every format starts picked; untick the ones to leave out.
+          setPickedFormats((p) => (p.length ? p : fs.map((f) => f.id)));
         })
         .catch(() => setError('Could not load the library or the formats.'))
         .finally(() => setLoading(false)),
@@ -79,7 +83,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
   }, [formats]);
 
   const chosen = formats.filter((f) => pickedFormats.includes(f.id));
-  const pools = useMemo(() => new Map(characters.map((c) => [c.id, poolsFor(c, library)])), [characters, library]);
+  const pools = useMemo(() => new Map(characters.map((c) => [c.id, poolsFor(c, library, topic)])), [characters, library, topic]);
 
   // Per character, which of the chosen formats it can fill.
   const fits = (c: Character) => chosen.filter((f) => missingFor(f, pools.get(c.id) || {}).length === 0);
@@ -134,7 +138,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
           const jobId = `job-${Date.now()}-${n++}`;
           const label = `${character.name} · ${formatLabel(format)}`;
           setJobs((js) => [...js, { id: jobId, label, stage: 'Starting…' }]);
-          const script = pickScript(lastScript);
+          const script = pickScript(topic, lastScript);
           lastScript = script.id;
           try {
             const blob = await renderCapcutVideo(format, pools.get(character.id) || {}, {
@@ -158,7 +162,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
                   folderId: character.folderId || '',
                   hook: script.ch[0],
                   caption: script.caption,
-                  hashtags: HASHTAGS,
+                  hashtags: HASHTAGS[topic],
                 },
                 blob,
               );
@@ -263,7 +267,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
               {characters.map((c) => {
                 const p = pools.get(c.id) || {};
                 const ok = fits(c);
-                const missing = [...new Set(chosen.flatMap((f) => missingFor(f, p)))];
+                const missing = [...new Set(chosen.flatMap((f) => missingFor(f, p)))].map((r) => folderFor(r, topic));
                 return (
                   <label
                     key={c.id}
@@ -281,7 +285,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
                       {ROLES.map((r) => (
                         <span
                           key={r}
-                          title={`${r}: ${p[r]?.length || 0}`}
+                          title={`${folderFor(r, topic)}: ${p[r]?.length || 0}`}
                           className={`text-[10px] tabular-nums px-1.5 rounded text-white ${p[r]?.length ? '' : 'opacity-25'}`}
                           style={{ background: ROLE_COLOR[r] }}
                         >
@@ -304,6 +308,26 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
             </div>
 
             <div className="bg-card border border-line rounded-xl p-4 space-y-4">
+              <div>
+                <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
+                  Text
+                </label>
+                <div className="flex items-center gap-2">
+                  {TOPICS.map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => setTopic(t.key)}
+                      disabled={rendering}
+                      className={`px-3 h-9 rounded-lg border text-[13px] font-medium disabled:opacity-50 ${
+                        topic === t.key ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                  <span className="text-[11px] text-ink-6">a random script of this topic per video</span>
+                </div>
+              </div>
               <div>
                 <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
                   Videos per character

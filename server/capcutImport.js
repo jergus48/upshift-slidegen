@@ -9,7 +9,8 @@
 //
 // Anything else on the main video track is a REAL asset (the app's screen
 // recording) and is kept exactly where it was put, with its own in-point and
-// speed. Anything on a second video track is an overlay (the Upshift badge).
+// speed. Anything on a second video track is an overlay (except the Upshift
+// badge, which is dropped).
 //
 // Projects are found by name: `<song>-<format>`, format being one of FORMATS
 // below. The output is one JSON per project in public/formats/capcut/, plus the
@@ -261,6 +262,8 @@ export async function importProject(project, copied = new Set()) {
     if (t === main) continue
     for (const s of t.segments) {
       const m = mats.get(s.material_id)?.m || {}
+      // The Upshift badge got in the way; it's left out of every video.
+      if (/^upshift_badge/i.test(path.basename(m.path || ''))) continue
       const at = await sourceOf(m.path || '')
       if (!at) {
         warnings.push(`overlay missing on disk: ${m.path}`)

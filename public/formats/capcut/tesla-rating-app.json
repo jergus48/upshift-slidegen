@@ -3,7 +3,7 @@
   "song": "tesla",
   "format": "rating-app",
   "project": "tesla-rating-app",
-  "importedAt": "2026-10-03T17:03:25.221Z",
+  "importedAt": "2026-10-04T10:07:01.926Z",
   "fps": 30,
   "width": 1080,
   "height": 1920,
@@ -242,7 +242,7 @@
       "rotation": 0,
       "alpha": 1,
       "flip": false,
-      "role": "scoreboard_chopped"
+      "role": "rating_chopped"
     },
     {
       "from": 8.733,
@@ -416,7 +416,7 @@
     {
       "from": 14.2,
       "to": 14.767,
-      "src": 0,
+      "src": 6.1,
       "speed": 1,
       "scale": 1,
       "x": 0,
@@ -424,7 +424,7 @@
       "rotation": 0,
       "alpha": 1,
       "flip": false,
-      "role": "scoreboard_buffed"
+      "role": "rating_buffed"
     },
     {
       "from": 14.767,

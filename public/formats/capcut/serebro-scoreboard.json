@@ -3,7 +3,7 @@
   "song": "serebro",
   "format": "scoreboard",
   "project": "serebro-scoreboard",
-  "importedAt": "2026-10-03T17:03:25.191Z",
+  "importedAt": "2026-10-04T10:07:01.894Z",
   "fps": 30,
   "width": 1080,
   "height": 1920,
@@ -538,36 +538,7 @@
       "role": "clip_buffed"
     }
   ],
-  "overlays": [
-    {
-      "from": 8.333,
-      "to": 10.633,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.304,
-      "x": 0,
-      "y": 0.63,
-      "rotation": 0,
-      "alpha": 1,
-      "flip": false
-    },
-    {
-      "from": 11.3,
-      "to": 21.467,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.304,
-      "x": 0,
-      "y": 0.63,
-      "rotation": 0,
-      "alpha": 1,
-      "flip": false
-    }
-  ],
+  "overlays": [],
   "filters": [
     {
       "from": 0,

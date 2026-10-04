@@ -3,7 +3,7 @@
   "song": "summer",
   "format": "rating",
   "project": "summer-rating",
-  "importedAt": "2026-10-03T17:03:25.199Z",
+  "importedAt": "2026-10-04T10:07:01.906Z",
   "fps": 30,
   "width": 1080,
   "height": 1920,
@@ -479,50 +479,7 @@
       "role": "clip_buffed"
     }
   ],
-  "overlays": [
-    {
-      "from": 7.833,
-      "to": 13.4,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.35,
-      "x": 0,
-      "y": 0.611,
-      "rotation": 0,
-      "alpha": 0.5,
-      "flip": false
-    },
-    {
-      "from": 13.4,
-      "to": 14.033,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.354,
-      "x": 0,
-      "y": 0.611,
-      "rotation": 0,
-      "alpha": 0.5,
-      "flip": false
-    },
-    {
-      "from": 15.567,
-      "to": 23.6,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.354,
-      "x": 0,
-      "y": 0.611,
-      "rotation": 0,
-      "alpha": 0.5,
-      "flip": false
-    }
-  ],
+  "overlays": [],
   "filters": [
     {
       "from": 0,

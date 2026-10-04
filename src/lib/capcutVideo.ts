@@ -368,7 +368,7 @@ export async function renderCapcutVideo(
   const shots: Shot[] = await Promise.all(
     format.video.map(async (piece, i): Promise<Shot> => {
       const plan = plans[i];
-      const url = plan.item ? plan.item.url : piece.asset ? assetUrl(piece.asset) : '';
+      const url = plan.item ? plan.item.url : piece.asset ? assetUrl(appRecording(piece.asset, script)) : '';
       const kind = plan.item ? (plan.item.kind === 'video' ? 'video' : 'image') : piece.kind || 'video';
       if (!url) return { piece, media: null, offset: 0, cover: false };
       let media: Media;
@@ -592,6 +592,15 @@ function aacConfig(sampleRate: number, channels: number): Uint8Array {
   return new Uint8Array([(2 << 3) | (idx >> 1), ((idx & 1) << 7) | (channels << 3)]);
 }
 
+// The app screen-record a format was cut with shows screen time; a 🌽 video
+// gets the recording with the 🌽 apps blocked instead. Same length and size,
+// so it drops into the same pieces.
+const LUST_RECORDING = 'assets/upshift-pov-lust.mp4';
+function appRecording(asset: string, script?: TextScript): string {
+  if (script?.topic !== 'lust') return asset;
+  return /\/upshift-pov(\.old)?\.mp4$/.test(asset) ? LUST_RECORDING : asset;
+}
+
 // ── On-screen text ───────────────────────────────────────────────────────────
 interface Cue {
   from: number;
@@ -604,6 +613,7 @@ interface Cue {
 // there's none), `bf` across the buffed clips, `sc` over the screens. Lines
 // change on a cut, never mid-shot.
 export function cuesFor(format: CapcutFormat, script: TextScript): Cue[] {
+  if (script.all) return [{ from: 0, to: format.duration, text: script.all }];
   const v = format.video;
   const cuts = [...new Set(v.flatMap((p) => [p.from, p.to]))].sort((a, b) => a - b);
   const isClip = (p: FormatPiece) => p.role === 'clip_chopped' || p.role === 'clip_buffed';

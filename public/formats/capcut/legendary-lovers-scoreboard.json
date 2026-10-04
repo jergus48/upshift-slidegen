@@ -3,7 +3,7 @@
   "song": "legendary-lovers",
   "format": "scoreboard",
   "project": "legendary-lovers-scoreboard",
-  "importedAt": "2026-10-03T17:03:25.161Z",
+  "importedAt": "2026-10-04T10:07:01.862Z",
   "fps": 30,
   "width": 1080,
   "height": 1920,
@@ -570,50 +570,7 @@
       "role": "clip_buffed"
     }
   ],
-  "overlays": [
-    {
-      "from": 13.367,
-      "to": 18.367,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.246,
-      "x": 0,
-      "y": 0.632,
-      "rotation": 0,
-      "alpha": 1,
-      "flip": false
-    },
-    {
-      "from": 18.367,
-      "to": 23.367,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.246,
-      "x": 0,
-      "y": 0.632,
-      "rotation": 0,
-      "alpha": 1,
-      "flip": false
-    },
-    {
-      "from": 23.367,
-      "to": 24.9,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.246,
-      "x": 0,
-      "y": 0.632,
-      "rotation": 0,
-      "alpha": 1,
-      "flip": false
-    }
-  ],
+  "overlays": [],
   "filters": [
     {
       "from": 0,

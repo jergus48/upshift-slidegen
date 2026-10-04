@@ -3,7 +3,7 @@
   "song": "havana",
   "format": "rating-app",
   "project": "havana-rating-app",
-  "importedAt": "2026-10-03T17:03:25.114Z",
+  "importedAt": "2026-10-04T10:07:01.817Z",
   "fps": 30,
   "width": 1080,
   "height": 1920,
@@ -537,50 +537,7 @@
       "role": "clip_buffed"
     }
   ],
-  "overlays": [
-    {
-      "from": 8.6,
-      "to": 12.4,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.348,
-      "x": 0,
-      "y": 0.639,
-      "rotation": 0,
-      "alpha": 1,
-      "flip": false
-    },
-    {
-      "from": 14.033,
-      "to": 15.133,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.348,
-      "x": 0,
-      "y": 0.639,
-      "rotation": 0,
-      "alpha": 1,
-      "flip": false
-    },
-    {
-      "from": 17.267,
-      "to": 19.3,
-      "src": 0,
-      "speed": 1,
-      "asset": "assets/upshift_badge.png",
-      "kind": "image",
-      "scale": 0.348,
-      "x": 0,
-      "y": 0.639,
-      "rotation": 0,
-      "alpha": 1,
-      "flip": false
-    }
-  ],
+  "overlays": [],
   "filters": [
     {
       "from": 0,

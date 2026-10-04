@@ -189,13 +189,21 @@ export function characterPack(c: Character, library: LibraryImage[]): string | n
   return getSubfolders(c.name.trim()).length ? c.name.trim() : null;
 }
 
-export function poolsFor(c: Character, library: LibraryImage[]): RolePools {
+// The 🌽 videos show their own scoreboard and rating screens, kept in
+// lust_-prefixed folders next to the usual ones; the clips are shared. No
+// fallback to the screen-time folders: an empty lust_ folder shows as missing.
+export type FolderTopic = 'screen' | 'lust';
+const LUST_ROLES: Role[] = ['scoreboard_chopped', 'scoreboard_buffed', 'rating_chopped', 'rating_buffed'];
+export const folderFor = (r: Role, topic: FolderTopic = 'screen'): string =>
+  topic === 'lust' && LUST_ROLES.includes(r) ? `lust_${r}` : r;
+
+export function poolsFor(c: Character, library: LibraryImage[], topic: FolderTopic = 'screen'): RolePools {
   const pack = characterPack(c, library);
   const pools: RolePools = {};
   if (!pack) return pools;
   for (const img of library) {
     if (img.pack !== pack || !img.subfolder) continue;
-    const role = ROLES.find((r) => norm(r) === norm(img.subfolder!));
+    const role = ROLES.find((r) => norm(folderFor(r, topic)) === norm(img.subfolder!));
     if (role) (pools[role] ||= []).push(img);
   }
   return pools;
@@ -217,4 +225,5 @@ export function ensureRoleFolders(pack: string): void {
   for (const old of ['scoreboard_chopped_profile', 'scoreboard_buffed_profile']) removeSubfolder(name, old);
   const have = getSubfolders(name).map((s) => s.toLowerCase());
   for (const r of ROLES) if (!have.includes(r)) addSubfolder(name, r);
+  for (const r of LUST_ROLES) if (!have.includes(folderFor(r, 'lust'))) addSubfolder(name, folderFor(r, 'lust'));
 }
