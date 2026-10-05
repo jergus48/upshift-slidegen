@@ -19,7 +19,7 @@ import {
   type CapcutFormat,
 } from '../lib/capcutFormats';
 import { dealPieces, renderCapcutVideo } from '../lib/capcutVideo';
-import { HASHTAGS, TOPICS, pickScript, type ScriptTopic } from '../lib/capcutScripts';
+import { HASHTAGS, TOPICS, pickScript, scriptTitle, type ScriptTopic } from '../lib/capcutScripts';
 import { beatVideoFileName, downloadBlob } from '../lib/beatVideo';
 import {
   addFolderPreset,
@@ -288,7 +288,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
               style: format.id,
               duration: format.duration,
               folderId: character.folderId || '',
-              hook: script.ch[0],
+              hook: scriptTitle(script),
               caption: script.caption,
               hashtags: HASHTAGS[topic],
             },

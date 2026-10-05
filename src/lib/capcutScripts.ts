@@ -34,10 +34,17 @@ export interface TextScript {
   caption: string;
 }
 
+// Stored WITHOUT the '#', the same convention decks use — the sidecar adds it.
 export const HASHTAGS: Record<ScriptTopic, string[]> = {
-  screen: ['#lockin', '#glowup', '#ascend', '#brainrot', '#beforevsafter'],
-  lust: ['#nofap', '#upshift', '#nolust', '#glowup', '#ascend'],
+  screen: ['lockin', 'glowup', 'ascend', 'brainrot', 'beforevsafter'],
+  lust: ['nofap', 'upshift', 'nolust', 'glowup', 'ascend'],
 };
+
+// The post title for a script: its held line, else its first line — without
+// the on-screen quote marks, which read as noise in a post title.
+export function scriptTitle(script: TextScript): string {
+  return (script.all ?? script.ch[0] ?? script.caption).replace(/^["“]+|["”]+$/g, '').trim();
+}
 
 export const SCRIPTS: TextScript[] = [
   // ── Screen time, in his own voice: what he tells himself, quoted, trailing

@@ -11,7 +11,7 @@ import { IconButton } from '../components/IconButton';
 import { MusicChoiceModal } from '../components/MusicChoiceModal';
 import { ServerRenderQueue } from '../components/ServerRenderQueue';
 import { serverRenderStatus, submitServerRender } from '../lib/serverRender';
-import { videoMetaJsonFrom, downloadSlideshow, downloadSlideshowsZip, downloadSlideshowsVideo } from '../lib/render';
+import { videoMetaFrom, videoMetaJsonFrom, downloadSlideshow, downloadSlideshowsZip, downloadSlideshowsVideo } from '../lib/render';
 import {
   listQueuedVideos,
   removeQueuedVideo,
@@ -749,6 +749,21 @@ function QueuedVideoCard({
             {fmtBytes(video.size)}
           </div>
         </div>
+
+        {(video.hook || video.caption || video.hashtags?.length) && (() => {
+          // The post text exactly as it ships in the sidecar: title, then the
+          // caption with its hashtags.
+          const meta = videoMetaFrom(video.hook || '', video.caption || '', video.hashtags || []);
+          return (
+            <div className="rounded-lg border border-line bg-bg p-2 space-y-1 select-text">
+              <div className="text-[12px] font-medium text-ink leading-snug">{meta.title}</div>
+              {video.caption && <div className="text-[12px] text-ink-4 leading-snug">{video.caption}</div>}
+              {meta.tags.length > 0 && (
+                <div className="text-[11px] text-sky-600 leading-snug">{meta.tags.map((t) => `#${t}`).join(' ')}</div>
+              )}
+            </div>
+          );
+        })()}
 
         {presets.length > 0 && (
           <label

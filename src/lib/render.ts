@@ -245,7 +245,9 @@ export function videoMeta(show: Slideshow): VideoMeta {
 // uploader reads is the same whichever tool made it. (The parts-based twin of
 // captionFileText above.)
 export function videoMetaFrom(hook: string, caption: string, hashtags: string[]): VideoMeta {
-  const tags = hashtags || [];
+  // Tags are stored bare, but tolerate a stray '#' (early CapCut videos were
+  // queued with it) rather than shipping '##tag'.
+  const tags = (hashtags || []).map((t) => t.replace(/^#+/, '')).filter(Boolean);
   const hashLine = tags.map((t) => `#${t}`).join(' ');
   const description = [caption || '', hashLine].filter(Boolean).join('\n\n');
   return { title: hook || caption || 'Untitled', description, tags };
