@@ -130,3 +130,59 @@ export function dataUrlToBytes(dataUrl: string): Uint8Array {
   }
   return encoder.encode(decodeURIComponent(body));
 }
+
+// Reading ------------------------------------------------------------------
+// A small reader for the archives createZip() writes AND for ones made by an OS
+// zip tool (STORE or DEFLATE entries). It walks the central directory, so the
+// sizes are always known, and only the entries asked for are inflated.
+export interface ZipFileEntry {
+  name: string;
+  size: number;
+  read: () => Promise<Uint8Array>;
+}
+
+export async function readZip(blob: Blob): Promise<ZipFileEntry[]> {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  // End-of-central-directory record: scan backwards for its signature.
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error('This is not a zip file.');
+  const total = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const decoder = new TextDecoder();
+  const out: ZipFileEntry[] = [];
+  for (let n = 0; n < total; n++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('The zip is damaged.');
+    const method = dv.getUint16(p + 10, true);
+    const compSize = dv.getUint32(p + 20, true);
+    const size = dv.getUint32(p + 24, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const extraLen = dv.getUint16(p + 30, true);
+    const commentLen = dv.getUint16(p + 32, true);
+    const localOffset = dv.getUint32(p + 42, true);
+    const name = decoder.decode(buf.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    if (name.endsWith('/')) continue;
+    out.push({
+      name,
+      size,
+      read: async () => {
+        const lNameLen = dv.getUint16(localOffset + 26, true);
+        const lExtraLen = dv.getUint16(localOffset + 28, true);
+        const start = localOffset + 30 + lNameLen + lExtraLen;
+        const raw = buf.subarray(start, start + compSize);
+        if (method === 0) return raw;
+        if (method !== 8) throw new Error(`Unsupported zip compression (${method}).`);
+        const stream = new Blob([raw as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+      },
+    });
+  }
+  return out;
+}

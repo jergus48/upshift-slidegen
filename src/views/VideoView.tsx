@@ -4,6 +4,7 @@ import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { FormatStrip } from '../components/FormatStrip';
 import { CharacterSetupChecklist } from '../components/CharacterSetupChecklist';
+import { CharacterTransfer } from '../components/CharacterTransfer';
 import { getMergedLibrary } from '../lib/mergedLibrary';
 import { getCharacters, subscribeCharacters, type Character } from '../lib/characters';
 import {
@@ -257,6 +258,10 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
           <div className="flex-1 p-4 sm:p-8 space-y-6 max-w-4xl">
             <div className="bg-card border border-line rounded-xl p-4">
               <CharacterSetupChecklist characters={characters} library={library} formats={formats} />
+            </div>
+
+            <div className="bg-card border border-line rounded-xl p-4">
+              <CharacterTransfer characters={characters} library={library} onImported={() => void load()} />
             </div>
 
             <div className="space-y-3">
