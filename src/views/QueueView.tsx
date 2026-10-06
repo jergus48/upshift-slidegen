@@ -107,6 +107,22 @@ export function QueueView({
   // default; changing it here also updates that default so it sticks.
   const [folderPresets, setFolderPresets] = useState<FolderPreset[]>([]);
   const [destId, setDestId] = useState<string | null>(getDefaultFolderId());
+  // Put each video in a subfolder named after its character. Remembered.
+  const [splitByCharacter, setSplitByCharacter] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SPLIT_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const chooseSplit = (on: boolean) => {
+    setSplitByCharacter(on);
+    try {
+      localStorage.setItem(SPLIT_KEY, on ? '1' : '0');
+    } catch {
+      // not persisted; still applies this session
+    }
+  };
   // Whether the local server can render for us. Only then is the background
   // queue offered in the export popup.
   const [serverOk, setServerOk] = useState(false);
@@ -150,14 +166,15 @@ export function QueueView({
         const n = seen.get(v.name) ?? 0;
         seen.set(v.name, n + 1);
         const base = n ? `${stem}-${n + 1}` : stem;
-        entries.push({ name: `${base}${ext}`, data: new Uint8Array(await v.blob.arrayBuffer()) });
+        const sub = characterSubdir(v, splitByCharacter);
+        entries.push({ name: `${sub}${base}${ext}`, data: new Uint8Array(await v.blob.arrayBuffer()) });
         // The metadata sidecar beside it, same stem — the same pairing a
         // slideshow video export ships, so the zip is upload-ready without a
         // second export. JSON, not .txt: the genScript uploaders read a video's
         // caption ONLY from a like-named .json, and fall back to the filename
         // when there is none.
         entries.push({
-          name: `${base}.json`,
+          name: `${sub}${base}.json`,
           data: new TextEncoder().encode(videoMetaJsonFrom(v.hook || '', v.caption || '', v.hashtags || [])),
         });
       }
@@ -359,6 +376,18 @@ export function QueueView({
                 <span className="text-[11px] text-ink-6 flex-1">
                   {videos.length} from the Video tab · {fmtBytes(videos.reduce((n, v) => n + v.size, 0))}
                 </span>
+                <label
+                  className="flex items-center gap-1.5 text-[12px] text-ink-5 cursor-pointer select-none"
+                  title="Save each video into a subfolder named after its character"
+                >
+                  <input
+                    type="checkbox"
+                    checked={splitByCharacter}
+                    onChange={(e) => chooseSplit(e.target.checked)}
+                    className="cursor-pointer"
+                  />
+                  Folder per character
+                </label>
                 <label className="flex items-center gap-1.5 text-[12px] text-ink-5 cursor-pointer select-none">
                   <input type="checkbox" checked={allVideosPicked} onChange={toggleAllVideos} className="cursor-pointer" />
                   Select all
@@ -389,6 +418,7 @@ export function QueueView({
                     video={v}
                     presets={folderPresets}
                     destId={destId}
+                    split={splitByCharacter}
                     selected={pickedVideos.includes(v.id)}
                     onToggleSelect={() => toggleVideo(v.id)}
                   />
@@ -597,16 +627,28 @@ const fmtDuration = (s: number) => `${s.toFixed(1)}s`;
 // is unrendered — its card offers Edit, background swaps and a choice of music,
 // none of which mean anything once a file exists. What is left is: watch it,
 // decide where it goes, keep it or bin it.
+const SPLIT_KEY = 'slidesmith-queue-split-by-character';
+
+// "Name/" prefix that files a video under its character, or '' when not
+// splitting. Characters the filesystem rejects are replaced.
+function characterSubdir(v: QueuedVideo, split: boolean): string {
+  if (!split) return '';
+  const name = (v.characterName || '').replace(/[\/:*?"<>|]+/g, '-').trim().replace(/[. ]+$/, '');
+  return name ? `${name}/` : '';
+}
+
 function QueuedVideoCard({
   video,
   presets,
   destId,
+  split,
   selected,
   onToggleSelect,
 }: {
   video: QueuedVideo;
   presets: FolderPreset[];
   destId: string | null;
+  split: boolean;
   selected: boolean;
   onToggleSelect: () => void;
 }) {
@@ -628,8 +670,9 @@ function QueuedVideoCard({
       const sidecar = videoMetaJsonFrom(video.hook || '', video.caption || '', video.hashtags || []);
       const dir = await resolveWritableFolder(folderId || null);
       if (dir) {
-        await writeFileToDir(dir, video.name, video.blob);
-        await writeFileToDir(dir, sidecarName, new TextEncoder().encode(sidecar));
+        const sub = characterSubdir(video, split);
+        await writeFileToDir(dir, `${sub}${video.name}`, video.blob);
+        await writeFileToDir(dir, `${sub}${sidecarName}`, new TextEncoder().encode(sidecar));
       } else {
         // No folder preset (or the browser has no folder access) — fall back to
         // the plain browser download, same as everything else here does.
