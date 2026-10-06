@@ -633,7 +633,7 @@ const SPLIT_KEY = 'slidesmith-queue-split-by-character';
 // splitting. Characters the filesystem rejects are replaced.
 function characterSubdir(v: QueuedVideo, split: boolean): string {
   if (!split) return '';
-  const name = (v.characterName || '').replace(/[\/:*?"<>|]+/g, '-').trim().replace(/[. ]+$/, '');
+  const name = (v.characterName || '').replace(/[\\/:*?"<>|]+/g, '-').trim().replace(/[. ]+$/, '');
   return name ? `${name}/` : '';
 }
 
