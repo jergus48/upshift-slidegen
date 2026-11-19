@@ -30,6 +30,7 @@ import {
   assetUrl,
   type CapcutFormat,
   type FormatFilter,
+  type FormatOverlay,
   type FormatPiece,
   type Placement,
   type Role,
@@ -61,6 +62,9 @@ interface Shot {
 export interface CapcutRenderOptions {
   // The words on screen; none when left out.
   script?: TextScript;
+  // A deal made beforehand (dealPieces), so a batch can check it hasn't
+  // already rendered this exact one. Dealt here when left out.
+  plans?: Plan[];
   onStage?: (stage: string) => void;
   onProgress?: (p: number) => void;
 }
@@ -75,17 +79,39 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-function loadVideo(url: string): Promise<HTMLVideoElement> {
+// A clip that never fires loadeddata (Chrome stops loading media when too many
+// elements are open, or when the tab is hidden) used to hang the whole render
+// on "Loading clips…" forever. Time it out and retry once so it fails loudly.
+function loadVideoOnce(url: string, ms: number): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
     const el = document.createElement('video');
     el.muted = true;
     el.playsInline = true;
     el.preload = 'auto';
     el.crossOrigin = 'anonymous';
-    el.onloadeddata = () => resolve(el);
-    el.onerror = () => reject(new Error(`Could not load a clip (${url.slice(0, 60)})`));
+    const timer = setTimeout(() => {
+      el.removeAttribute('src');
+      el.load();
+      reject(new Error(`Timed out loading a clip (${url.slice(0, 60)}). Keep this tab visible and try fewer videos at once.`));
+    }, ms);
+    el.onloadeddata = () => {
+      clearTimeout(timer);
+      resolve(el);
+    };
+    el.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error(`Could not load a clip (${url.slice(0, 60)})`));
+    };
     el.src = url;
   });
+}
+
+async function loadVideo(url: string): Promise<HTMLVideoElement> {
+  try {
+    return await loadVideoOnce(url, 20000);
+  } catch {
+    return loadVideoOnce(url, 30000);
+  }
 }
 
 function seek(el: HTMLVideoElement, t: number): Promise<void> {
@@ -113,18 +139,36 @@ async function loadMedia(url: string, kind: 'image' | 'video'): Promise<Media> {
 
 // Clip lengths, read off metadata only, so dealing can tell when a run has
 // used a clip up.
+// Cached for the page's life (a clip's length never changes), and every probe
+// element is released with load(): removing src alone keeps its media player,
+// and once Chrome's player cap is hit new probes never fire and dealing hangs.
+const lengthCache = new Map<string, Promise<number>>();
 function durationOf(url: string): Promise<number> {
-  return new Promise((resolve) => {
+  const cached = lengthCache.get(url);
+  if (cached) return cached;
+  const p = new Promise<number>((resolve) => {
     const el = document.createElement('video');
     el.preload = 'metadata';
     el.muted = true;
-    el.onloadedmetadata = () => {
-      resolve(isFinite(el.duration) ? el.duration : 0);
+    const finish = (d: number) => {
+      clearTimeout(timer);
+      el.onloadedmetadata = null;
+      el.onerror = null;
       el.removeAttribute('src');
+      el.load();
+      resolve(d);
     };
-    el.onerror = () => resolve(0);
+    const timer = setTimeout(() => finish(0), 15000);
+    el.onloadedmetadata = () => finish(isFinite(el.duration) ? el.duration : 0);
+    el.onerror = () => finish(0);
     el.src = url;
   });
+  lengthCache.set(url, p);
+  // A failed probe is retried next time rather than remembered as "unknown".
+  void p.then((d) => {
+    if (!d) lengthCache.delete(url);
+  });
+  return p;
 }
 
 function shuffle<T>(a: T[]): T[] {
@@ -136,7 +180,7 @@ function shuffle<T>(a: T[]): T[] {
   return b;
 }
 
-interface Plan {
+export interface Plan {
   item: LibraryImage | null;
   offset: number;
   hold?: boolean;
@@ -275,6 +319,9 @@ gl_FragColor=vec4(c,1.);}`;
 interface FilterPass {
   canvas: HTMLCanvasElement;
   draw: (src: HTMLCanvasElement, filter: FormatFilter | undefined) => void;
+  // Give the GL context and its 1080x1920 buffers back. Left alone they pile up
+  // render after render until Chrome runs out of memory and kills the tab.
+  dispose: () => void;
 }
 
 async function filterPass(w: number, h: number, filters: FormatFilter[]): Promise<FilterPass | null> {
@@ -331,6 +378,11 @@ async function filterPass(w: number, h: number, filters: FormatFilter[]): Promis
 
   return {
     canvas,
+    dispose() {
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      canvas.width = 1;
+      canvas.height = 1;
+    },
     draw(src, filter) {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, frameTex);
@@ -377,44 +429,87 @@ function place(
 export async function renderCapcutVideo(
   format: CapcutFormat,
   pools: RolePools,
-  { script, onStage = () => {}, onProgress = () => {} }: CapcutRenderOptions = {},
+  options: CapcutRenderOptions = {},
+): Promise<Blob> {
+  // Whatever the render opened is released however it ends — success, or a
+  // failure anywhere (audio, encoder, filters), not just inside the frame loop.
+  const cleanups: (() => void)[] = [];
+  try {
+    return await renderInner(format, pools, options, cleanups);
+  } finally {
+    for (const c of cleanups) c();
+  }
+}
+
+async function renderInner(
+  format: CapcutFormat,
+  pools: RolePools,
+  { script, plans: dealt, onStage = () => {}, onProgress = () => {} }: CapcutRenderOptions,
+  cleanups: (() => void)[],
 ): Promise<Blob> {
   const W = format.width;
   const H = format.height;
   const FPS = format.fps || 30;
 
   onStage('Dealing clips…');
-  const plans = await dealPieces(format, pools);
+  const plans = dealt ?? (await dealPieces(format, pools));
 
   onStage('Loading clips…');
-  // Every video piece gets its OWN element, parked on its in-point before
-  // recording starts, so a cut is a swap rather than a seek. Stills are shared.
+  // Every video element holds a decoder. Pieces cut from the same clip share
+  // ONE element (only one shot is on screen at a time and every frame seeks
+  // anyway), and whatever got opened is released on ANY failure — a render that
+  // died while loading used to leak its elements, and once enough leaked every
+  // later render failed with "Could not load a clip".
+  const opened: Media[] = [];
+  let aborted = false;
+  const release = (m: Media | null | undefined) => {
+    if (m?.kind === 'video') {
+      m.el.pause();
+      m.el.removeAttribute('src');
+      m.el.load();
+    }
+  };
+  const releaseAll = () => {
+    aborted = true;
+    for (const m of opened) release(m);
+  };
+  cleanups.push(() => releaseAll());
+  const open = async (url: string, kind: 'image' | 'video'): Promise<Media> => {
+    const m = await loadMedia(url, kind);
+    opened.push(m);
+    if (aborted) release(m);
+    return m;
+  };
   const images = new Map<string, Promise<Media>>();
-  const shots: Shot[] = await Promise.all(
-    format.video.map(async (piece, i): Promise<Shot> => {
-      const plan = plans[i];
-      const url = plan.item ? plan.item.url : piece.asset ? assetUrl(appRecording(piece.asset, script)) : '';
-      const kind = plan.item ? (plan.item.kind === 'video' ? 'video' : 'image') : piece.kind || 'video';
-      if (!url) return { piece, media: null, offset: 0, cover: false };
-      let media: Media;
-      if (kind === 'image') {
-        if (!images.has(url)) images.set(url, loadMedia(url, 'image'));
-        media = await images.get(url)!;
-      } else {
-        media = await loadMedia(url, 'video');
-        await seek(media.el as HTMLVideoElement, plan.offset);
-      }
-      return { piece, media, offset: plan.offset, hold: plan.hold, cover: Boolean(plan.item) };
-    }),
-  );
+  const videos = new Map<string, Promise<Media>>();
+  let shots: Shot[];
+  let overlays: { o: FormatOverlay; media: Media }[];
+  try {
+    shots = await Promise.all(
+      format.video.map(async (piece, i): Promise<Shot> => {
+        const plan = plans[i];
+        const url = plan.item ? plan.item.url : piece.asset ? assetUrl(appRecording(piece.asset, script)) : '';
+        const kind = plan.item ? (plan.item.kind === 'video' ? 'video' : 'image') : piece.kind || 'video';
+        if (!url) return { piece, media: null, offset: 0, cover: false };
+        const cache = kind === 'image' ? images : videos;
+        if (!cache.has(url)) cache.set(url, open(url, kind));
+        const media = await cache.get(url)!;
+        if (media.kind === 'video') await seek(media.el, plan.offset);
+        return { piece, media, offset: plan.offset, hold: plan.hold, cover: Boolean(plan.item) };
+      }),
+    );
 
-  const overlays = await Promise.all(
-    format.overlays.map(async (o) => {
-      const media = await loadMedia(assetUrl(o.asset), o.kind);
-      if (media.kind === 'video') await seek(media.el, o.src);
-      return { o, media };
-    }),
-  );
+    overlays = await Promise.all(
+      format.overlays.map(async (o) => {
+        const media = await open(assetUrl(o.asset), o.kind);
+        if (media.kind === 'video') await seek(media.el, o.src);
+        return { o, media };
+      }),
+    );
+  } catch (e) {
+    releaseAll();
+    throw e;
+  }
 
   onStage('Loading filters…');
   const comp = document.createElement('canvas');
@@ -427,6 +522,14 @@ export async function renderCapcutVideo(
   } catch {
     pass = null;
   }
+  if (pass) {
+    const p = pass;
+    cleanups.push(() => p.dispose());
+  }
+  cleanups.push(() => {
+    comp.width = 1;
+    comp.height = 1;
+  });
   if (!pass && format.filters.length) onStage('No WebGL — rendering without the colour filter');
 
   onStage('Loading music…');
@@ -553,7 +656,7 @@ export async function renderCapcutVideo(
     await videoEncoder.flush();
   } finally {
     if (videoEncoder.state !== 'closed') videoEncoder.close();
-    for (const s of shots) if (s.media?.kind === 'video') s.media.el.removeAttribute('src');
+    releaseAll();
   }
 
   onStage('Encoding the music…');

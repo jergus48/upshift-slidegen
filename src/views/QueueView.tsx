@@ -28,6 +28,7 @@ import {
   setDefaultFolderId,
   resolveWritableFolder,
   writeFileToDir,
+  characterFolderIn,
   type FolderPreset,
 } from '../lib/downloadFolders';
 
@@ -670,7 +671,8 @@ function QueuedVideoCard({
       const sidecar = videoMetaJsonFrom(video.hook || '', video.caption || '', video.hashtags || []);
       const dir = await resolveWritableFolder(folderId || null);
       if (dir) {
-        const sub = characterSubdir(video, split);
+        let sub = characterSubdir(video, split);
+        if (sub) sub = `${await characterFolderIn(dir, sub.slice(0, -1))}/`;
         await writeFileToDir(dir, `${sub}${video.name}`, video.blob);
         await writeFileToDir(dir, `${sub}${sidecarName}`, new TextEncoder().encode(sidecar));
       } else {

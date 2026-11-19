@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getKeys, saveKeys } from './store.js'
-import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
+import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './exposure.js'
 import { generateSlideshows } from './generate.js'
 import { generatePhotoPacks } from './photopack.js'
 import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.js'
@@ -79,7 +79,7 @@ app.post('/api/logout', h(async (_req, res) => {
 // rest of "config" (projects, Brain, model choice) lives in the browser now
 // (src/lib/localWorkspace.ts), so this endpoint is just key status.
 const maskKeys = (keys) => ({
-  postbridge: !!keys.postbridge,
+  exposure: !!keys.exposure,
   openrouter: !!keys.openrouter,
   apify: !!keys.apify,
   fmp: !!keys.fmp,
@@ -92,10 +92,10 @@ app.put('/api/config', h(async (req, res) => res.json({ keys: maskKeys(await sav
 // Validate that the saved keys actually work, so Settings can show a green check.
 app.post('/api/config/test', h(async (_req, res) => {
   const keys = await getKeys()
-  const result = { postbridge: false, openrouter: false, apify: false, fmp: false, errors: {} }
-  if (keys.postbridge) {
-    try { await listAccounts(keys.postbridge); result.postbridge = true }
-    catch (e) { result.errors.postbridge = e.message }
+  const result = { exposure: false, openrouter: false, apify: false, fmp: false, errors: {} }
+  if (keys.exposure) {
+    try { await listAccounts(keys.exposure); result.exposure = true }
+    catch (e) { result.errors.exposure = e.message }
   }
   if (keys.openrouter) {
     try { await validateKey(keys.openrouter); result.openrouter = true }
@@ -537,88 +537,71 @@ app.post('/api/stocks/ideas', h(async (req, res) => {
   res.json({ ideas, disclaimer: String(out.disclaimer || '') })
 }))
 
-// ── post-bridge ───────────────────────────────────────────────────────────────
+// ── Exposure ──────────────────────────────────────────────────────────────────
 app.get('/api/accounts', h(async (_req, res) => {
   const keys = await getKeys()
-  res.json(await listAccounts(keys.postbridge))
+  res.json(await listAccounts(keys.exposure))
 }))
 
 app.get('/api/posts', h(async (_req, res) => {
   const keys = await getKeys()
-  res.json(await listPosts(keys.postbridge))
+  res.json(await listPosts(keys.exposure))
 }))
 
 app.get('/api/results', h(async (_req, res) => {
   const keys = await getKeys()
-  res.json(await listAnalytics(keys.postbridge))
+  res.json(await listAnalytics(keys.exposure))
 }))
 
-// Pull fresh metrics from the platforms, then hand back the updated analytics.
-// post-bridge rate-limits sync (429) — swallow that so the refresh still returns
-// whatever's already there.
+// Exposure tracks stats itself; this just hands back the current numbers.
 app.post('/api/results/sync', h(async (_req, res) => {
   const keys = await getKeys()
-  try { await syncAnalytics(keys.postbridge) } catch (e) { console.warn('[results] sync skipped:', e.message) }
-  res.json(await listAnalytics(keys.postbridge))
+  try { await syncAnalytics(keys.exposure) } catch (e) { console.warn('[results] sync skipped:', e.message) }
+  res.json(await listAnalytics(keys.exposure))
 }))
 
-// Schedule a slideshow: upload its media to post-bridge, then create the post.
+// Schedule a slideshow: upload its media to the Exposure library, then create
+// the post (the phone publishes it at the scheduled time).
 // Two shapes of media, mutually exclusive:
 //   • `slides` — data URLs (PNG) rendered in the browser → a carousel post.
 //   • `video`  — a single data URL (MP4) rendered in the browser → a video post
 //     (YouTube Short / Reel / TikTok). Prefer this for a channel-per-character
 //     video pipeline.
+// `socialAccounts` are account handles from /api/accounts.
 app.post('/api/schedule', h(async (req, res) => {
   const keys = await getKeys()
-  const { id, caption, slides, video, socialAccounts, scheduledAt, mode } = req.body || {}
+  const { id, caption, slides, video, socialAccounts, scheduledAt } = req.body || {}
   if (!socialAccounts?.length) throw new Error('Pick at least one social account.')
   if (!video && !slides?.length) throw new Error('No media to upload (need slides or a video).')
 
-  const when = mode === 'schedule' ? (scheduledAt ? `scheduled for ${scheduledAt}` : 'scheduled') : 'draft'
-  schedLog.start(`Posting ${id || 'slideshow'} → ${when} · ${socialAccounts.length} account${socialAccounts.length === 1 ? '' : 's'}`)
+  schedLog.start(`Posting ${id || 'slideshow'} → ${scheduledAt ? `scheduled for ${scheduledAt}` : 'now'} · ${socialAccounts.length} account${socialAccounts.length === 1 ? '' : 's'}`)
 
-  let mediaIds
+  let files
   if (video) {
-    // Single video → one media upload. The data URL's mime (e.g. video/mp4 or
-    // video/webm) is carried through so post-bridge stores the right type.
+    // The data URL's mime (video/mp4 or video/webm) is carried through.
     const m = /^data:(video\/[\w.+-]+);base64,/.exec(String(video))
     const mimeType = m ? m[1] : 'video/mp4'
     const ext = mimeType.includes('webm') ? 'webm' : 'mp4'
     const buffer = Buffer.from(String(video).replace(/^data:video\/[\w.+-]+;base64,/, ''), 'base64')
     schedLog.step(`uploading video (${(buffer.length / 1e6).toFixed(1)} MB)…`)
-    const mediaId = await uploadMedia(keys.postbridge, { buffer, mimeType, name: `${id || 'video'}.${ext}` })
-    mediaIds = [mediaId]
+    files = [{ buffer, mimeType, name: `${id || 'video'}.${ext}` }]
   } else {
-    // Upload all slides concurrently — post-bridge handles them independently, so
-    // there's no reason to wait for each. Results stay in slide order (the index
-    // into the array) so the carousel keeps its sequence.
-    let done = 0
-    mediaIds = await Promise.all(
-      slides.map(async (slide, i) => {
-        const buffer = Buffer.from(String(slide).replace(/^data:image\/\w+;base64,/, ''), 'base64')
-        const mediaId = await uploadMedia(keys.postbridge, {
-          buffer,
-          mimeType: 'image/png',
-          name: `${id || 'slide'}-${i + 1}.png`,
-        })
-        schedLog.progress(++done, slides.length, 'slides uploaded')
-        return mediaId
-      })
-    )
+    // All slides go up as ONE library item (a carousel); order = slide order.
+    files = slides.map((slide, i) => ({
+      buffer: Buffer.from(String(slide).replace(/^data:image\/\w+;base64,/, ''), 'base64'),
+      mimeType: 'image/png',
+      name: `${id || 'slide'}-${i + 1}.png`,
+    }))
+    schedLog.step(`uploading ${files.length} slides…`)
   }
+  const mediaId = await uploadMedia(keys.exposure, files, id)
 
-  schedLog.step(`creating post on post-bridge…`)
-  const post = await createPost(keys.postbridge, {
-    caption,
-    mediaIds,
-    socialAccounts,
-    scheduledAt: mode === 'schedule' ? scheduledAt : null,
-    isDraft: mode !== 'schedule', // "save as draft" leaves it unprocessed in post-bridge
-  })
+  schedLog.step(`creating post on Exposure…`)
+  const post = await createPost(keys.exposure, { caption, mediaId, accounts: socialAccounts, scheduledAt })
 
   // The queue lives client-side now — the caller removes `id` from its own
   // local state on success.
-  schedLog.ok(`Done — ${mode === 'schedule' ? 'scheduled' : 'saved as draft'}`)
+  schedLog.ok('Done — scheduled')
   res.json(post)
 }))
 

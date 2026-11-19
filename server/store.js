@@ -14,18 +14,18 @@ const KEYS_KEY = 'config'
 // cold starts/redeploys, unlike the config file on a serverless filesystem).
 // When set, an env key always wins over whatever's saved via Settings.
 const ENV_KEYS = {
-  postbridge: process.env.POSTBRIDGE_API_KEY || '',
+  exposure: process.env.EXPOSURE_API_KEY || '',
   openrouter: process.env.OPENROUTER_API_KEY || '',
   apify: process.env.APIFY_API_KEY || '',
   fmp: process.env.FMP_API_KEY || '',
 }
 
 // Resolved real key values, for server-side use (generation, scraping,
-// post-bridge). Never sent to the browser as-is — see maskKeys in app.js.
+// Exposure). Never sent to the browser as-is — see maskKeys in app.js.
 export async function getKeys() {
   const s = await readData(KEYS_KEY, {})
   return {
-    postbridge: ENV_KEYS.postbridge || s.keys?.postbridge || '',
+    exposure: ENV_KEYS.exposure || s.keys?.exposure || '',
     openrouter: ENV_KEYS.openrouter || s.keys?.openrouter || '',
     apify: ENV_KEYS.apify || s.keys?.apify || '',
     fmp: ENV_KEYS.fmp || s.keys?.fmp || '',
@@ -40,7 +40,7 @@ export async function getKeys() {
 export async function saveKeys(patch) {
   const s = await readData(KEYS_KEY, {})
   const keys = { ...s.keys }
-  for (const k of ['postbridge', 'openrouter', 'apify', 'fmp']) {
+  for (const k of ['exposure', 'openrouter', 'apify', 'fmp']) {
     if (patch?.[k] === null) delete keys[k]
     else if (patch?.[k]) keys[k] = patch[k]
   }

@@ -19,6 +19,8 @@ import {
   MonitorPlay,
   Clapperboard,
   TrendingUp,
+  BrainCircuit,
+  Laugh,
 } from 'lucide-react';
 import type { ViewKey } from '../types';
 
@@ -40,6 +42,8 @@ export const NAV_GROUPS: Record<string, { label: string; icon: typeof LayoutGrid
 export const NAV: NavItem[] = [
   { key: 'queue', label: 'Queue', icon: LayoutGrid, badge: 'queue' },
   { key: 'photopack', label: 'Photo Packs', icon: LayoutTemplate },
+  { key: 'brainlist', label: 'Brain Lists', icon: BrainCircuit },
+  { key: 'memelist', label: 'Meme Lists', icon: Laugh },
   { key: 'characters', label: 'Characters', icon: Users },
   { key: 'video', label: 'Video', icon: Clapperboard },
   { key: 'library', label: 'Library', icon: Images },

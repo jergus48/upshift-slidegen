@@ -10,9 +10,8 @@ import { SlidePreview } from './SlidePreview';
 // is queued) so the user isn't forced to pick a time from a blank field.
 const DEFAULT_GAP_HOURS = 3;
 
-// post-bridge dashboard — where the user reviews what we just sent over.
-const PB_SCHEDULED_URL = 'https://www.post-bridge.com/dashboard/posts/scheduled';
-const PB_DRAFTS_URL = 'https://www.post-bridge.com/dashboard/posts/drafts';
+// Exposure dashboard — where the user reviews what we just sent over.
+const EXPOSURE_DEVICES_URL = 'https://app.exposure.gg/devices';
 
 function toLocalInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -22,20 +21,20 @@ function toLocalInput(d: Date): string {
 interface ScheduleModalProps {
   slideshow: Slideshow;
   accounts: SocialAccount[];
-  defaults: { socialAccountIds: number[]; mode: 'draft' | 'schedule' };
+  defaults: { socialAccountIds: string[]; mode: 'draft' | 'schedule' };
   onClose: () => void;
   onConfirm: (opts: {
-    socialAccounts: number[];
+    socialAccounts: string[];
     mode: 'draft' | 'schedule';
     scheduledAt: string | null;
   }) => Promise<void>;
 }
 
 export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfirm }: ScheduleModalProps) {
-  const [selected, setSelected] = useState<number[]>(defaults.socialAccountIds);
-  const [mode, setMode] = useState<'draft' | 'schedule'>(defaults.mode);
+  const [selected, setSelected] = useState<string[]>(defaults.socialAccountIds);
+  const [mode] = useState<'draft' | 'schedule'>('schedule');
   // Seed with now + gap immediately so the field is never blank; refine to
-  // "after the last scheduled post" once post-bridge responds.
+  // "after the last scheduled post" once Exposure responds.
   const [when, setWhen] = useState(() =>
     toLocalInput(new Date(Date.now() + DEFAULT_GAP_HOURS * 3600_000))
   );
@@ -57,7 +56,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
       .catch(() => {});
   }, []);
 
-  const toggle = (id: number) =>
+  const toggle = (id: string) =>
     setSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const download = async () => {
@@ -72,7 +71,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
   const confirm = async () => {
     setError(null);
     if (!selected.length) return setError('Pick at least one account.');
-    if (mode === 'schedule' && !when) return setError('Pick a date & time, or save as a draft.');
+    if (!when) return setError('Pick a date & time.');
     setBusy(true);
     try {
       await onConfirm({
@@ -89,8 +88,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
   };
 
   if (doneMode) {
-    const scheduled = doneMode === 'schedule';
-    return (
+        return (
       <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
         <div
           className="bg-card border border-line rounded-2xl w-full max-w-sm p-6 text-center"
@@ -98,21 +96,19 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
         >
           <CheckCircle2 size={32} className="text-emerald-600 mx-auto" />
           <h2 className="text-[16px] font-semibold text-ink mt-3">
-            {scheduled ? 'Scheduled' : 'Saved as draft'}
+            Scheduled
           </h2>
           <p className="text-[13px] text-ink-5 mt-1.5 leading-snug">
-            {scheduled
-              ? 'post-bridge will publish it at the time you picked.'
-              : 'It’s waiting in your post-bridge drafts to post by hand.'}
+            Exposure will post it from your phone at the time you picked (if “AI may publish” is off, approve it on the phone’s page first).
           </p>
           <div className="flex flex-col gap-2 mt-5">
             <a
-              href={scheduled ? PB_SCHEDULED_URL : PB_DRAFTS_URL}
+              href={EXPOSURE_DEVICES_URL}
               target="_blank"
               rel="noreferrer"
               className="flex items-center justify-center gap-1.5 h-9 rounded-lg bg-ink text-bg text-[13px] font-medium hover:opacity-90"
             >
-              View on post-bridge <ExternalLink size={13} />
+              View on Exposure <ExternalLink size={13} />
             </a>
             <Button variant="secondary" onClick={onClose}>
               Done
@@ -166,16 +162,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
             </label>
             {accounts.length === 0 ? (
               <p className="text-[12px] text-ink-5">
-                No connected accounts. Add your post-bridge key in Settings and connect accounts at{' '}
-                <a
-                  href="https://post-bridge.com?atp=clip-factory"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-ink-4 underline hover:text-ink"
-                >
-                  post-bridge.com
-                </a>
-                .
+                No connected accounts. Add your Exposure key in Settings, and make sure your phone has a TikTok account that finished warm-up.
               </p>
             ) : (
               <div className="flex flex-col gap-1.5">
@@ -198,35 +185,17 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
             <label className="text-[11px] text-ink-5 mb-1.5 block uppercase tracking-widest font-semibold">
               When
             </label>
-            <div className="flex gap-2 mb-2">
-              <Button variant={mode === 'draft' ? 'primary' : 'secondary'} onClick={() => setMode('draft')}>
-                Save as draft
-              </Button>
-              <Button variant={mode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setMode('schedule')}>
-                Schedule
-              </Button>
-            </div>
-            {mode === 'schedule' && (
-              <input
+            <input
                 type="datetime-local"
                 value={when}
                 onChange={(e) => setWhen(e.target.value)}
                 className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
               />
-            )}
 
             <div className="flex items-start gap-2 mt-2 p-2.5 rounded-lg bg-surface border border-line">
               <Info size={13} className="text-ink-5 mt-0.5 shrink-0" />
               <p className="text-[11px] text-ink-4 leading-snug">
-                {mode === 'draft' ? (
-                  <>
-                    Saves to your post-bridge inbox to post by hand. No analytics come back on
-                    drafts (TikTok only reports content it posts itself) — but posting manually
-                    avoids automation detection, so reach potential is often higher.
-                  </>
-                ) : (
-                  <>post-bridge publishes this automatically at the chosen time and reports its analytics back to Results.</>
-                )}
+                Exposure uploads the slides, then your cloud phone posts them at the chosen time. Accounts must have finished warm-up.
               </p>
             </div>
           </div>
@@ -244,7 +213,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
             onClick={confirm}
             disabled={busy}
           >
-            {busy ? 'Uploading…' : mode === 'schedule' ? 'Schedule it' : 'Save draft'}
+            {busy ? 'Uploading…' : 'Schedule it'}
           </Button>
         </div>
       </div>

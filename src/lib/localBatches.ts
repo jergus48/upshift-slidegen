@@ -13,7 +13,7 @@ import type { CaptionStyle } from './captionStyle';
 
 export type BatchStatus = 'queued' | 'running' | 'done' | 'error';
 
-export type BatchKind = 'presets' | 'photos' | 'characters';
+export type BatchKind = 'presets' | 'photos' | 'characters' | 'lists';
 
 export interface GenBatch {
   id: string;

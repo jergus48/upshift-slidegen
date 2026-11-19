@@ -26,7 +26,7 @@ export function ResultsView({ configured }: ResultsViewProps) {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [configured]);
 
-  // Refresh pulls fresh metrics from the platforms (post-bridge sync) first,
+  // Refresh pulls fresh metrics from the platforms (Exposure) first,
   // which is also what backfills cover thumbnails once a post goes live.
   const refresh = useCallback(async () => {
     if (!configured) return;
@@ -48,7 +48,7 @@ export function ResultsView({ configured }: ResultsViewProps) {
     <>
       <ViewHeader
         title="Results"
-        subtitle="Live analytics from post-bridge for everything you've published."
+        subtitle="Views and likes from Exposure for everything you've published."
         right={
           configured && (
             <button
@@ -76,13 +76,13 @@ export function ResultsView({ configured }: ResultsViewProps) {
         <div className="p-8">
           <div className="max-w-4xl mx-auto flex flex-col gap-3">
             {!configured ? (
-              <Empty text="Add your post-bridge API key in Settings to see analytics." />
+              <Empty text="Add your Exposure API key in Settings to see analytics." />
             ) : error ? (
               <Empty text={error} />
             ) : results === null ? (
               <Loading />
             ) : results.length === 0 ? (
-              <Empty text="No analytics yet. Once your posts go live, post-bridge syncs their performance here." />
+              <Empty text="No analytics yet. Once your posts go live, their performance shows up here." />
             ) : (
               results.map((r) => <ResultCard key={r.id} result={r} />)
             )}

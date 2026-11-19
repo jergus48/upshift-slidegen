@@ -18,7 +18,7 @@ const DEFAULT_BRAIN: BrainState = {
   audience: '',
   styleMemory: '',
 };
-const DEFAULT_DEFAULTS: ProjectDefaults = { socialAccountIds: [], mode: 'draft' };
+const DEFAULT_DEFAULTS: ProjectDefaults = { socialAccountIds: [], mode: 'schedule' };
 
 // Tools hidden from the sidebar by default (on a fresh install). Users can
 // toggle any of these back on in Settings → Sidebar.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, X, Loader2, KeyRound, Trash2, Info, Eye, EyeOff } from 'lucide-react';
+import { Check, X, Loader2, KeyRound, Trash2, Eye, EyeOff } from 'lucide-react';
 import type { AppConfig, KeysPatch, Project, SocialAccount, ModelOption, ViewKey } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
@@ -25,10 +25,10 @@ interface SettingsViewProps {
   onReloadAccounts: () => void;
 }
 
-const POSTBRIDGE_URL = 'https://post-bridge.com?atp=clip-factory';
+const EXPOSURE_URL = 'https://app.exposure.gg/devices/connect-ai';
 
-const PostBridgeLink = ({ children }: { children: React.ReactNode }) => (
-  <a href={POSTBRIDGE_URL} target="_blank" rel="noreferrer" className="text-ink-4 underline hover:text-ink">
+const ExposureLink = ({ children }: { children: React.ReactNode }) => (
+  <a href={EXPOSURE_URL} target="_blank" rel="noreferrer" className="text-ink-4 underline hover:text-ink">
     {children}
   </a>
 );
@@ -49,9 +49,9 @@ export function SettingsView({
 }: SettingsViewProps) {
   // Real key values never come back from the server (see AppConfig) — these
   // start blank and only carry a NEW value if the user types one.
-  const [postbridge, setPostbridge] = useState('');
-  // Set by the post-bridge "Remove" button; the next Save deletes the key.
-  const [dropPostbridge, setDropPostbridge] = useState(false);
+  const [exposure, setExposure] = useState('');
+  // Set by the Exposure "Remove" button; the next Save deletes the key.
+  const [dropExposure, setDropExposure] = useState(false);
   const [openrouter, setOpenrouter] = useState('');
   const [apify, setApify] = useState('');
   const [fmp, setFmp] = useState('');
@@ -59,7 +59,7 @@ export function SettingsView({
   const [model, setModel] = useState(config.model);
   const [name, setName] = useState(project.name);
   const [mode, setMode] = useState(project.defaults.mode);
-  const [selected, setSelected] = useState<number[]>(project.defaults.socialAccountIds);
+  const [selected, setSelected] = useState<string[]>(project.defaults.socialAccountIds);
   const [imagePacks, setImagePacks] = useState<string[]>(project.imagePacks);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelFilter, setModelFilter] = useState('');
@@ -67,7 +67,7 @@ export function SettingsView({
   const [testing, setTesting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [test, setTest] = useState<{ postbridge: boolean; openrouter: boolean; apify: boolean; fmp: boolean; errors: Record<string, string> } | null>(null);
+  const [test, setTest] = useState<{ exposure: boolean; openrouter: boolean; apify: boolean; fmp: boolean; errors: Record<string, string> } | null>(null);
 
   // Re-sync editable fields when the active project changes (switching projects).
   useEffect(() => {
@@ -88,8 +88,8 @@ export function SettingsView({
     // Only send keys the user actually typed something new for — blank
     // fields must never overwrite an already-saved key.
     const keys: KeysPatch = {};
-    if (dropPostbridge) keys.postbridge = null;
-    else if (postbridge.trim()) keys.postbridge = postbridge.trim();
+    if (dropExposure) keys.exposure = null;
+    else if (exposure.trim()) keys.exposure = exposure.trim();
     if (openrouter.trim()) keys.openrouter = openrouter.trim();
     if (apify.trim()) keys.apify = apify.trim();
     if (fmp.trim()) keys.fmp = fmp.trim();
@@ -104,8 +104,8 @@ export function SettingsView({
       });
       // Clear typed values — they're saved now, and the field goes back to
       // showing "already set" via its placeholder.
-      setPostbridge('');
-      setDropPostbridge(false);
+      setExposure('');
+      setDropExposure(false);
       setOpenrouter('');
       setApify('');
       setFmp('');
@@ -130,7 +130,7 @@ export function SettingsView({
     }
   };
 
-  const toggleAccount = (id: number) =>
+  const toggleAccount = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   // Sidebar visibility applies instantly (persisted straight away) — a hidden
@@ -214,39 +214,39 @@ export function SettingsView({
             description="Shared across all projects. Never sent back to the browser once saved — these fields are write-only."
           >
             <Field
-              label="post-bridge API key"
-              hint={<>Handles scheduling, posting &amp; analytics. Get one at <PostBridgeLink>post-bridge.com</PostBridgeLink>.</>}
+              label="Exposure API key"
+              hint={<>Handles uploading, scheduling &amp; posting from your Exposure cloud phone. Create a key on the AI connection page: <ExposureLink>Exposure</ExposureLink>.</>}
             >
               <input
-                value={dropPostbridge ? '' : postbridge}
+                value={dropExposure ? '' : exposure}
                 onChange={(e) => {
-                  setPostbridge(e.target.value);
-                  setDropPostbridge(false);
+                  setExposure(e.target.value);
+                  setDropExposure(false);
                 }}
                 placeholder={
-                  dropPostbridge
+                  dropExposure
                     ? 'will be removed on Save'
-                    : config.keys.postbridge
+                    : config.keys.exposure
                       ? '•••• already set — leave blank to keep'
-                      : 'pb_...'
+                      : 'exp_pat_...'
                 }
                 className={`${inputClass} font-mono`}
               />
-              {config.keys.postbridge && (
+              {config.keys.exposure && (
                 <button
-                  onClick={() => setDropPostbridge((d) => !d)}
+                  onClick={() => setDropExposure((d) => !d)}
                   className="text-[11px] text-ink-5 hover:text-ink underline underline-offset-2 mt-1"
                 >
-                  {dropPostbridge ? 'Keep the saved key' : 'Remove saved key'}
+                  {dropExposure ? 'Keep the saved key' : 'Remove saved key'}
                 </button>
               )}
-              {dropPostbridge && (
+              {dropExposure && (
                 <p className="text-[11px] text-ink-6 mt-1">
-                  Save to delete it. Scheduling, connected accounts and analytics stop working
+                  Save to delete it. Scheduling and connected accounts stop working
                   — generating and exporting videos are unaffected.
                 </p>
               )}
-              <TestBadge ok={test?.postbridge} error={test?.errors?.postbridge} />
+              <TestBadge ok={test?.exposure} error={test?.errors?.exposure} />
             </Field>
             <Field label="OpenRouter API key" hint="Runs the AI that writes your slideshows — one key, any model. Get one at openrouter.ai/keys.">
               <input
@@ -304,12 +304,11 @@ export function SettingsView({
           {/* Posting defaults (per project) */}
           <Section
             title="Posting defaults"
-            description="Which connected accounts this project posts to, and whether to schedule directly or save as a draft in post-bridge."
+            description="Which connected accounts this project posts to, and posts are scheduled on that account's Exposure phone."
           >
             {accounts.length === 0 ? (
               <p className="text-[12px] text-ink-5">
-                No connected accounts yet. Add your post-bridge key above, hit Test, then connect
-                accounts at <PostBridgeLink>post-bridge.com</PostBridgeLink> — they'll appear here.
+                No connected accounts yet. Add your Exposure key above, hit Test, and make sure your phone has a TikTok account that finished warm-up — it'll appear here.
               </p>
             ) : (
               <div className="flex flex-col gap-1.5">
@@ -326,17 +325,6 @@ export function SettingsView({
               </div>
             )}
 
-            <Field label="Default mode">
-              <div className="flex gap-2">
-                <Button variant={mode === 'draft' ? 'primary' : 'secondary'} onClick={() => setMode('draft')}>
-                  Save as draft
-                </Button>
-                <Button variant={mode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setMode('schedule')}>
-                  Schedule directly
-                </Button>
-              </div>
-            </Field>
-            <DraftNote />
           </Section>
 
           {/* Background packs (per project) */}
@@ -378,19 +366,6 @@ export function SettingsView({
   );
 }
 
-export function DraftNote() {
-  return (
-    <div className="flex items-start gap-2 p-3 rounded-lg bg-surface border border-line">
-      <Info size={13} className="text-ink-5 mt-0.5 shrink-0" />
-      <p className="text-[12px] text-ink-4 leading-snug">
-        <span className="font-medium text-ink-3">Drafts vs. scheduling:</span> drafts land in your
-        post-bridge inbox to post by hand. You won't get analytics back on drafts — TikTok only
-        reports on content it publishes itself — but posting manually avoids automation detection,
-        so reach potential is often higher. Scheduling posts automatically and does report analytics.
-      </p>
-    </div>
-  );
-}
 
 function TestBadge({ ok, error }: { ok?: boolean; error?: string }) {
   if (ok === undefined) return null;

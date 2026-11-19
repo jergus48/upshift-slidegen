@@ -77,20 +77,35 @@ function gainedForWindows(series, currentViews, publishedAt, now) {
 // One window's gained views.
 //  - Video published inside the window → it didn't exist before the window
 //    started, so its entire lifetime total was earned in-window (exact).
-//  - Otherwise → current − the view count at the newest snapshot at/before the
-//    window start. If we have no snapshot that old yet, fall back to the oldest
-//    one we do have and mark the result partial (exact: false).
+//  - Otherwise → current − the view count at the window start, interpolated
+//    between the snapshots either side of it (the current count stands in as
+//    the "after" point). Using the last snapshot before the start as-is would
+//    count everything since that snapshot: one taken 25 days ago would make the
+//    whole 25 days' growth show up as "24h". The figure is exact only when those
+//    two points are close together relative to the window.
+//  - No snapshot that old yet → gain since the oldest one we have, partial.
 function gainedForWindow(series, currentViews, publishedAt, windowMs, now) {
   const cutoff = now - windowMs
   const pub = Date.parse(publishedAt || '') || 0
   if (pub && pub >= cutoff) return { value: currentViews, exact: true }
 
-  let baseline = null
+  let before = null
+  let after = { t: now, v: currentViews }
   for (const s of series) {
-    if (s.t <= cutoff) baseline = s
-    else break
+    if (s.t <= cutoff) before = s
+    else {
+      after = s
+      break
+    }
   }
-  if (baseline) return { value: Math.max(0, currentViews - baseline.v), exact: true }
+  if (before) {
+    const span = after.t - before.t
+    const atCutoff = span > 0 ? before.v + ((after.v - before.v) * (cutoff - before.t)) / span : before.v
+    return {
+      value: Math.max(0, Math.round(currentViews - atCutoff)),
+      exact: span <= Math.max(windowMs * 0.25, 2 * 60 * 60 * 1000),
+    }
+  }
 
   if (series.length) return { value: Math.max(0, currentViews - series[0].v), exact: false }
   return { value: 0, exact: false }

@@ -2,7 +2,7 @@
 
 Generate on-brand TikTok/Instagram **carousel slideshows** with Claude, then schedule and post them to your connected accounts — all from a clean local dashboard you run yourself.
 
-Slidesmith is **bring-your-own-keys** and **local-first**. There's no SaaS, no sign-up, and no database to set up. It runs on your machine, stores its config in a single file in your home directory, and uses [post-bridge](https://post-bridge.com?atp=clip-factory) to handle the hard parts (media hosting, multi-platform scheduling/posting, and analytics).
+Slidesmith is **bring-your-own-keys** and **local-first**. There's no SaaS, no sign-up, and no database to set up. It runs on your machine, stores its config in a single file in your home directory, and uses [Exposure](https://app.exposure.gg) to handle the hard parts (media hosting, multi-platform scheduling/posting, and analytics).
 
 ---
 
@@ -18,7 +18,7 @@ You ──▶ Brain (niche, audience, style)
                        Slides rendered to images in the browser
                                       │
                                       ▼
-                    post-bridge ──▶ schedules + posts to TikTok / IG / …
+                    Exposure ──▶ schedules + posts to TikTok / IG / …
                                       │
                                       ▼
                               Results (live analytics)
@@ -27,7 +27,7 @@ You ──▶ Brain (niche, audience, style)
 - **Generation** is done by an AI model via **OpenRouter** (your OpenRouter key) — pick any model from the dropdown.
 - **Slide images** are rendered locally in your browser (text over a gradient *or* a background image from the Library) — no image-gen API, no cost.
 - **Backgrounds** come from a bundled **image library** of curated aesthetic packs. Want more? Scrape Pinterest with your own **Apify** key (optional).
-- **Scheduling, posting, and analytics** are handled by **post-bridge** (your post-bridge key). That also means **no posting integrations to build and no storage to host.**
+- **Scheduling, posting, and analytics** are handled by **Exposure** (your Exposure key). That also means **no posting integrations to build and no storage to host.**
 
 ## What you need
 
@@ -36,10 +36,10 @@ Two API keys, entered in the in-app **Settings** screen:
 | Key | What it's for | Where to get it |
 | --- | --- | --- |
 | **OpenRouter** | Runs the AI that writes the slideshows (any model) | [openrouter.ai/keys](https://openrouter.ai/keys) |
-| **post-bridge** | Scheduling, posting & analytics | [post-bridge.com](https://post-bridge.com?atp=clip-factory) |
+| **Exposure** | Scheduling, posting & analytics | [app.exposure.gg](https://app.exposure.gg/devices/connect-ai) |
 | **Apify** *(optional)* | Scrape extra Pinterest images into the Library | [console.apify.com](https://console.apify.com) |
 
-Connect your social accounts inside post-bridge — they'll show up in Slidesmith automatically.
+Add your TikTok account on your Exposure cloud phone (and let warm-up finish) — they'll show up in Slidesmith automatically.
 
 ## Quick start
 
@@ -54,7 +54,7 @@ Then open the printed Vite URL (default http://localhost:5173). On first run you
 
 `npm run dev` starts two things together:
 - the **web UI** (Vite, port 5173)
-- the **local server** (Node/Express, port 8787) that holds your keys and talks to Claude + post-bridge
+- the **local server** (Node/Express, port 8787) that holds your keys and talks to Claude + Exposure
 
 ### Production / single-process
 
@@ -69,12 +69,12 @@ Slidesmith can also run as a Vercel deployment instead of purely locally.
 There's no shared database in this mode — the **queue and image library live
 in your browser** (localStorage + IndexedDB), not on the server, so each
 browser/device has its own. What *is* shared is the deployment itself: the
-AI generation, Pinterest scraping, and post-bridge scheduling all still run
+AI generation, Pinterest scraping, and Exposure scheduling all still run
 server-side, using keys set once in Vercel's environment variables.
 
 Steps:
 1. Push this repo to GitHub and import it into a new Vercel project.
-2. Set `OPENROUTER_API_KEY`, `POSTBRIDGE_API_KEY`, and (optionally)
+2. Set `OPENROUTER_API_KEY`, `EXPOSURE_API_KEY`, and (optionally)
    `APIFY_API_KEY` as environment variables — see `.env.example`. These
    always take precedence over whatever's typed into Settings, and unlike
    Settings-saved values, they survive cold starts.
@@ -94,8 +94,8 @@ sent to the browser at all (Settings shows "already set", not the value).
 3. **Background packs** (Settings) — pick which image packs this project draws from. *Generate* then auto-applies a background to every slide. Select none for plain gradients.
 4. **Queue** — hit *Generate* and the AI writes a batch of slideshows, already wearing backgrounds. Hit **Edit** on any card to preview the carousel and tweak the caption, hashtags, per-slide text, and per-slide background.
 5. **Library** — browse the bundled aesthetic packs, or scrape more images from any Pinterest search with your Apify key.
-6. **Approve** — pick which connected accounts to post to and either schedule a time or save as a draft in post-bridge. Slidesmith renders each slide to an image and hands it to post-bridge.
-7. **Schedule / Results** — track what's queued and how published posts are performing, straight from post-bridge.
+6. **Approve** — pick which connected accounts to post to and either schedule a time and Exposure's cloud phone posts it. Slidesmith renders each slide to an image and hands it to Exposure.
+7. **Schedule / Results** — track what's queued and how published posts are performing, straight from Exposure.
 
 ### A note on the bundled images
 
@@ -107,13 +107,13 @@ Slidesmith ships with ~140 curated background images organized into aesthetic pa
 - **Generated-but-not-yet-scheduled drafts (the queue):** your browser's `localStorage`, per project.
 - **Scraped/uploaded library images:** your browser's IndexedDB. Bundled packs ship as static files in the repo at `public/library/` either way.
 
-**Everything else** (media, scheduled posts, results) lives in your post-bridge account, and your keys never leave the server to reach anywhere but the services they belong to (OpenRouter, post-bridge, Apify) — the browser never sees the actual values, only whether each one is set.
+**Everything else** (media, scheduled posts, results) lives in your Exposure account, and your keys never leave the server to reach anywhere but the services they belong to (OpenRouter, Exposure, Apify) — the browser never sees the actual values, only whether each one is set.
 
 You can override the config storage location with `SLIDESMITH_DIR` and the server port with `PORT` (see `.env.example`).
 
 ## Tech
 
-React 19 + Vite + Tailwind (UI), a small Express server (keys + OpenRouter + post-bridge proxy), the OpenRouter API, and the post-bridge API. No database, self-hosted or deployed — the queue and image library are entirely client-side.
+React 19 + Vite + Tailwind (UI), a small Express server (keys + OpenRouter + Exposure proxy), the OpenRouter API, and the Exposure API. No database, self-hosted or deployed — the queue and image library are entirely client-side.
 
 ## License
 

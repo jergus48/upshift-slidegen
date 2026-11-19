@@ -153,6 +153,20 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
                   <span className="text-[10px] text-ink-6">Space or comma separated, no # needed.</span>
                 </div>
               </>
+            ) : current.card ? (
+              // Designed list / hero / timeline cards are built whole by the Brain
+              // and Meme tools — there is no single caption or background to edit.
+              <div className="space-y-3">
+                <p className="text-[12px] text-ink-5">
+                  Slide {index + 1} is a designed card, so its text and pictures are not editable here.
+                  Regenerate it from its tool, or delete the slide.
+                </p>
+                {total > 1 && (
+                  <button onClick={deleteSlide} className="text-[11px] text-ink-6 hover:text-red-600 flex items-center gap-1">
+                    <Trash2 size={11} /> Delete slide
+                  </button>
+                )}
+              </div>
             ) : (
               <>
                 <div>

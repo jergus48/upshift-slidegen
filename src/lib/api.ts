@@ -1,6 +1,6 @@
 // Frontend API client. All calls go to the local Slidesmith server (proxied at
 // /api in dev, same-origin in production). The server holds the keys and talks
-// to Claude + post-bridge — the browser never sees the secrets in a request.
+// to Claude + Exposure — the browser never sees the secrets in a request.
 import type {
   KeyStatus,
   KeysPatch,
@@ -58,7 +58,7 @@ export const saveKeys = (keys: KeysPatch) =>
   req<{ keys: KeyStatus }>('/config', { method: 'PUT', body: JSON.stringify({ keys }) }).then((r) => r.keys);
 
 export const testKeys = () =>
-  req<{ postbridge: boolean; openrouter: boolean; apify: boolean; fmp: boolean; errors: Record<string, string> }>(
+  req<{ exposure: boolean; openrouter: boolean; apify: boolean; fmp: boolean; errors: Record<string, string> }>(
     '/config/test',
     { method: 'POST' }
   );
@@ -273,7 +273,7 @@ export interface SchedulePayload {
   // single MP4/WebM data URL → video post). `video` wins if both are set.
   slides?: string[];
   video?: string;
-  socialAccounts: number[];
+  socialAccounts: string[];
   scheduledAt: string | null;
   mode: 'draft' | 'schedule';
 }
@@ -281,7 +281,7 @@ export interface SchedulePayload {
 export const schedule = (payload: SchedulePayload) =>
   req<unknown>('/schedule', { method: 'POST', body: JSON.stringify(payload) });
 
-// post-bridge → ScheduledPost. post-bridge stores caption + media + schedule;
+// Exposure → ScheduledPost. Exposure stores caption + media + schedule;
 // it has no concept of our per-slide text, so the Schedule view shows the
 // rendered images + caption + status.
 export async function getScheduledPosts(): Promise<ScheduledPost[]> {
@@ -291,7 +291,7 @@ export async function getScheduledPosts(): Promise<ScheduledPost[]> {
     caption: String(p.caption || ''),
     status: String(p.status || (p.is_draft ? 'draft' : 'scheduled')),
     scheduledAt: (p.scheduled_at as string) || null,
-    // The server resolves post-bridge's nested media (media.object.url) into a
+    // The server flattens Exposure media into a
     // flat string[] under `media_urls` — fall back to raw media for safety.
     mediaUrls: Array.isArray(p.media_urls)
       ? (p.media_urls as unknown[]).map(String).filter(Boolean)
@@ -300,7 +300,7 @@ export async function getScheduledPosts(): Promise<ScheduledPost[]> {
           .map((m) => (typeof m === 'string' ? m : m.object?.url || m.url || ''))
           .filter(Boolean)
       : [],
-    socialAccounts: (p.social_accounts as number[]) || [],
+    socialAccounts: (p.social_accounts as string[]) || [],
     isDraft: !!p.is_draft,
   }));
 }
@@ -325,7 +325,7 @@ export async function getResults(): Promise<PostResult[]> {
   return raw.map(mapResult);
 }
 
-// Trigger a post-bridge analytics sync, then return the refreshed results.
+// Ask Exposure for fresh stats, then return the refreshed results.
 export async function syncResults(): Promise<PostResult[]> {
   const raw = await req<Array<Record<string, unknown>>>('/results/sync', { method: 'POST' });
   return raw.map(mapResult);

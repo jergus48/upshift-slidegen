@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Clapperboard, Download, RefreshCw, Sparkles } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
@@ -18,17 +18,54 @@ import {
   ROLE_COLOR,
   type CapcutFormat,
 } from '../lib/capcutFormats';
-import { renderCapcutVideo } from '../lib/capcutVideo';
+import { dealPieces, renderCapcutVideo } from '../lib/capcutVideo';
 import { HASHTAGS, TOPICS, pickScript, type ScriptTopic } from '../lib/capcutScripts';
 import { beatVideoFileName, downloadBlob } from '../lib/beatVideo';
+import {
+  addFolderPreset,
+  listFolderPresets,
+  resolveWritableFolder,
+  supportsFolderPresets,
+  writeFileToDir,
+  characterFolderIn,
+  type FolderPreset,
+} from '../lib/downloadFolders';
+import { videoMetaJsonFrom } from '../lib/render';
 import { addQueuedVideo } from '../lib/localVideos';
 import { createZip, type ZipEntry } from '../lib/zip';
 import type { LibraryImage } from '../types';
 
 // A batch bigger than this is a mistake rather than an intent: every video is
 // recorded in real time.
-const MAX_PER_BATCH = 30;
-const COUNT_OPTIONS = [1, 3, 5, 10];
+// 0 = keep going until a character runs out of new combinations (or Stop).
+const COUNT_OPTIONS = [1, 3, 5, 10, 25, 50, 0];
+// Videos rendered at the same time.
+const PARALLEL_OPTIONS = [1, 2, 3, 4, 6];
+// Dealing the same clips into the same format this many times in a row means
+// the character's pools are used up.
+const MAX_DUPLICATE_TRIES = 8;
+// This many renders failing back to back means something is down (the dev
+// server, the library), not that one cut is bad. Stop instead of failing
+// every remaining combination.
+const MAX_FAIL_STREAK = 5;
+// Which cuts have already been made, per character, so a rerun (or a restart
+// after a crash) carries on with new ones instead of repeating itself.
+const HISTORY_KEY = 'slidesmith:videoHistory';
+const loadHistory = (): Record<string, string[]> => {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+const saveHistory = (h: Record<string, string[]>) => {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
+  } catch {
+    /* full or blocked: the history just won't stick */
+  }
+};
+const safeDir = (n: string) => n.replace(/[\/:*?"<>|]+/g, '-').trim().replace(/[. ]+$/, '') || 'character';
 
 interface Job {
   id: string;
@@ -52,12 +89,17 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
   const [pickedFormats, setPickedFormats] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [count, setCount] = useState(1);
+  const [parallel, setParallel] = useState(3);
   const [topic, setTopic] = useState<ScriptTopic>('screen');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [rendering, setRendering] = useState(false);
   const [zipping, setZipping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [presets, setPresets] = useState<FolderPreset[]>([]);
+  const [presetId, setPresetId] = useState('');
+  const stopRef = useRef(false);
+  const [historyCount, setHistoryCount] = useState(() => Object.values(loadHistory()).reduce((n, l) => n + l.length, 0));
 
   const load = useCallback(
     () =>
@@ -75,6 +117,9 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    if (supportsFolderPresets()) listFolderPresets().then(setPresets).catch(() => undefined);
+  }, []);
   useEffect(() => subscribeCharacters(() => setCharacters(getCharacters())), []);
 
   const bySong = useMemo(() => {
@@ -89,7 +134,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
   // Per character, which of the chosen formats it can fill.
   const fits = (c: Character) => chosen.filter((f) => missingFor(f, pools.get(c.id) || {}).length === 0);
   const runnable = characters.filter((c) => selected.includes(c.id) && fits(c).length > 0);
-  const plannedTotal = Math.min(runnable.length * count, MAX_PER_BATCH);
+  const plannedTotal = runnable.length * (count || 1);
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
@@ -122,64 +167,163 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
     setError(null);
     setDone(false);
     setRendering(true);
+    stopRef.current = false;
+    // Must be asked inside the click, before any long await.
+    const dir = presetId ? await resolveWritableFolder(presetId) : null;
+    if (presetId && !dir) {
+      setError('No write access to that folder. Pick it again.');
+      setRendering(false);
+      return;
+    }
     let n = 0;
     let queued = 0;
+    let failStreak = 0;
+    let lastFail = '';
     const patch = (id: string, p: Partial<Job>) => setJobs((js) => js.map((j) => (j.id === id ? { ...j, ...p } : j)));
-    try {
-      outer: for (const character of runnable) {
-        const usable = fits(character);
-        let deck: CapcutFormat[] = [];
-        let lastScript: string | undefined;
-        for (let i = 0; i < count; i++) {
-          if (n >= MAX_PER_BATCH) break outer;
-          // A random format each video, drawn from a shuffled deck so none
-          // comes round again before every picked one has been used.
-          if (!deck.length) deck = [...usable].sort(() => Math.random() - 0.5);
-          const format = deck.pop()!;
-          const jobId = `job-${Date.now()}-${n++}`;
-          const label = `${character.name} · ${formatLabel(format)}`;
-          setJobs((js) => [...js, { id: jobId, label, stage: 'Starting…' }]);
-          const script = pickScript(topic, lastScript);
-          lastScript = script.id;
-          try {
-            const blob = await renderCapcutVideo(format, pools.get(character.id) || {}, {
-              script,
-              onStage: (stage) => patch(jobId, { stage }),
-              onProgress: (progress) => patch(jobId, { progress }),
-            });
-            const title = `${character.name} - ${format.id}`;
-            const name = beatVideoFileName(title, blob);
-            patch(jobId, { result: blob, resultUrl: URL.createObjectURL(blob), name, stage: undefined });
-            try {
-              await addQueuedVideo(
-                {
-                  name,
-                  title,
-                  characterId: character.id,
-                  characterName: character.name,
-                  trackName: format.audio.name,
-                  style: format.id,
-                  duration: format.duration,
-                  folderId: character.folderId || '',
-                  hook: script.ch[0],
-                  caption: script.caption,
-                  hashtags: HASHTAGS[topic],
-                },
-                blob,
-              );
-              queued++;
-            } catch (e) {
-              patch(jobId, {
-                error: `Rendered, but couldn't be added to the Queue — ${e instanceof Error ? e.message : String(e)}. Save it here instead.`,
-              });
-            }
-          } catch (e) {
-            patch(jobId, { stage: undefined, error: e instanceof Error ? e.message : String(e) });
-          }
+    // One state per character; workers take turns claiming the next video so
+    // several render at once (the time is mostly seeking and encoding, not CPU).
+    const history = loadHistory();
+    const states = runnable.map((character) => ({
+      character,
+      usable: fits(character),
+      deck: [] as CapcutFormat[],
+      lastScript: undefined as string | undefined,
+      seen: new Set<string>(history[character.id] || []),
+      stuck: 0,
+      issued: 0,
+      exhausted: false,
+    }));
+    let rr = 0;
+    const claim = () => {
+      for (let k = 0; k < states.length; k++) {
+        const st = states[rr++ % states.length];
+        if (!st.exhausted && (count === 0 || st.issued < count)) {
+          st.issued++;
+          return st;
         }
       }
-      setDone(true);
-      if (queued) onQueued?.();
+      return null;
+    };
+    const remember = (id: string, sig: string) => {
+      const h = loadHistory();
+      h[id] = [...(h[id] || []), sig];
+      saveHistory(h);
+    };
+    const makeOne = async (st: (typeof states)[number]) => {
+      const { character, usable, seen } = st;
+      const pool = pools.get(character.id) || {};
+      let format: CapcutFormat;
+      let sigOf = '';
+      let plans: Awaited<ReturnType<typeof dealPieces>>;
+      for (;;) {
+        // A random format each video, drawn from a shuffled deck so none
+        // comes round again before every picked one has been used.
+        if (!st.deck.length) st.deck = [...usable].sort(() => Math.random() - 0.5);
+        format = st.deck.pop()!;
+        plans = await dealPieces(format, pool);
+        // format + which clips went where, so no two videos are the same cut.
+        const sig = `${format.id}|${plans.map((p) => `${p.item?.id ?? '-'}@${Math.round(p.offset * 10)}`).join(',')}`;
+        if (!seen.has(sig)) {
+          st.stuck = 0;
+          seen.add(sig);
+          sigOf = sig;
+          break;
+        }
+        if (++st.stuck >= MAX_DUPLICATE_TRIES * usable.length) {
+          st.exhausted = true;
+          return;
+        }
+      }
+      const jobId = `job-${Date.now()}-${n++}`;
+      const label = `${character.name} · ${formatLabel(format)}`;
+      // Videos saved to the folder keep nothing but a line; only the last few
+      // stay listed, so a long Max run doesn't grow (and re-render) forever.
+      setJobs((js) => {
+        const saved = js.filter((j) => j.stage === 'Saved to folder');
+        const drop = new Set(saved.slice(0, Math.max(0, saved.length - 8)).map((j) => j.id));
+        return [...js.filter((j) => !drop.has(j.id)), { id: jobId, label, stage: 'Starting…' }];
+      });
+      const script = pickScript(topic, st.lastScript);
+      st.lastScript = script.id;
+      try {
+        const blob = await renderCapcutVideo(format, pool, {
+          script,
+          plans,
+          onStage: (stage) => patch(jobId, { stage }),
+          onProgress: (progress) => patch(jobId, { progress }),
+        });
+        const title = `${character.name} - ${format.id}`;
+        const name = beatVideoFileName(title, blob).replace(/(\.[^.]+)$/, `-${Date.now().toString(36)}$1`);
+        if (dir) {
+          // Straight into the folder (e.g. Google Drive for desktop), one
+          // subfolder per character; nothing kept in memory.
+          try {
+            const sub = `${await characterFolderIn(dir, safeDir(character.name))}/`;
+            await writeFileToDir(dir, `${sub}${name}`, blob);
+            await writeFileToDir(
+              dir,
+              `${sub}${name.replace(/\.[^.]+$/, '')}.json`,
+              new TextEncoder().encode(videoMetaJsonFrom(script.ch[0] ?? script.all ?? '', script.caption, HASHTAGS[topic].map((t) => t.replace(/^#/, '')))),
+            );
+            patch(jobId, { name, stage: 'Saved to folder', progress: undefined });
+            queued++;
+            failStreak = 0;
+            remember(character.id, sigOf);
+          } catch (e) {
+            lastFail = `Could not write to the folder: ${e instanceof Error ? e.message : String(e)}`;
+            failStreak++;
+            patch(jobId, { stage: undefined, error: lastFail });
+          }
+          return;
+        }
+        patch(jobId, { result: blob, resultUrl: URL.createObjectURL(blob), name, stage: undefined });
+        try {
+          await addQueuedVideo(
+            {
+              name,
+              title,
+              characterId: character.id,
+              characterName: character.name,
+              trackName: format.audio.name,
+              style: format.id,
+              duration: format.duration,
+              folderId: character.folderId || '',
+              hook: script.ch[0],
+              caption: script.caption,
+              hashtags: HASHTAGS[topic],
+            },
+            blob,
+          );
+          queued++;
+          failStreak = 0;
+          remember(character.id, sigOf);
+        } catch (e) {
+          patch(jobId, {
+            error: `Rendered, but couldn't be added to the Queue — ${e instanceof Error ? e.message : String(e)}. Save it here instead.`,
+          });
+        }
+      } catch (e) {
+        lastFail = e instanceof Error ? e.message : String(e);
+        failStreak++;
+        patch(jobId, { stage: undefined, error: lastFail });
+      }
+    };
+    const worker = async () => {
+      while (!stopRef.current && failStreak < MAX_FAIL_STREAK) {
+        const st = claim();
+        if (!st) break;
+        await makeOne(st);
+      }
+    };
+    try {
+      await Promise.all(Array.from({ length: parallel }, worker));
+      setHistoryCount(Object.values(loadHistory()).reduce((n, l) => n + l.length, 0));
+      if (failStreak >= MAX_FAIL_STREAK) {
+        setError(`Stopped after ${MAX_FAIL_STREAK} failed renders in a row (${lastFail}). Check the dev server is running and run again: finished cuts are remembered and skipped.`);
+      } else {
+        setDone(true);
+      }
+      if (queued && !dir) onQueued?.();
     } finally {
       setRendering(false);
     }
@@ -347,14 +491,69 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
                         count === k ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
                       }`}
                     >
-                      {k}
+                      {k === 0 ? 'Max' : k}
                     </button>
                   ))}
                   <span className="text-[11px] text-ink-6">
-                    a random picked format per video · max {MAX_PER_BATCH} per batch
+                    {count === 0 ? 'until no new combination is left, or Stop' : 'a random picked format per video'}
                   </span>
                 </div>
               </div>
+              <div>
+                <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
+                  At the same time
+                </label>
+                <div className="flex items-center gap-2">
+                  {PARALLEL_OPTIONS.map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => setParallel(k)}
+                      disabled={rendering}
+                      className={`w-12 h-9 rounded-lg border text-[13px] font-medium disabled:opacity-50 ${
+                        parallel === k ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
+                      }`}
+                    >
+                      {k}
+                    </button>
+                  ))}
+                  <span className="text-[11px] text-ink-6">more is faster until the PC runs out of memory</span>
+                </div>
+              </div>
+              {supportsFolderPresets() && (
+                <div>
+                  <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">
+                    Save to folder
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={presetId}
+                      onChange={(e) => setPresetId(e.target.value)}
+                      disabled={rendering}
+                      className="h-9 rounded-lg border border-line bg-card px-2 text-[13px]"
+                    >
+                      <option value="">Queue (no folder)</option>
+                      {presets.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={rendering}
+                      onClick={async () => {
+                        const p = await addFolderPreset();
+                        if (p) {
+                          setPresets(await listFolderPresets());
+                          setPresetId(p.id);
+                        }
+                      }}
+                    >
+                      Pick folder…
+                    </Button>
+                    <span className="text-[11px] text-ink-6">a subfolder per character; point it at your Google Drive folder</span>
+                  </div>
+                </div>
+              )}
               {error && <p className="text-[12px] text-red-600">{error}</p>}
               {done && (
                 <p className="text-[12px] text-emerald-600 flex items-center gap-1">
@@ -363,7 +562,18 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
               )}
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] text-ink-6">
-                  Rendered in real time — a 20s video takes about 20s. Keep this tab in front.
+                  Keep this tab in front while it renders. {historyCount} cuts remembered, none will be repeated.{' '}
+                  {historyCount > 0 && !rendering && (
+                    <button
+                      className="underline hover:text-ink"
+                      onClick={() => {
+                        saveHistory({});
+                        setHistoryCount(0);
+                      }}
+                    >
+                      Forget them
+                    </button>
+                  )}
                 </span>
                 <Button
                   variant="primary"
@@ -371,8 +581,13 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
                   onClick={run}
                   disabled={rendering || plannedTotal === 0}
                 >
-                  {rendering ? 'Rendering…' : `Make ${plannedTotal} video${plannedTotal === 1 ? '' : 's'}`}
+                  {rendering ? 'Rendering…' : count === 0 ? 'Make as many as possible' : `Make ${plannedTotal} video${plannedTotal === 1 ? '' : 's'}`}
                 </Button>
+                {rendering && (
+                  <Button variant="secondary" onClick={() => (stopRef.current = true)}>
+                    Stop
+                  </Button>
+                )}
               </div>
             </div>
 

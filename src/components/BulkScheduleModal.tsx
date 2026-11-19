@@ -16,9 +16,8 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-// post-bridge dashboard — where the user reviews what we just sent over.
-const PB_SCHEDULED_URL = 'https://www.post-bridge.com/dashboard/posts/scheduled';
-const PB_DRAFTS_URL = 'https://www.post-bridge.com/dashboard/posts/drafts';
+// Exposure dashboard — where the user reviews what we just sent over.
+const EXPOSURE_DEVICES_URL = 'https://app.exposure.gg/devices';
 
 interface BulkScheduleModalProps {
   slideshows: Slideshow[];
@@ -39,8 +38,8 @@ function toLocalInput(d: Date): string {
 }
 
 export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onDone }: BulkScheduleModalProps) {
-  const [selectedAccounts, setSelectedAccounts] = useState<number[]>(defaults.socialAccountIds);
-  const [mode, setMode] = useState<'schedule' | 'draft'>(defaults.mode === 'draft' ? 'draft' : 'schedule');
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>(defaults.socialAccountIds);
+  const [mode] = useState<'schedule' | 'draft'>('schedule');
   // Post each slideshow as a vertical video (Short/Reel) instead of a carousel.
   const [asVideo, setAsVideo] = useState(false);
   // Same choices the single-video export offers (MusicChoiceModal).
@@ -64,7 +63,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
   const [succeededIds, setSucceededIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Default the start time to AFTER the last thing already scheduled in post-bridge.
+  // Default the start time to AFTER the last thing already scheduled in Exposure.
   useEffect(() => {
     getScheduledPosts()
       .then((posts) => {
@@ -84,7 +83,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
     setStartLocal(toLocalInput(new Date(base + h * 3600_000)));
   };
 
-  const toggleAccount = (id: number) =>
+  const toggleAccount = (id: string) =>
     setSelectedAccounts((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const lastFireLabel = useMemo(() => {
@@ -110,7 +109,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
     // for big batches. Each post keeps its own slot time (index i), so running
     // out of order doesn't change the schedule.
     // Each slideshow already fans out its slide uploads in parallel, so keep the
-    // slideshow-level pool modest — too many at once overwhelms post-bridge's
+    // slideshow-level pool modest — too many at once overwhelms Exposure's
     // upload endpoint and starts dropping slides.
     // Video rendering records in real time from a single canvas + MediaRecorder,
     // so several at once would fight over resources — render videos one at a
@@ -128,7 +127,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
           const scheduledAt = mode === 'schedule' ? new Date(startMs + i * stepMs).toISOString() : null;
           if (asVideo) {
             const meta = videoMeta(show);
-            // First line is the hook so post-bridge uses it as the video title;
+            // First line is the hook so it doubles as the video title;
             // the description (caption + hashtags) follows.
             const caption = [meta.title, meta.description].filter(Boolean).join('\n\n');
             const blob = await renderSlideshowVideo(show, undefined, { zoom, regrade });
@@ -169,17 +168,17 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
         {doneCount !== null ? (
           <div className="px-5 py-8 text-center space-y-2">
             <CheckCircle2 size={28} className="text-emerald-600 mx-auto" />
-            <p className="text-[14px] font-medium text-ink">{doneCount} of {slideshows.length} {mode === 'schedule' ? 'scheduled' : 'saved as drafts'}</p>
+            <p className="text-[14px] font-medium text-ink">{doneCount} of {slideshows.length} scheduled</p>
             <p className="text-[12px] text-ink-5">
-              {mode === 'schedule' ? 'post-bridge will publish them at their times.' : 'Find them in your post-bridge drafts.'}
+              Exposure will post them from your phone at their times.
             </p>
             <a
-              href={mode === 'schedule' ? PB_SCHEDULED_URL : PB_DRAFTS_URL}
+              href={EXPOSURE_DEVICES_URL}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center justify-center gap-1.5 h-9 px-4 mt-2 rounded-lg bg-ink text-bg text-[13px] font-medium hover:opacity-90"
             >
-              View on post-bridge <ExternalLink size={13} />
+              View on Exposure <ExternalLink size={13} />
             </a>
           </div>
         ) : (
@@ -188,7 +187,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
             <div>
               <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">Post to</label>
               {accounts.length === 0 ? (
-                <p className="text-[12px] text-ink-5">No connected accounts. Add your post-bridge key and connect accounts in Settings.</p>
+                <p className="text-[12px] text-ink-5">No connected accounts. Add your Exposure key in Settings.</p>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {accounts.map((a) => (
@@ -232,15 +231,6 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
                   </p>
                 </>
               )}
-            </div>
-
-            {/* Mode */}
-            <div>
-              <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">When</label>
-              <div className="flex gap-2">
-                <Button variant={mode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setMode('schedule')} disabled={busy}>Schedule</Button>
-                <Button variant={mode === 'draft' ? 'primary' : 'secondary'} onClick={() => setMode('draft')} disabled={busy}>Save all as drafts</Button>
-              </div>
             </div>
 
             {mode === 'schedule' && (
@@ -302,7 +292,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
                 onClick={submit}
                 disabled={busy}
               >
-                {busy ? 'Scheduling…' : mode === 'schedule' ? `Schedule ${slideshows.length}` : `Draft ${slideshows.length}`}
+                {busy ? 'Scheduling…' : `Schedule ${slideshows.length}`}
               </Button>
             </>
           )}

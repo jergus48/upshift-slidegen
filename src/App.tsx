@@ -10,6 +10,7 @@ import { QueueView } from './views/QueueView';
 import { CreateView } from './views/CreateView';
 import { PhotoPackView } from './views/PhotoPackView';
 import { CharactersView } from './views/CharactersView';
+import { ListDeckView } from './views/ListDeckView';
 import { VideoView } from './views/VideoView';
 import { listQueuedVideos, subscribeQueuedVideos } from './lib/localVideos';
 import { LibraryView } from './views/LibraryView';
@@ -89,7 +90,7 @@ export default function App() {
 
   const config: AppConfig | null = keys && workspace ? { keys, ...workspace } : null;
   const hasOpenrouter = !!keys?.openrouter;
-  const hasPostbridge = !!keys?.postbridge;
+  const hasExposure = !!keys?.exposure;
   const hasApify = !!keys?.apify;
   const hasFmp = !!keys?.fmp;
   const activeProject: Project | undefined = workspace?.projects.find(
@@ -118,9 +119,9 @@ export default function App() {
     setWorkspace(w);
     // First-run with no keys jumps to Settings — unless the URL explicitly asked
     // for the Channels page (/youtube), which we honor across a refresh.
-    if (!keyStatus.openrouter && !keyStatus.postbridge && window.location.pathname !== '/youtube')
+    if (!keyStatus.openrouter && !keyStatus.exposure && window.location.pathname !== '/youtube')
       setActiveView('settings');
-    if (keyStatus.postbridge) loadAccounts();
+    if (keyStatus.exposure) loadAccounts();
   }, [loadAccounts]);
 
   // On a password-protected deployment, check auth before loading anything
@@ -349,7 +350,7 @@ export default function App() {
   // Log a finished one-shot run (Photo Packs, Characters) in the batch panel and
   // tag its decks, so clicking the entry re-selects exactly this group later.
   // Preset runs don't go through here — the worker logs those as it generates.
-  const logFinishedBatch = (kind: 'photos' | 'characters', label: string, subtitle: string, shows: Slideshow[]): Slideshow[] => {
+  const logFinishedBatch = (kind: 'photos' | 'characters' | 'lists', label: string, subtitle: string, shows: Slideshow[]): Slideshow[] => {
     const id = `b-${Date.now()}-${Math.round(Math.random() * 1e5)}`;
     const tagged = shows.map((s) => ({ ...s, batchId: id }));
     const batch: GenBatch = {
@@ -419,6 +420,21 @@ export default function App() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  // Brain / Meme list tools: the view builds the finished decks (card slides, no
+  // model call), so all that is left is to log the batch and drop them on the queue.
+  const addListDecks = (tool: 'brain' | 'meme', shows: Slideshow[], subtitle: string) => {
+    if (!shows.length) return;
+    const tagged = logFinishedBatch(
+      'lists',
+      `${tool === 'brain' ? 'Brain' : 'Meme'} lists · ${shows.length} deck${shows.length === 1 ? '' : 's'}`,
+      subtitle,
+      shows,
+    );
+    setQueue((q) => [...tagged, ...q]);
+    setSelectedIds((prev) => [...tagged.map((s) => s.id), ...prev]);
+    setActiveView('queue');
   };
 
   // Characters: before/after transformation decks. Every slide's photo is drawn
@@ -648,7 +664,7 @@ export default function App() {
   };
 
   const confirmSchedule = async (opts: {
-    socialAccounts: number[];
+    socialAccounts: string[];
     mode: 'draft' | 'schedule';
     scheduledAt: string | null;
   }) => {
@@ -664,7 +680,7 @@ export default function App() {
       mode: opts.mode,
     });
     // The modal stays open showing its success state with a link to
-    // post-bridge instead of us jumping to the Schedule tab.
+    // Exposure instead of us jumping to the Schedule tab.
     setQueue((q) => q.filter((s) => s.id !== scheduledId));
   };
 
@@ -835,6 +851,8 @@ export default function App() {
             onGenerate={generatePhotoPacks}
           />
         )}
+        {activeView === 'brainlist' && <ListDeckView key="brain" tool="brain" onAdd={addListDecks} />}
+        {activeView === 'memelist' && <ListDeckView key="meme" tool="meme" onAdd={addListDecks} />}
         {activeView === 'characters' && (
           <CharactersView
             generating={generating}
@@ -850,8 +868,8 @@ export default function App() {
         {activeView === 'subreddit' && <SubredditView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'prompt' && <PromptView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'clean' && <ScrubView />}
-        {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
-        {activeView === 'results' && <ResultsView configured={hasPostbridge} />}
+        {activeView === 'schedule' && <ScheduleView configured={hasExposure} />}
+        {activeView === 'results' && <ResultsView configured={hasExposure} />}
         {activeView === 'channels' && <ChannelsView canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'stocks' && <StocksView hasFmp={hasFmp} canGenerate={hasOpenrouter} model={config.model} />}
         {activeView === 'brain' && (

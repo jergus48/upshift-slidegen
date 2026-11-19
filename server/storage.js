@@ -6,7 +6,7 @@
 // the same path on a Lambda-style filesystem throws ENOENT) — /tmp is the
 // only writable path there. It's wiped between cold starts, so config
 // entered in Settings won't reliably survive on a Vercel deployment; use the
-// POSTBRIDGE_API_KEY/OPENROUTER_API_KEY/APIFY_API_KEY env vars (see store.js)
+// EXPOSURE_API_KEY/OPENROUTER_API_KEY/APIFY_API_KEY env vars (see store.js)
 // for keys that need to actually stick.
 import { homedir } from 'node:os'
 import { join } from 'node:path'

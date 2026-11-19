@@ -1,6 +1,6 @@
 // Prettified server logging so `npm run dev` shows what's happening during the
 // slow flows (scraping Pinterest, generating with the model, uploading +
-// scheduling to post-bridge). Colorized, timestamped, with a tiny spinner-free
+// scheduling to Exposure). Colorized, timestamped, with a tiny spinner-free
 // progress helper. No deps — just ANSI codes, disabled when not a TTY or when
 // NO_COLOR is set.
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR

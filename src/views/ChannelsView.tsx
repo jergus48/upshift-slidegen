@@ -89,8 +89,13 @@ const WINDOW_NOUN: Record<TimeFilter, string> = {
 function shownVideos(c: YtChannel, filter: TimeFilter, now: number): YtVideo[] {
   const vids = c.videos ?? [];
   if (filter === 'all') return vids.slice(0, 5);
+  // A window shows every upload that was active in it: published inside it, or
+  // (older) still gaining views in it. Sorted by views gained in the window.
   const cutoff = now - WINDOW_MS[filter];
-  return vids.filter((v) => new Date(v.publishedAt).getTime() >= cutoff);
+  const gain = (v: YtVideo) => gainedFor(v, filter)?.value ?? 0;
+  return vids
+    .filter((v) => new Date(v.publishedAt).getTime() >= cutoff || gain(v) > 0)
+    .sort((a, b) => gain(b) - gain(a));
 }
 
 interface ChannelsViewProps {
@@ -377,7 +382,7 @@ export function ChannelsView({ canGenerate, model }: ChannelsViewProps) {
                   channel={c}
                   videos={shownFor(c)}
                   filter={filter}
-                  emptyNote={filter === 'all' ? '' : `No uploads in ${WINDOW_NOUN[filter]}.`}
+                  emptyNote={filter === 'all' ? '' : `No new uploads or views in ${WINDOW_NOUN[filter]}.`}
                   onRemove={() => removeChannel(c.input)}
                   canGenerate={canGenerate}
                   model={model}
@@ -450,7 +455,11 @@ function ChannelCard({
           )}
           <span className="text-[11px] text-ink-6 truncate block">
             {channel.ok
-              ? `${channel.subscribers ? `${formatNumber(channel.subscribers)} subscribers · ` : ''}${formatNumber(sumViews(videos))} views · ${videos.length} ${videos.length === 1 ? 'upload' : 'uploads'}`
+              ? `${channel.subscribers ? `${formatNumber(channel.subscribers)} subscribers · ` : ''}${
+                  filter === 'all'
+                    ? `${formatNumber(sumViews(videos))} views`
+                    : `+${formatNumber(channelGained(channel, filter).value)} views`
+                } · ${videos.length} ${videos.length === 1 ? 'upload' : 'uploads'}`
               : channel.error}
           </span>
         </div>

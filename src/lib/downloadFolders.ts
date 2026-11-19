@@ -231,6 +231,20 @@ async function dirForSegments(
   return dir;
 }
 
+// A character's folder inside `root`. A folder that has been handed out is
+// renamed "(Taken) <name>" in Drive, so that one wins when it exists; otherwise
+// the plain name (created on first write). Without this a renamed folder would
+// be shadowed by a fresh duplicate carrying the old name.
+export async function characterFolderIn(root: FileSystemDirectoryHandle, name: string): Promise<string> {
+  const taken = `(Taken) ${name}`;
+  try {
+    await root.getDirectoryHandle(taken);
+    return taken;
+  } catch {
+    return name;
+  }
+}
+
 // Write one file into `root`. A "/" in `name` creates subfolders (so the same
 // "folder/file" entry names used for zips work here too). Overwrites an existing
 // file of the same name.

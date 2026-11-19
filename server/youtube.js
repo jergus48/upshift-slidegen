@@ -13,6 +13,8 @@
 // public surfaces can change shape without notice — hence the defensive parsing
 // and per-channel error capture upstream in app.js.
 
+import { readData, writeData } from './storage.js'
+
 // A desktop UA + consent cookie so YouTube serves the real page instead of a
 // redirect to its cookie-consent interstitial (which carries none of the data).
 const FETCH_HEADERS = {
@@ -219,6 +221,50 @@ function parseVideosPage(html, limit) {
   return out
 }
 
+// The channel-page scrape only has rounded views ("111M") and a coarse relative
+// date ("1 month ago"), and nothing at all for Shorts. Rounded views make the
+// gained-views deltas jump in million-sized steps, and the coarse date shifts
+// windows by days. Each video's watch page carries the exact publishDate and
+// viewCount, so read those. Publish dates never change, so they're kept on disk
+// and a video's page is only fetched again for its view count.
+const PUBLISH_DATES_KEY = 'youtube-publish-dates'
+let publishDates = null // id → ISO date, loaded lazily from storage
+
+async function fetchWatchStats(id) {
+  const res = await fetch(`https://www.youtube.com/watch?v=${id}`, { headers: FETCH_HEADERS })
+  if (!res.ok) return null
+  const html = await res.text()
+  return {
+    publishedAt: firstMatch(html, /"publishDate":"([^"]+)"/) || firstMatch(html, /"uploadDate":"([^"]+)"/),
+    views: Number(firstMatch(html, /"viewCount":"(\d+)"/)) || 0,
+  }
+}
+
+async function enrichFromWatchPages(videos) {
+  if (!publishDates) publishDates = (await readData(PUBLISH_DATES_KEY, {})) || {}
+  let datesChanged = false
+  const queue = [...videos]
+  const worker = async () => {
+    for (let v = queue.shift(); v; v = queue.shift()) {
+      try {
+        const stats = await fetchWatchStats(v.id)
+        if (!stats) continue
+        if (stats.views) v.views = stats.views
+        const date = stats.publishedAt ? new Date(stats.publishedAt).toISOString() : ''
+        if (date && publishDates[v.id] !== date) {
+          publishDates[v.id] = date
+          datesChanged = true
+        }
+      } catch {
+        // keep the scraped approximations for this one
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: 6 }, worker))
+  for (const v of videos) if (publishDates[v.id]) v.publishedAt = publishDates[v.id]
+  if (datesChanged) await writeData(PUBLISH_DATES_KEY, publishDates)
+}
+
 // In-memory cache so repeated dashboard loads / refreshes stay fast and don't
 // hammer YouTube. Short TTL; the client's Refresh sends noCache to force fresh.
 const cache = new Map() // input → { at, data }
@@ -267,6 +313,7 @@ export async function fetchChannel(input, { limit = 5, noCache = false } = {}) {
     })
     if (!videosRes.ok) throw new Error(`videos page ${videosRes.status}`)
     videos = parseVideosPage(await videosRes.text(), limit)
+    await enrichFromWatchPages(videos)
   }
 
   const data = {

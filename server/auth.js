@@ -2,7 +2,7 @@
 // with no APP_PASSWORD set — the server only binds to localhost there anyway,
 // so this is a no-op. Once deployed somewhere public (Vercel), set an
 // APP_PASSWORD env var and every /api/* route (which is what can read your
-// OpenRouter/post-bridge/Apify keys) requires it first.
+// OpenRouter/Exposure/Apify keys) requires it first.
 import { createHash } from 'node:crypto'
 
 const COOKIE = 'slidesmith_auth'

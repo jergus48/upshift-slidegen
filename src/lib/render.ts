@@ -1,7 +1,7 @@
 // Client-side slide renderer. Each slide becomes a 1080×1920 PNG drawn on a
 // canvas — text over a gradient. No image-generation API, no cost, deterministic
 // output. The resulting data URLs are sent to the server, which uploads them to
-// post-bridge as the post's media.
+// Exposure as the post's media.
 //
 // Caption geometry (font %, stroke, line-height, padding, centering) comes from
 // lib/captionStyle.ts — the SAME constants the editor preview uses — so the
@@ -9,6 +9,7 @@
 import type { Slide, Slideshow } from '../types';
 import { captionStyleSpec, cleanCaption } from './captionStyle';
 import { drawCaption, loadCaptionFont } from './drawCaption';
+import { drawCard } from './drawCard';
 import { resolveImageSrc } from './imageSrc';
 import { createZip, dataUrlToBytes, type ZipEntry } from './zip';
 import { writeFileToDir } from './downloadFolders';
@@ -52,7 +53,7 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement | HTMLCa
 // destroyed the image. Both are gone.
 //
 // What actually happens now: the slide pipeline already resamples the source
-// into a 1080x1920 canvas, composites a darkening layer and text over it, and
+// into a 1080x1920 canvas, composites the caption over it, and
 // re-encodes the result. That alone rewrites every pixel and is enough to break
 // fragile pixel-domain watermarks. On top of it we add a sub-perceptual dither
 // (+/-1 on the low bit) so the pixel statistics don't survive intact either.
@@ -90,6 +91,14 @@ export async function renderSlide(slide: Slide): Promise<string> {
   // Resolve the slide's stable image reference (`local:…` id, `/library/…`
   // path, or `data:` URL) to something loadable. Local ids become same-origin
   // blob: object URLs, which don't taint the canvas, so toDataURL still works.
+  // Designed card slides (Brain / Meme list tools) draw their own layout and
+  // carry no separate caption.
+  if (slide.card) {
+    await drawCard(ctx, slide.card, W, H);
+    ditherInPlace(ctx, W, H);
+    return canvas.toDataURL('image/png');
+  }
+
   const imageSrc = await resolveImageSrc(slide.imageUrl);
   if (imageSrc) {
     try {
@@ -97,10 +106,8 @@ export async function renderSlide(slide: Slide): Promise<string> {
       // Draw the source at full fidelity — no downscale, no blur, no lossy
       // round-trips. The watermark scrub is the invisible dither applied to the
       // finished frame below, not a degradation of the source.
+      // No darkening layer: the caption's black outline keeps it readable.
       drawCover(ctx, img);
-      // Darken so white text stays readable.
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(0, 0, W, H);
     } catch {
       ctx.fillStyle = slide.bgFrom || '#0f172a';
       ctx.fillRect(0, 0, W, H);
@@ -217,7 +224,7 @@ export function captionFileText(hook: string, caption: string, hashtags: string[
   return [hook || '', '', caption || '', '', tags, ''].join('\n');
 }
 
-// Per-video upload metadata — what a YouTube/Shorts uploader (post-bridge, the
+// Per-video upload metadata — what a YouTube/Shorts uploader (Exposure, the
 // scheduler, or a person posting by hand) needs to fill the title, description
 // and tag fields. Title = the hook; description = the caption followed by the
 // hashtags (YouTube shows in-description hashtags as clickable chips); tags =

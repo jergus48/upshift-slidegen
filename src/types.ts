@@ -1,4 +1,4 @@
-export type ViewKey = 'queue' | 'create' | 'photopack' | 'characters' | 'video' | 'library' | 'reddit' | 'reply' | 'write' | 'subreddit' | 'prompt' | 'clean' | 'schedule' | 'results' | 'channels' | 'stocks' | 'brain' | 'settings';
+export type ViewKey = 'queue' | 'create' | 'photopack' | 'brainlist' | 'memelist' | 'characters' | 'video' | 'library' | 'reddit' | 'reply' | 'write' | 'subreddit' | 'prompt' | 'clean' | 'schedule' | 'results' | 'channels' | 'stocks' | 'brain' | 'settings';
 
 // ── YouTube channel dashboard (public data, no API key) ──────────────────────
 export interface YtVideo {
@@ -99,6 +99,47 @@ export interface Slide {
   bgTo?: string;
   // Caption font look ('app' default vs 'tiktok'); undefined = app default.
   captionStyle?: import('./lib/captionStyle').CaptionStyle;
+  // Designed card (list / hero / timeline on a solid colour) — drawn by
+  // lib/drawCard.ts instead of the plain caption-over-photo look. `text` still
+  // holds a plain-text summary so reading-time pacing and the editor work.
+  card?: CardSpec;
+}
+
+// ── Card slides (Brain / Meme list tools; see lib/listDecks.ts) ─────────────
+// Two looks copied from real viral slideshows:
+//  'article' — white page, light Inter text with [[underlined]] phrases and photos
+//              (a photo can sit left/right of a paragraph);
+//  'mode'    — pastel square, bold 'EASY MODE:' title, a dash list on the right and
+//              a meme picture bottom-left, optional small pictures under the list.
+export type ArticleBlock =
+  | { kind: 'p'; text: string }
+  | {
+      kind: 'img';
+      ref?: string;
+      // 'solo' = picture on its own line; left/right = text wraps beside it.
+      side: 'solo' | 'left' | 'right';
+      sideText?: string;
+      wide?: boolean;
+      caption?: string;
+      // Solo only: a second picture beside the first (a compare strip), and own
+      // labels drawn above each picture.
+      ref2?: string;
+      label?: string;
+      label2?: string;
+    };
+
+export interface CardSpec {
+  layout: 'article' | 'mode';
+  bg: string;
+  ink: string;
+  title: string;
+  // article
+  blocks?: ArticleBlock[];
+  // mode
+  items?: string[];
+  image?: string;
+  thumbs?: string[];
+  handle?: string;
 }
 
 export interface Slideshow {
@@ -132,7 +173,7 @@ export interface BrainState {
 }
 
 export interface ProjectDefaults {
-  socialAccountIds: number[];
+  socialAccountIds: string[];
   mode: 'draft' | 'schedule';
 }
 
@@ -154,7 +195,7 @@ export interface Project {
 // set, so Settings can show "already set" without ever exposing the secret.
 // This is the only part of "config" that lives server-side.
 export interface KeyStatus {
-  postbridge: boolean;
+  exposure: boolean;
   openrouter: boolean;
   apify: boolean;
   fmp: boolean;
@@ -184,7 +225,7 @@ export interface AppConfig extends Workspace {
 // A null value deletes the saved key; a string sets it, and an absent field
 // leaves whatever is already saved alone.
 export type KeysPatch = Partial<{
-  postbridge: string | null;
+  exposure: string | null;
   openrouter: string | null;
   apify: string | null;
   fmp: string | null;
@@ -345,19 +386,19 @@ export interface ModelOption {
 }
 
 export interface SocialAccount {
-  id: number;
+  id: string; // Exposure account handle
   platform: string;
   username: string;
 }
 
-// Shapes returned by post-bridge (mapped in lib/api.ts).
+// Shapes returned by Exposure (mapped in lib/api.ts).
 export interface ScheduledPost {
   id: string;
   caption: string;
   status: string; // scheduled | processing | posted | draft
   scheduledAt: string | null;
   mediaUrls: string[];
-  socialAccounts: number[];
+  socialAccounts: string[];
   isDraft: boolean;
 }
 
