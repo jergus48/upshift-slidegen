@@ -785,7 +785,20 @@ function layCues(format: CapcutFormat, script: TextScript): Cue[] {
   const chClips = before.filter(isClip);
   let chEnd = chClips.length ? Math.max(...chClips.map((p) => p.to)) : 0;
   const lastShown = before.length ? Math.max(...before.map((p) => p.to)) : 0;
-  if (script.gap) {
+  if (Array.isArray(script.gap)) {
+    // A turn split into words: one word per cut, back from the last chopped
+    // shot, so the sentence only completes on the drop.
+    const said = script.gap;
+    const shots = chClips.filter((p) => p.from < chEnd - 0.2).sort((a, b) => a.from - b.from);
+    const words = shots.slice(-said.length);
+    // Fewer cuts than words: the first cut takes the spare words.
+    const skip = said.length - words.length;
+    words.forEach((p, i) => {
+      const text = skip && !i ? said.slice(0, skip + 1).join(' ') : said[skip + i];
+      cues.push({ from: p.from, to: i === words.length - 1 ? chEnd : words[i + 1].from, text });
+    });
+    if (words.length) chEnd = words[0].from;
+  } else if (script.gap) {
     if (format.drop - lastShown > 0.25) {
       cues.push({ from: lastShown, to: format.drop, text: script.gap });
     } else {

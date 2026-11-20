@@ -236,7 +236,8 @@ export function LibraryView({ hasApify, pinterestActor }: LibraryViewProps) {
       if (!map.has(img.pack)) map.set(img.pack, []);
       map.get(img.pack)!.push(img);
     }
-    for (const pack of listRegisteredPacks()) if (!map.has(pack)) map.set(pack, []);
+    const have = new Set([...map.keys()].map((k) => k.toLowerCase()));
+    for (const pack of listRegisteredPacks()) if (!have.has(pack.toLowerCase())) map.set(pack, []);
     return [...map.entries()];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [images, subTick]);

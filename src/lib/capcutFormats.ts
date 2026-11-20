@@ -50,7 +50,7 @@ export const FORMAT_KINDS = ['scoreboard', 'rating', 'rating-app'] as const;
 export const FORMAT_LABEL: Record<string, string> = {
   scoreboard: 'Scoreboard',
   rating: 'Rating',
-  'rating-app': 'Rating + app',
+  'rating-app': 'Scoreboard + app',
 };
 
 // Where a piece sits on the 1080×1920 canvas, exactly as CapCut records it:
@@ -133,6 +133,24 @@ export const assetUrl = (p: string): string => BASE + p.split('/').map(encodeURI
 
 // Every imported format. Not cached: an import in Brain must show up in the
 // Video tab without a reload.
+// The "-rating-app" projects were cut in CapCut with rating placeholders, but
+// next to the app recording the screens shown are the scoreboard. Remapped on
+// load, so a fresh import from CapCut keeps working unchanged.
+const APP_SCREEN: Partial<Record<Role, Role>> = {
+  rating_chopped: 'scoreboard_chopped',
+  rating_buffed: 'scoreboard_buffed',
+};
+function withAppScoreboard(f: CapcutFormat): CapcutFormat {
+  if (f.format !== 'rating-app') return f;
+  return {
+    ...f,
+    video: f.video.map((p) => {
+      const to = p.role !== 'asset' && APP_SCREEN[p.role as Role];
+      return to ? { ...p, role: to } : p;
+    }),
+  };
+}
+
 export async function listCapcutFormats(): Promise<CapcutFormat[]> {
   try {
     const r = await fetch(`${BASE}index.json`, { cache: 'no-store' });
@@ -147,6 +165,7 @@ export async function listCapcutFormats(): Promise<CapcutFormat[]> {
     );
     return list
       .filter((f): f is CapcutFormat => Boolean(f && f.id && Array.isArray(f.video) && f.audio?.file))
+      .map(withAppScoreboard)
       .sort((a, b) => a.song.localeCompare(b.song) || a.format.localeCompare(b.format));
   } catch {
     return [];

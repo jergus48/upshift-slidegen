@@ -90,7 +90,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [count, setCount] = useState(1);
   const [parallel, setParallel] = useState(3);
-  const [topic, setTopic] = useState<ScriptTopic>('screen');
+  const [topic, setTopic] = useState<ScriptTopic | 'mix'>('screen');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [rendering, setRendering] = useState(false);
   const [zipping, setZipping] = useState(false);
@@ -129,7 +129,18 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
   }, [formats]);
 
   const chosen = formats.filter((f) => pickedFormats.includes(f.id));
-  const pools = useMemo(() => new Map(characters.map((c) => [c.id, poolsFor(c, library, topic)])), [characters, library, topic]);
+  // Tips have no clip folders of their own: they cut the general clips. A mix
+  // is checked against the general clips too; 🌽 joins it only where its own
+  // folders fill the format.
+  const folderTopic = topic === 'lust' ? 'lust' : 'screen';
+  const pools = useMemo(
+    () => new Map(characters.map((c) => [c.id, poolsFor(c, library, folderTopic)])),
+    [characters, library, folderTopic],
+  );
+  const lustPools = useMemo(
+    () => new Map(characters.map((c) => [c.id, poolsFor(c, library, 'lust')])),
+    [characters, library],
+  );
 
   // Per character, which of the chosen formats it can fill.
   const fits = (c: Character) => chosen.filter((f) => missingFor(f, pools.get(c.id) || {}).length === 0);
@@ -211,7 +222,8 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
     };
     const makeOne = async (st: (typeof states)[number]) => {
       const { character, usable, seen } = st;
-      const pool = pools.get(character.id) || {};
+      let pool = pools.get(character.id) || {};
+      let videoTopic: ScriptTopic = topic === 'mix' ? 'screen' : topic;
       let format: CapcutFormat;
       let sigOf = '';
       let plans: Awaited<ReturnType<typeof dealPieces>>;
@@ -220,6 +232,12 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
         // comes round again before every picked one has been used.
         if (!st.deck.length) st.deck = [...usable].sort(() => Math.random() - 0.5);
         format = st.deck.pop()!;
+        if (topic === 'mix') {
+          const lust = lustPools.get(character.id) || {};
+          const options = TOPICS.map((t) => t.key).filter((t) => t !== 'lust' || missingFor(format, lust).length === 0);
+          videoTopic = options[Math.floor(Math.random() * options.length)];
+          pool = videoTopic === 'lust' ? lust : pools.get(character.id) || {};
+        }
         plans = await dealPieces(format, pool);
         // format + which clips went where, so no two videos are the same cut.
         const sig = `${format.id}|${plans.map((p) => `${p.item?.id ?? '-'}@${Math.round(p.offset * 10)}`).join(',')}`;
@@ -243,7 +261,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
         const drop = new Set(saved.slice(0, Math.max(0, saved.length - 8)).map((j) => j.id));
         return [...js.filter((j) => !drop.has(j.id)), { id: jobId, label, stage: 'Starting…' }];
       });
-      const script = pickScript(topic, st.lastScript);
+      const script = pickScript(videoTopic, st.lastScript);
       st.lastScript = script.id;
       try {
         const blob = await renderCapcutVideo(format, pool, {
@@ -263,7 +281,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
             await writeFileToDir(
               dir,
               `${sub}${name.replace(/\.[^.]+$/, '')}.json`,
-              new TextEncoder().encode(videoMetaJsonFrom(script.ch[0] ?? script.all ?? '', script.caption, HASHTAGS[topic].map((t) => t.replace(/^#/, '')))),
+              new TextEncoder().encode(videoMetaJsonFrom(script.ch[0] ?? script.all ?? '', script.caption, HASHTAGS[videoTopic].map((t) => t.replace(/^#/, '')))),
             );
             patch(jobId, { name, stage: 'Saved to folder', progress: undefined });
             queued++;
@@ -290,7 +308,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
               folderId: character.folderId || '',
               hook: scriptTitle(script),
               caption: script.caption,
-              hashtags: HASHTAGS[topic],
+              hashtags: HASHTAGS[videoTopic],
             },
             blob,
           );
@@ -416,7 +434,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
               {characters.map((c) => {
                 const p = pools.get(c.id) || {};
                 const ok = fits(c);
-                const missing = [...new Set(chosen.flatMap((f) => missingFor(f, p)))].map((r) => folderFor(r, topic));
+                const missing = [...new Set(chosen.flatMap((f) => missingFor(f, p)))].map((r) => folderFor(r, folderTopic));
                 return (
                   <label
                     key={c.id}
@@ -434,7 +452,7 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
                       {ROLES.map((r) => (
                         <span
                           key={r}
-                          title={`${folderFor(r, topic)}: ${p[r]?.length || 0}`}
+                          title={`${folderFor(r, folderTopic)}: ${p[r]?.length || 0}`}
                           className={`text-[10px] tabular-nums px-1.5 rounded text-white ${p[r]?.length ? '' : 'opacity-25'}`}
                           style={{ background: ROLE_COLOR[r] }}
                         >
@@ -474,7 +492,18 @@ export function VideoView({ onQueued }: { onQueued?: () => void }) {
                       {t.label}
                     </button>
                   ))}
-                  <span className="text-[11px] text-ink-6">a random script of this topic per video</span>
+                  <button
+                    onClick={() => setTopic('mix')}
+                    disabled={rendering}
+                    className={`px-3 h-9 rounded-lg border text-[13px] font-medium disabled:opacity-50 ${
+                      topic === 'mix' ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink-5 hover:border-line-2'
+                    }`}
+                  >
+                    Mix of all
+                  </button>
+                  <span className="text-[11px] text-ink-6">
+                    {topic === 'mix' ? 'a random topic and script per video' : 'a random script of this topic per video'}
+                  </span>
                 </div>
               </div>
               <div>

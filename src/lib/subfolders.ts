@@ -34,9 +34,16 @@ function write(reg: Registry): void {
   listeners.forEach((l) => l());
 }
 
+// Pack names are matched ignoring case, the way a character finds its pack: a
+// character "Yves" owns the uploaded pack "YVES", so they share one registry entry.
+function keyOf(reg: Registry, pack: string): string {
+  return Object.keys(reg).find((k) => k.toLowerCase() === pack.toLowerCase()) ?? pack;
+}
+
 // Declared subfolder names for a pack (may include ones with no images yet).
 export function getSubfolders(pack: string): string[] {
-  return read()[pack] || [];
+  const reg = read();
+  return reg[keyOf(reg, pack)] || [];
 }
 
 // Every pack with declared subfolders — including packs with no images yet,
@@ -50,9 +57,10 @@ export function addSubfolder(pack: string, name: string): void {
   const clean = name.trim();
   if (!clean) return;
   const reg = read();
-  const list = reg[pack] || [];
+  const key = keyOf(reg, pack);
+  const list = reg[key] || [];
   if (list.some((s) => s.toLowerCase() === clean.toLowerCase())) return;
-  reg[pack] = [...list, clean];
+  reg[key] = [...list, clean];
   write(reg);
 }
 
@@ -60,10 +68,11 @@ export function addSubfolder(pack: string, name: string): void {
 // are handled by the caller (moved back to Unfiled) — this only drops the name.
 export function removeSubfolder(pack: string, name: string): void {
   const reg = read();
-  const list = reg[pack];
+  const key = keyOf(reg, pack);
+  const list = reg[key];
   if (!list) return;
-  reg[pack] = list.filter((s) => s !== name);
-  if (!reg[pack].length) delete reg[pack];
+  reg[key] = list.filter((s) => s !== name);
+  if (!reg[key].length) delete reg[key];
   write(reg);
 }
 
@@ -73,10 +82,11 @@ export function renameSubfolder(pack: string, from: string, to: string): void {
   const clean = to.trim();
   if (!clean || clean === from) return;
   const reg = read();
-  const list = reg[pack];
+  const key = keyOf(reg, pack);
+  const list = reg[key];
   if (!list || !list.includes(from)) return;
   if (list.some((s) => s.toLowerCase() === clean.toLowerCase())) return;
-  reg[pack] = list.map((s) => (s === from ? clean : s));
+  reg[key] = list.map((s) => (s === from ? clean : s));
   write(reg);
 }
 
