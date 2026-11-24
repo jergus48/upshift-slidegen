@@ -12,6 +12,9 @@ const PACKS = [
   { slug: 'brain-progress', name: 'Brain progress', description: 'Brain scans / a brain getting better. The cover of the Brain Lists slideshows.' },
   { slug: 'meme-modes', name: 'Meme modes', description: 'Wojak / chad / monk memes. File names (easy, normal, hard, monk, npc, cope) pick the meme for each mode.' },
   { slug: 'upshift-shots', name: 'Upshift screenshots', description: 'Upshift app screenshots (blocked p*rn site, quests). Shown as one of the small pictures where Upshift is mentioned.' },
+  { slug: 'monkey-memes', name: 'Monkey memes', description: 'Monkeys (and a dog) doing human stuff. File names (monkey-gym, monkey-suit, monkey-money, monkey-phone, monkey-sad, monkey-cool...) pick the monkey for each Monkey mode.' },
+  { slug: 'spongebob-memes', name: 'Spongebob memes', description: 'Spongebob / Patrick / Squidward memes. File names (sponge-patrick, sponge-squid, sponge-happy, sponge-hard, sponge-krabs, sponge-work) pick the picture for each Spongebob mode.' },
+  { slug: 'viral-resources', name: 'Viral resources', description: 'Odd / shocking small pictures (WTF food, burnt chicken, cursed kitchen). Scattered among the mini pictures when ragebait is on.' },
   { slug: 'stage-photos', name: 'Stage photos', description: 'Aesthetic photos for the Brain Lists stages. File names (bored, clean, read, walk, calm, gym, cook…) match the text.' },
 ]
 

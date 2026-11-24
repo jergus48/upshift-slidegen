@@ -1,4 +1,4 @@
-export type ViewKey = 'queue' | 'create' | 'photopack' | 'brainlist' | 'memelist' | 'characters' | 'video' | 'library' | 'reddit' | 'reply' | 'write' | 'subreddit' | 'prompt' | 'clean' | 'schedule' | 'results' | 'channels' | 'stocks' | 'brain' | 'settings';
+export type ViewKey = 'queue' | 'create' | 'photopack' | 'brainlist' | 'memelist' | 'monkeylist' | 'spongelist' | 'memesort' | 'characters' | 'video' | 'library' | 'reddit' | 'reply' | 'write' | 'subreddit' | 'prompt' | 'clean' | 'schedule' | 'results' | 'channels' | 'stocks' | 'brain' | 'settings';
 
 // ── YouTube channel dashboard (public data, no API key) ──────────────────────
 export interface YtVideo {

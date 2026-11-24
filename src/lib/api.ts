@@ -89,6 +89,13 @@ export const getLibrary = () => req<LibraryImage[]>('/library');
 
 export const getPacks = () => req<LibraryPack[]>('/library/packs');
 
+// Which mode each meme / monkey / spongebob picture belongs to (only the moved ones).
+export const getMemeSort = () => req<{ overrides: Record<string, string> }>('/library/meme-sort');
+export const deleteMemeImages = (paths: string[]) =>
+  req<{ deleted: string[] }>('/library/meme-sort/delete', { method: 'POST', body: JSON.stringify({ paths }) });
+export const saveMemeSort = (overrides: Record<string, string>) =>
+  req<{ overrides: Record<string, string> }>('/library/meme-sort', { method: 'PUT', body: JSON.stringify({ overrides }) });
+
 // Scrapes via the server (needs the Apify key + avoids CORS) and returns the
 // downloaded images as data URLs for the caller to save locally. `actor` is a
 // client-side setting (localWorkspace).

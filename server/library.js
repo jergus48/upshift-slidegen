@@ -6,13 +6,71 @@
 // scraping Pinterest (needs the Apify key + avoids browser CORS) and handing
 // the downloaded bytes straight back to the client to save.
 import { logger } from './log.js'
-import manifest from '../public/library/manifest.json' with { type: 'json' }
+import { readFileSync, writeFileSync, statSync, unlinkSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+// The manifest is re-read when the file changes, so adding / renaming bundled pictures
+// (scripts/build-library-manifest.mjs) shows up without restarting the server.
+const MANIFEST_PATH = fileURLToPath(new URL('../public/library/manifest.json', import.meta.url))
+let manifestCache = { mtime: 0, data: { packs: [] } }
+function loadManifest() {
+  try {
+    const mtime = statSync(MANIFEST_PATH).mtimeMs
+    if (mtime !== manifestCache.mtime) manifestCache = { mtime, data: JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) }
+  } catch { /* keep the last good copy */ }
+  return manifestCache.data
+}
 
 const log = logger('scrape')
 
+// Meme sorting: which mode each meme / monkey / spongebob picture belongs to. Only the
+// pictures that were MOVED are stored (path under /library -> mode key, or 'trash').
+const SORT_PATH = fileURLToPath(new URL('../public/library/meme-sort.json', import.meta.url))
+export function readMemeSort() {
+  try {
+    const j = JSON.parse(readFileSync(SORT_PATH, 'utf8'))
+    return { overrides: j && typeof j.overrides === 'object' && j.overrides ? j.overrides : {} }
+  } catch {
+    return { overrides: {} }
+  }
+}
+// Permanently deletes sorted pictures (files + manifest entries + saved sorting).
+// Only the three sortable packs, only files that are in the manifest.
+const SORT_PACKS = ['meme-modes', 'monkey-memes', 'spongebob-memes']
+export function deleteMemeFiles(paths) {
+  const manifestFile = fileURLToPath(new URL('../public/library/manifest.json', import.meta.url))
+  const root = fileURLToPath(new URL('../public/library/', import.meta.url))
+  const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'))
+  const allowed = new Set()
+  for (const p of manifest.packs || []) if (SORT_PACKS.includes(p.slug)) for (const f of p.images || []) allowed.add(f)
+  const gone = []
+  for (const p of Array.isArray(paths) ? paths : []) {
+    if (typeof p !== 'string' || !allowed.has(p)) continue
+    try { unlinkSync(root + p); gone.push(p) } catch { /* already gone */ }
+  }
+  if (gone.length) {
+    const set = new Set(gone)
+    for (const p of manifest.packs || []) p.images = (p.images || []).filter((f) => !set.has(f))
+    writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + '\n')
+    const cur = readMemeSort().overrides
+    for (const k of gone) delete cur[k]
+    writeMemeSort(cur)
+  }
+  return { deleted: gone }
+}
+
+export function writeMemeSort(overrides) {
+  const clean = {}
+  for (const [k, v] of Object.entries(overrides || {})) {
+    if (typeof k === 'string' && typeof v === 'string' && /^[a-z0-9._\- /]+$/i.test(k) && /^[a-z]{2,20}$/.test(v)) clean[k] = v
+  }
+  writeFileSync(SORT_PATH, JSON.stringify({ overrides: clean }, null, 2) + '\n')
+  return { overrides: clean }
+}
+
 // Flatten the bundled manifest into image records the UI can render.
 export function listBundled() {
-  return (manifest.packs || []).flatMap((pack) =>
+  return (loadManifest().packs || []).flatMap((pack) =>
     (pack.images || []).map((path) => ({
       id: `bundled:${path}`,
       url: `/library/${path}`,
@@ -25,7 +83,7 @@ export function listBundled() {
 // Grouped for the pack-picker UIs (Generate, Settings) — cover thumbnails only,
 // same shape the client merges with its own local (scraped/uploaded) packs.
 export function listBundledPacks() {
-  return (manifest.packs || []).map((p) => ({
+  return (loadManifest().packs || []).map((p) => ({
     name: p.name,
     source: 'bundled',
     count: (p.images || []).length,

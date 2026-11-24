@@ -12,7 +12,7 @@ import { generateSlideshows } from './generate.js'
 import { generatePhotoPacks } from './photopack.js'
 import { listModels, validateKey, chatJSON, chatJSONVision } from './openrouter.js'
 import { fetchRedditPost, buildRewritePrompt, buildCommentPrompt, buildPostPrompt, buildFlowPrompt, buildSubredditPostPrompt, normalizeSubreddit } from './reddit.js'
-import { listBundled, listBundledPacks, scrapePinterest } from './library.js'
+import { listBundled, listBundledPacks, scrapePinterest, readMemeSort, writeMemeSort, deleteMemeFiles } from './library.js'
 import { fetchChannels } from './youtube.js'
 import { fetchCommentsBatch, fetchCommentCountsBatch } from './ytComments.js'
 import { regradeVideo, ffmpegAvailable } from './regrade.js'
@@ -194,6 +194,9 @@ app.get('/api/photo', h(async (req, res) => {
 // scraped in the first place (below).
 app.get('/api/library', h(async (_req, res) => res.json(listBundled())))
 app.get('/api/library/packs', h(async (_req, res) => res.json(listBundledPacks())))
+app.get('/api/library/meme-sort', h(async (_req, res) => res.json(readMemeSort())))
+app.post('/api/library/meme-sort/delete', h(async (req, res) => res.json(deleteMemeFiles(req.body?.paths))))
+app.put('/api/library/meme-sort', h(async (req, res) => res.json(writeMemeSort(req.body?.overrides))))
 
 // Scrapes Pinterest (needs the Apify key + avoids browser CORS) and returns
 // the downloaded images as data URLs — the client saves them into its own

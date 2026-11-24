@@ -10,6 +10,7 @@ import { QueueView } from './views/QueueView';
 import { CreateView } from './views/CreateView';
 import { PhotoPackView } from './views/PhotoPackView';
 import { CharactersView } from './views/CharactersView';
+import { MemeSortView } from './views/MemeSortView';
 import { ListDeckView } from './views/ListDeckView';
 import { VideoView } from './views/VideoView';
 import { listQueuedVideos, subscribeQueuedVideos } from './lib/localVideos';
@@ -853,6 +854,9 @@ export default function App() {
         )}
         {activeView === 'brainlist' && <ListDeckView key="brain" tool="brain" onAdd={addListDecks} />}
         {activeView === 'memelist' && <ListDeckView key="meme" tool="meme" onAdd={addListDecks} />}
+        {activeView === 'monkeylist' && <ListDeckView key="monkey" tool="meme" variant="monkey" onAdd={addListDecks} />}
+        {activeView === 'memesort' && <MemeSortView />}
+        {activeView === 'spongelist' && <ListDeckView key="sponge" tool="meme" variant="sponge" onAdd={addListDecks} />}
         {activeView === 'characters' && (
           <CharactersView
             generating={generating}

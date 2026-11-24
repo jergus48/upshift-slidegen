@@ -5,6 +5,8 @@ import { Button } from '../components/Button';
 import { PackPicker } from '../components/PackPicker';
 import { SlidePreview } from '../components/SlidePreview';
 import { getMergedLibrary } from '../lib/mergedLibrary';
+import { getMemeSort } from '../lib/api';
+import { modeOfImage } from '../lib/memeSort';
 import { poolFor } from '../lib/transformationDeck';
 import { buildListDecks, FORMATS, THEMES, type ListTool } from '../lib/listDecks';
 import type { LibraryImage, Slideshow } from '../types';
@@ -37,6 +39,9 @@ interface Prefs {
   hero: string[];
   thumbs: string[];
   cta: string[];
+  viral: string[];
+  cover: boolean;
+  bait: boolean;
   format: string;
   theme: string;
   handle: string;
@@ -48,40 +53,60 @@ interface Prefs {
 }
 
 // The bundled packs (public/library) are pre-selected so the tools work out of the box.
-const DEFAULT_PACKS: Record<ListTool, Pick<Prefs, 'hero' | 'thumbs' | 'cta'>> = {
-  brain: { hero: ['Brain progress'], thumbs: ['Stage photos'], cta: ['Upshift screenshots'] },
-  meme: { hero: ['Meme modes'], thumbs: ['Stage photos'], cta: ['Upshift screenshots'] },
+const DEFAULT_PACKS: Record<ListTool, Pick<Prefs, 'hero' | 'thumbs' | 'cta' | 'viral'>> = {
+  brain: { hero: ['Brain progress'], thumbs: ['Stage photos'], cta: ['Upshift screenshots'], viral: ['Viral resources'] },
+  meme: { hero: ['Meme modes'], thumbs: ['Stage photos'], cta: ['Upshift screenshots'], viral: ['Viral resources'] },
 };
 
-const defaultPrefs = (tool: ListTool): Prefs => ({
+// Monkey / Spongebob lists use only their own picture pack.
+const VARIANT_HERO: Record<string, string> = { monkey: 'Monkey memes', sponge: 'Spongebob memes' };
+
+const defaultPrefs = (tool: ListTool, variant?: string): Prefs => ({
   ...DEFAULT_PACKS[tool],
+  ...(variant ? { hero: [VARIANT_HERO[variant]] } : {}),
   format: '',
   theme: '',
   handle: '',
   smallPics: true,
   upshift: true,
+  cover: false,
+  bait: true,
   count: 5,
   v: 3,
 });
 
-const prefsKey = (tool: ListTool) => `slidesmith:listdeck:${tool}`;
+const prefsKey = (tool: ListTool, variant?: string) => `slidesmith:listdeck:${tool}${variant ? `:${variant}` : ''}`;
 
-function loadPrefs(tool: ListTool): Prefs {
+// Meme Lists locked to one format (own sidebar entry, own saved settings).
+const VARIANTS: Record<string, { title: string; subtitle: string }> = {
+  monkey: { title: 'Monkey Lists', subtitle: 'The Meme Lists slides, but every mode is a monkey doing human stuff (suit, gym, money, phone...).' },
+  sponge: { title: 'Spongebob Lists', subtitle: 'The Meme Lists slides with Patrick, Squidward, the office fish and real Spongebob as the modes.' },
+};
+
+function loadPrefs(tool: ListTool, variant?: string): Prefs {
   try {
-    const def = defaultPrefs(tool);
-    const saved = JSON.parse(localStorage.getItem(prefsKey(tool)) || '{}') as Partial<Prefs>;
+    const def = { ...defaultPrefs(tool, variant), ...(variant ? { format: variant } : {}) };
+    const saved = JSON.parse(localStorage.getItem(prefsKey(tool, variant)) || '{}') as Partial<Prefs>;
     const merged = { ...def, ...saved };
     // An empty picture choice saved by an older version (before the bundled packs
     // existed) would hide the pictures for good — an empty pick means "use the defaults".
     if (!merged.hero?.length) merged.hero = def.hero;
+    // The monkey pack arrived later: add it to older saved picks.
+    // Earlier versions mixed the monkey / spongebob packs into plain Meme Lists: drop them there,
+    // and keep the variants on their own pack.
+    if (variant) merged.hero = [VARIANT_HERO[variant]];
+    else if (tool === 'meme') merged.hero = merged.hero.filter((p) => p !== 'Monkey memes' && p !== 'Spongebob memes');
+    if (!merged.hero.length) merged.hero = def.hero;
     if (!merged.thumbs?.length) merged.thumbs = def.thumbs;
     if (!merged.cta?.length) merged.cta = def.cta;
+    if (!merged.viral?.length) merged.viral = def.viral;
     // v3: Upshift became a subtle mention (on by default); drop an older saved 'off'.
     if (saved.v !== 3) merged.upshift = def.upshift;
     merged.v = 3;
+    if (variant) merged.format = variant;
     return merged;
   } catch {
-    return defaultPrefs(tool);
+    return { ...defaultPrefs(tool, variant), ...(variant ? { format: variant } : {}) };
   }
 }
 
@@ -105,14 +130,17 @@ const labelCls = 'text-[11px] text-ink-5 uppercase tracking-widest font-semibold
 
 export function ListDeckView({
   tool,
+  variant,
   onAdd,
 }: {
   tool: ListTool;
+  variant?: 'monkey' | 'sponge';
   onAdd: (tool: ListTool, shows: Slideshow[], subtitle: string) => void;
 }) {
-  const copy = COPY[tool];
-  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs(tool));
+  const copy = { ...COPY[tool], ...(variant ? VARIANTS[variant] : {}) };
+  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs(tool, variant));
   const [library, setLibrary] = useState<LibraryImage[] | null>(null);
+  const [sort, setSort] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +148,7 @@ export function ListDeckView({
   const patch = (p: Partial<Prefs>) => {
     setPrefs((cur) => {
       const next = { ...cur, ...p };
-      try { localStorage.setItem(prefsKey(tool), JSON.stringify(next)); } catch { /* storage full/blocked */ }
+      try { localStorage.setItem(prefsKey(tool, variant), JSON.stringify(next)); } catch { /* storage full/blocked */ }
       return next;
     });
     setDone(false);
@@ -134,17 +162,25 @@ export function ListDeckView({
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    getMemeSort().then((r) => { if (alive) setSort(r.overrides || {}); }).catch(() => { /* no sorting saved */ });
+    return () => { alive = false; };
+  }, []);
+
   const pools = useMemo(() => {
     const lib = library ?? [];
     return {
-      hero: poolFor(lib, prefs.hero),
+      // Pictures put in the trash on the Sort Memes page never show up.
+      hero: poolFor(lib, prefs.hero).filter((i) => modeOfImage(i.url, sort) !== 'trash'),
       thumbs: poolFor(lib, prefs.thumbs),
       cta: poolFor(lib, prefs.cta),
+      viral: poolFor(lib, prefs.viral),
     };
-  }, [library, prefs.hero, prefs.thumbs, prefs.cta]);
+  }, [library, prefs.hero, prefs.thumbs, prefs.cta, prefs.viral, sort]);
 
-  const { format, theme, handle, smallPics, upshift } = prefs;
-  const formats = FORMATS[tool];
+  const { format, theme, handle, smallPics, upshift, cover, bait } = prefs;
+  const formats = FORMATS[tool].filter((f) => !['monkey', 'sponge'].includes(f.key) || f.key === variant);
   const themes = THEMES[tool];
   const build = useCallback(
     (count: number) =>
@@ -156,13 +192,17 @@ export function ListDeckView({
         handle: handle.trim() || undefined,
         smallPics,
         upshift,
+        cover,
+        bait,
+        viral: pools.viral,
+        heroTag: tool === 'meme' ? (img) => modeOfImage(img.url, sort) : undefined,
         hero: pools.hero,
         thumbs: pools.thumbs,
         cta: pools.cta,
         // The bundled "blocked" screenshot, so the CTA card works with no pack at all.
         ctaFallback: '/app-shots/corn-men.jpg',
       }).shows,
-    [tool, format, theme, handle, smallPics, upshift, pools],
+    [tool, format, theme, handle, smallPics, upshift, cover, bait, pools, sort],
   );
 
   // A sample deck that re-rolls whenever a setting changes (or on "New preview").
@@ -255,6 +295,7 @@ export function ListDeckView({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {!variant && (
               <div>
                 <label className={labelCls}>Format</label>
                 <select value={prefs.format} onChange={(e) => patch({ format: e.target.value })} className={selectCls}>
@@ -267,6 +308,7 @@ export function ListDeckView({
                   {prefs.format ? formats.find((f) => f.key === prefs.format)?.hint : 'A different format for each deck.'}
                 </p>
               </div>
+              )}
               <div>
                 <label className={labelCls}>Background colour</label>
                 <select value={prefs.theme} onChange={(e) => patch({ theme: e.target.value })} className={selectCls}>
@@ -317,6 +359,17 @@ export function ListDeckView({
               Mention Upshift subtly (a “Blocked P*rn (Upshift productivity app)” line + one app screenshot among the mini pictures)
             </label>
 
+            <label className="flex items-center gap-2 text-[13px] text-ink-3">
+              <input type="checkbox" checked={prefs.bait} onChange={(e) => patch({ bait: e.target.checked })} className="accent-ink" />
+              Ragebait / engagement bait ({tool === 'brain' ? 'a comment-bait last slide, spicy captions, odd small pictures' : 'goon overlord / simp / mogged modes, spicy captions, odd small pictures'})
+            </label>
+            {tool === 'brain' && (
+              <label className="flex items-center gap-2 text-[13px] text-ink-3">
+                <input type="checkbox" checked={prefs.cover} onChange={(e) => patch({ cover: e.target.checked })} className="accent-ink" />
+                Add the brain comparison cover slide (off by default)
+              </label>
+            )}
+
             <div className="space-y-2">
               <label className={labelCls}>Pictures</label>
               <Section title={copy.hero.label} hint={prefs.hero.length ? `${pools.hero.length} photos` : 'none picked'} defaultOpen={!prefs.hero.length}>
@@ -326,6 +379,10 @@ export function ListDeckView({
               <Section title={copy.thumbs.label} hint={prefs.thumbs.length ? `${pools.thumbs.length} photos` : 'none picked'}>
                 <p className="text-[11px] text-ink-6 mb-2">{copy.thumbs.hint}</p>
                 <PackPicker selected={prefs.thumbs} onChange={(thumbs) => patch({ thumbs })} />
+              </Section>
+              <Section title="Viral small pictures (WTF food, burnt chicken...)" hint={prefs.viral.length ? `${pools.viral.length} photos` : 'none picked'}>
+                <p className="text-[11px] text-ink-6 mb-2">Odd, shocking little pictures scattered among the mini pictures when ragebait is on.</p>
+                <PackPicker selected={prefs.viral} onChange={(viral) => patch({ viral })} />
               </Section>
               <Section title="Upshift screenshots (mini picture)" hint={prefs.cta.length ? `${pools.cta.length} photos` : 'default · bundled “blocked” screenshot'}>
                 <p className="text-[11px] text-ink-6 mb-2">One of these is shown small among the mini pictures where Upshift is mentioned.</p>

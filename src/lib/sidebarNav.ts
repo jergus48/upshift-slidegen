@@ -3,6 +3,9 @@
 // a show/hide toggle per entry). Kept in a plain module (not Sidebar.tsx) so the
 // Sidebar file stays component-only for React Fast Refresh.
 import {
+  Squirrel,
+  Waves,
+  ListFilter,
   LayoutGrid,
   CalendarClock,
   LineChart,
@@ -44,6 +47,9 @@ export const NAV: NavItem[] = [
   { key: 'photopack', label: 'Photo Packs', icon: LayoutTemplate },
   { key: 'brainlist', label: 'Brain Lists', icon: BrainCircuit },
   { key: 'memelist', label: 'Meme Lists', icon: Laugh },
+  { key: 'monkeylist', label: 'Monkey Lists', icon: Squirrel },
+  { key: 'spongelist', label: 'Spongebob Lists', icon: Waves },
+  { key: 'memesort', label: 'Sort Memes', icon: ListFilter },
   { key: 'characters', label: 'Characters', icon: Users },
   { key: 'video', label: 'Video', icon: Clapperboard },
   { key: 'library', label: 'Library', icon: Images },
