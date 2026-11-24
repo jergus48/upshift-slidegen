@@ -220,17 +220,13 @@ function drawArticle(ctx: CanvasRenderingContext2D, card: CardSpec, imgs: Map<st
   let y = 220;
   const occ: Rect[] = [];
 
-  const big = !!card.big;
-  if (big) y = 260;
-  const tSize = big ? 96 : 64;
-  ctx.font = `${big ? 600 : 400} ${tSize}px ${INTER}`;
-  y += drawRich(ctx, card.title, M, y, maxW, tSize, tSize + 12, card.ink, occ) + (big ? 70 : 56);
+  ctx.font = `400 64px ${INTER}`;
+  y += drawRich(ctx, card.title, M, y, maxW, 64, 74, card.ink, occ) + 56;
 
   for (const b of card.blocks || []) {
     if (b.kind === 'p') {
-      const pSize = big ? 58 : 40;
-      ctx.font = `400 ${pSize}px ${INTER}`;
-      y += drawRich(ctx, b.text, M, y, maxW, pSize, Math.round(pSize * 1.28), card.ink, occ) + (big ? 50 : 34);
+      ctx.font = `400 40px ${INTER}`;
+      y += drawRich(ctx, b.text, M, y, maxW, 40, 50, card.ink, occ) + 34;
       continue;
     }
     const img = b.ref ? imgs.get(b.ref) ?? null : null;

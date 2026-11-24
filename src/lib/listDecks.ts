@@ -175,15 +175,6 @@ const ARCS: Record<string, { hooks: string[]; things: string[]; stages: Stage[] 
   },
 };
 
-// Comment-bait closing slide (brain lists): relatable, a little rude, asks for a reply.
-const BAIT_ENDINGS: { title: string; paras: string[] }[] = [
-  { title: 'be honest', paras: ['if you opened {thing} this week, you already know which stage you are on', 'most of you will scroll past this and be back tonight. [[prove me wrong]]'] },
-  { title: 'the part nobody wants to hear', paras: ['your "streak" means nothing if you still go looking for {thing}', 'comment your day count. i can tell who is lying'] },
-  { title: 'remember why you started', paras: ['day 3 and you caved again?', 'remember how you felt that day, [[then start again tomorrow]]. not monday. tomorrow'] },
-  { title: 'unpopular opinion', paras: ['{thing} did more damage to your focus than any bad day at school or work', 'tell me i am wrong in the comments. [[i will wait]]'] },
-  { title: 'she knows', paras: ['everyone around you can tell when you relapse. the energy is different', 'comment "day 1" if you are done pretending'] },
-];
-
 const BAIT_HOOKS: Record<string, string[]> = {
   porn: [
     'if you watch p*rn you will never have a real relationship. fight me',
@@ -285,7 +276,7 @@ const MODES: Record<string, ModeDef> = {
     pool: [
       '"Starting Monday"', 'Day 1 Again',
       'She Left. Sigma Reels Help', 'Deleted App. Back In 3 Min',
-      'Blames Mercury Retrograde', 'Electrolytes. Skips Gym',
+      'Electrolytes. Skips Gym',
       'Still Texts Her (She\'s Engaged)', 'Cold Plunge Once, Still No Job',
       'Bought The Course. Unopened', 'Streak: 2 Days',
       'Is Just Wired Different', 'Watches Tate. Orders DoorDash',
@@ -796,7 +787,9 @@ function buildBrainDeck(batch: Batch, theme: ThemeDef, arcKey: string): { hook: 
   const cover: CardSpec = { ...base, title: hook, blocks: [coverBlock] };
 
   // 4–5 of the 5 stages (never the first), so decks differ in length.
-  const drop = Math.random() < 0.4 ? randInt(1, arc.stages.length - 2) : -1;
+  // The Upshift stage always stays, so the CTA is never dropped.
+  const droppable = arc.stages.map((st, i) => (i > 0 && !st.upshift ? i : -1)).filter((i) => i > 0);
+  const drop = Math.random() < 0.4 ? rand(droppable) : -1;
   const stages = arc.stages.filter((_, i) => i !== drop);
   let flip = Math.random() < 0.5;
   const stageCards: CardSpec[] = stages.map((st, si) => {
@@ -805,7 +798,15 @@ function buildBrainDeck(batch: Batch, theme: ThemeDef, arcKey: string): { hook: 
     // Big picture = a brain scan whose colours improve with the stage.
     const prog = stages.length > 1 ? si / (stages.length - 1) : 1;
     const band = prog < 0.34 ? 'brain-b1' : prog < 0.67 ? 'brain-b2' : 'brain-b3';
-    const ref = (band === 'brain-b1' && pair && Math.random() < 0.5 ? `${pair}#left` : undefined) ?? batch.hero.pick([band], used) ?? photo;
+    // Never the same scan twice in a deck: the nearest brightness band with an unused scan wins.
+    const bands = band === 'brain-b1' ? ['brain-b1', 'brain-b2', 'brain-b3'] : band === 'brain-b2' ? ['brain-b2', 'brain-b1', 'brain-b3'] : ['brain-b3', 'brain-b2', 'brain-b1'];
+    let ref: string | undefined = band === 'brain-b1' && pair && Math.random() < 0.5 && !used.includes(`${pair}#left`) ? `${pair}#left` : undefined;
+    for (const b of bands) {
+      if (ref) break;
+      const r = batch.hero.pick([b], used, true);
+      if (r && !used.includes(r)) ref = r;
+    }
+    ref ??= photo;
     if (ref) used.push(ref);
     const blocks: ArticleBlock[] = [{ kind: 'p', text: fill(st.p1, thing) }];
     if (st.side) {
@@ -846,21 +847,6 @@ function buildBrainDeck(batch: Batch, theme: ThemeDef, arcKey: string): { hook: 
   });
 
   const cards = batch.opts.cover ? [cover, ...stageCards] : stageCards;
-  if (batch.opts.bait) {
-    // Comment-bait closing slide: relatable / a little rude, asks for a reply.
-    const end = rand(BAIT_ENDINGS);
-    const blocks: ArticleBlock[] = end.paras.map((p) => ({ kind: 'p' as const, text: fill(p, thing) }));
-    if (batch.opts.upshift) {
-      // Same CTA the stage slides carry: the line plus the Upshift screenshots.
-      blocks.push({ kind: 'p', text: `i block ${thing} with [[Upshift]] (productivity app)` });
-      const shots = upshiftShots(batch, arcKey === 'porn' ? 'porn' : 'socials');
-      if (shots[0]) blocks.push({ kind: 'img', ref: shots[0], ref2: shots[1], side: 'solo' });
-    } else {
-      const pic = batch.opts.smallPics ? batch.thumbsViral(used) : undefined;
-      if (pic) blocks.push({ kind: 'img', ref: pic, side: 'solo' });
-    }
-    cards.push({ ...base, title: fill(end.title, thing), blocks, big: true });
-  }
   return { hook: batch.opts.bait && Math.random() < 0.5 ? rand(BAIT_HOOKS[arcKey] ?? BAIT_HOOKS.scroll) : hook, cards };
 }
 
