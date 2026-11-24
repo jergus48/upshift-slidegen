@@ -135,6 +135,8 @@ export interface CardSpec {
   title: string;
   // article
   blocks?: ArticleBlock[];
+  // article: larger type for a short, punchy closing slide
+  big?: boolean;
   // mode
   items?: string[];
   image?: string;

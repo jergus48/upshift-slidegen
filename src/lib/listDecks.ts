@@ -849,17 +849,17 @@ function buildBrainDeck(batch: Batch, theme: ThemeDef, arcKey: string): { hook: 
   if (batch.opts.bait) {
     // Comment-bait closing slide: relatable / a little rude, asks for a reply.
     const end = rand(BAIT_ENDINGS);
-    const vs: string[] = [];
-    for (let i = 0; i < 2; i++) {
-      const v = batch.thumbsViral([...used, ...vs]);
-      if (v && !vs.includes(v)) vs.push(v);
+    const blocks: ArticleBlock[] = end.paras.map((p) => ({ kind: 'p' as const, text: fill(p, thing) }));
+    if (batch.opts.upshift) {
+      // Same CTA the stage slides carry: the line plus the Upshift screenshots.
+      blocks.push({ kind: 'p', text: `i block ${thing} with [[Upshift]] (productivity app)` });
+      const shots = upshiftShots(batch, arcKey === 'porn' ? 'porn' : 'socials');
+      if (shots[0]) blocks.push({ kind: 'img', ref: shots[0], ref2: shots[1], side: 'solo' });
+    } else {
+      const pic = batch.opts.smallPics ? batch.thumbsViral(used) : undefined;
+      if (pic) blocks.push({ kind: 'img', ref: pic, side: 'solo' });
     }
-    cards.push({
-      ...base,
-      title: fill(end.title, thing),
-      blocks: end.paras.map((p) => ({ kind: 'p' as const, text: fill(p, thing) })),
-      thumbs: batch.opts.smallPics && vs.length ? vs : undefined,
-    });
+    cards.push({ ...base, title: fill(end.title, thing), blocks, big: true });
   }
   return { hook: batch.opts.bait && Math.random() < 0.5 ? rand(BAIT_HOOKS[arcKey] ?? BAIT_HOOKS.scroll) : hook, cards };
 }
