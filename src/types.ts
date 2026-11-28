@@ -154,7 +154,9 @@ export interface Slideshow {
   // exporter treats these differently: the after slides linger 50% longer per
   // word, and the soundtrack is aligned so its DROP lands on the before→after
   // cut instead of opening the clip. Absent on every other kind of slideshow.
-  kind?: 'characters';
+  // 'lists' marks a Brain / Meme list deck (lib/listDecks.ts): card slides that
+  // need longer on screen, and the Characters music pool.
+  kind?: 'characters' | 'lists';
   // How many leading slides are the "before" half. Only meaningful with
   // kind: 'characters'; it's what the drop alignment counts back from.
   beforeSlides?: number;

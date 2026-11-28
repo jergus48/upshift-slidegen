@@ -370,6 +370,13 @@ function readingHoldMs(text: string, pace = 1): number {
   return Math.min(READ_MAX_MS * pace, READ_BASE_MS + words * READ_PER_WORD_MS * pace);
 }
 
+// List slides (Brain / Meme lists) are a whole list or paragraph to read, so they
+// hold longer than a caption: ~130ms per word, 3s to 6s per slide.
+function listHoldMs(text: string): number {
+  const words = cleanCaption(text || '').trim().split(/\s+/).filter(Boolean).length;
+  return Math.min(6000, Math.max(3000, 1800 + words * 130));
+}
+
 // Smooth acceleration/deceleration for the slide transition.
 function easeInOut(p: number): number {
   return p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
@@ -586,7 +593,7 @@ async function prepareVideoScene(
   const beforeCount =
     show.kind === 'characters' ? Math.min(show.beforeSlides ?? 0, show.slides.length) : 0;
   const holds = show.slides.map((s, i) =>
-    readingHoldMs(s.text, beforeCount > 0 && i >= beforeCount ? AFTER_PACE : 1)
+    show.kind === 'lists' ? listHoldMs(s.text) : readingHoldMs(s.text, beforeCount > 0 && i >= beforeCount ? AFTER_PACE : 1)
   );
   // Where the before half ends: every before hold plus the transitions between
   // and out of them, so the first after slide is fully on screen at `cutAt`.
@@ -1203,7 +1210,7 @@ export async function downloadSlideshowsVideo(
   // Characters decks draw from the Characters music library, everything else
   // from the video one — they hide tracks independently.
   const trackFor = async (show: Slideshow) =>
-    music ? await pickMusicTrack(music, show.kind === 'characters' ? 'characters' : 'video') : null;
+    music ? await pickMusicTrack(music, show.kind === 'characters' || show.kind === 'lists' ? 'characters' : 'video') : null;
 
   // Single selection → one plain video file plus its metadata sidecar.
   if (shows.length === 1) {

@@ -438,6 +438,15 @@ export default function App() {
     setActiveView('queue');
   };
 
+  // Brain / Meme lists straight to video, rendered in this tab: male Characters
+  // music, slides held still (a zoom would crop the list text), written into the
+  // default export folder (or plain downloads). Nothing goes on the queue.
+  const generateListVideos = async (shows: Slideshow[], onProgress: (done: number, total: number) => void) => {
+    if (!shows.length) return;
+    const dir = await resolveWritableFolder(getDefaultFolderId());
+    await downloadSlideshowsVideo(shows, onProgress, 'male', dir, { zoom: false, regrade: 0 });
+  };
+
   // Characters: before/after transformation decks. Every slide's photo is drawn
   // at random from a library pack the user assigned (character before/after +
   // the two shared packs), so there's no model call and no background step — the
@@ -852,11 +861,11 @@ export default function App() {
             onGenerate={generatePhotoPacks}
           />
         )}
-        {activeView === 'brainlist' && <ListDeckView key="brain" tool="brain" onAdd={addListDecks} />}
-        {activeView === 'memelist' && <ListDeckView key="meme" tool="meme" onAdd={addListDecks} />}
-        {activeView === 'monkeylist' && <ListDeckView key="monkey" tool="meme" variant="monkey" onAdd={addListDecks} />}
+        {activeView === 'brainlist' && <ListDeckView key="brain" tool="brain" onAdd={addListDecks} onVideos={generateListVideos} />}
+        {activeView === 'memelist' && <ListDeckView key="meme" tool="meme" onAdd={addListDecks} onVideos={generateListVideos} />}
+        {activeView === 'monkeylist' && <ListDeckView key="monkey" tool="meme" variant="monkey" onAdd={addListDecks} onVideos={generateListVideos} />}
         {activeView === 'memesort' && <MemeSortView />}
-        {activeView === 'spongelist' && <ListDeckView key="sponge" tool="meme" variant="sponge" onAdd={addListDecks} />}
+        {activeView === 'spongelist' && <ListDeckView key="sponge" tool="meme" variant="sponge" onAdd={addListDecks} onVideos={generateListVideos} />}
         {activeView === 'characters' && (
           <CharactersView
             generating={generating}

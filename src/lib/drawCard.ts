@@ -6,8 +6,8 @@
 //
 // ONE routine for the baked 1080x1920 PNG (lib/render.ts) and the small preview
 // (components/SlidePreview.tsx), which just draws it scaled down. Both looks are
-// designed on a 3:4 / 1:1 page, so the page is centred on the 9:16 canvas and the
-// background colour fills the rest.
+// designed on a 3:4 / 1:1 page, so the page is placed inside TikTok's safe area
+// of the 9:16 canvas and the background colour fills the rest.
 import type { CardSpec, ArticleBlock } from '../types';
 import { resolveImageSrc } from './imageSrc';
 
@@ -301,23 +301,23 @@ function drawArticle(ctx: CanvasRenderingContext2D, card: CardSpec, imgs: Map<st
 }
 
 // ── Mode look ───────────────────────────────────────────────────────────────
-// Designed on 1440 and scaled by 0.75 onto a 1080 square.
+// Designed on a 1080x1440 page (fills TikTok's safe area), so type and pictures stay big.
 function drawMode(ctx: CanvasRenderingContext2D, card: CardSpec, imgs: Map<string, HTMLImageElement | null>) {
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
   ctx.fillStyle = card.ink;
   const occ: Rect[] = [];
-  ctx.font = `800 52px ${HELV}`;
+  ctx.font = `800 70px ${HELV}`;
   card.title.toUpperCase().split('\n').forEach((line, i) => {
-    ctx.fillText(line, 35, 38 + i * 56);
-    occ.push({ x: 35, y: 38 + i * 56, w: ctx.measureText(line).width, h: 56 });
+    ctx.fillText(line, 40, 70 + i * 76);
+    occ.push({ x: 40, y: 70 + i * 76, w: ctx.measureText(line).width, h: 76 });
   });
 
-  const listX = 525;
+  const listX = 490;
   const listW = W - 30 - listX;
-  const lh = 53;
-  ctx.font = `300 46px ${HELV}`;
-  let y = 215;
+  const lh = 68;
+  ctx.font = `300 56px ${HELV}`;
+  let y = 290;
   const drawLine = (line: string) => {
     ctx.fillText(line, listX, y);
     occ.push({ x: listX, y, w: ctx.measureText(line).width, h: lh });
@@ -343,22 +343,22 @@ function drawMode(ctx: CanvasRenderingContext2D, card: CardSpec, imgs: Map<strin
   // Meme picture, bottom-left.
   const main = card.image ? imgs.get(card.image) ?? null : null;
   if (main) {
-    const sz = fit(main, 480, 520);
-    ctx.drawImage(main, 34, 920 - sz.h, sz.w, sz.h);
-    occ.push({ x: 34, y: 920 - sz.h, w: sz.w, h: sz.h });
+    const sz = fit(main, 450, 680);
+    ctx.drawImage(main, 40, 1330 - sz.h, sz.w, sz.h);
+    occ.push({ x: 40, y: 1330 - sz.h, w: sz.w, h: sz.h });
   }
 
   if (card.handle) {
     ctx.fillStyle = card.ink;
-    ctx.font = `800 38px ${HELV}`;
-    ctx.fillText(card.handle, 12, 1018);
-    occ.push({ x: 12, y: 1018, w: ctx.measureText(card.handle).width, h: 44 });
+    ctx.font = `800 44px ${HELV}`;
+    ctx.fillText(card.handle, 20, 1385);
+    occ.push({ x: 20, y: 1385, w: ctx.measureText(card.handle).width, h: 50 });
   }
 
   // Small pictures of the list's things, scattered around the text and the meme.
   const thumbs = loadedThumbs(card, imgs);
   if (thumbs.length) {
-    scatter(ctx, thumbs, occ, { x: 10, y: 10, w: W - 20, h: 1060 }, hashString(card.title + (card.items || []).join("|")), 190, 280);
+    scatter(ctx, thumbs, occ, { x: 10, y: 10, w: W - 20, h: 1420 }, hashString(card.title + (card.items || []).join("|")), 220, 330);
   }
 }
 
@@ -387,13 +387,18 @@ export async function drawCard(ctx: CanvasRenderingContext2D, card: CardSpec, w:
   ctx.scale(w / W, h / H);
   ctx.fillStyle = card.bg;
   ctx.fillRect(0, 0, W, H);
-  if (card.layout === 'article') {
-    ctx.translate(0, (H - 1440) / 2);
-    drawArticle(ctx, card, imgs);
-  } else {
-    ctx.translate(0, (H - 1080) / 2);
-    drawMode(ctx, card, imgs);
-  }
+  // A photo post shows a 3:4 window of the image (canvas y 230 to 1690): the back
+  // arrow / search / counter cover its top ~190px and the buttons its right edge,
+  // while the caption sits below the window. Video also covers the bottom ~350px.
+  // So the page is scaled into the middle and the background colour fills the rest.
+  const safe = { x: 45, y: 420, w: 885, h: 1150 };
+  const pw = 1080;
+  const ph = 1440;
+  const s = Math.min(safe.w / pw, safe.h / ph);
+  ctx.translate(safe.x + (safe.w - pw * s) / 2, safe.y + (safe.h - ph * s) / 2);
+  ctx.scale(s, s);
+  if (card.layout === 'article') drawArticle(ctx, card, imgs);
+  else drawMode(ctx, card, imgs);
   ctx.restore();
 }
 

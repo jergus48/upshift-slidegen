@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Sparkles, Shuffle, Check, ChevronDown } from 'lucide-react';
+import { Loader2, Sparkles, Shuffle, Check, ChevronDown, Film } from 'lucide-react';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { PackPicker } from '../components/PackPicker';
@@ -132,10 +132,13 @@ export function ListDeckView({
   tool,
   variant,
   onAdd,
+  onVideos,
 }: {
   tool: ListTool;
   variant?: 'monkey' | 'sponge';
   onAdd: (tool: ListTool, shows: Slideshow[], subtitle: string) => void;
+  // Renders the decks straight to video (no queue): paced per slide, male Characters music.
+  onVideos: (shows: Slideshow[], onProgress: (done: number, total: number) => void) => Promise<void>;
 }) {
   const copy = { ...COPY[tool], ...(variant ? VARIANTS[variant] : {}) };
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs(tool, variant));
@@ -144,6 +147,8 @@ export function ListDeckView({
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [videoProgress, setVideoProgress] = useState<{ done: number; total: number } | null>(null);
+  const [videosDone, setVideosDone] = useState(0);
 
   const patch = (p: Partial<Prefs>) => {
     setPrefs((cur) => {
@@ -228,6 +233,22 @@ export function ListDeckView({
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitVideos = async () => {
+    setError(null);
+    setDone(false);
+    setVideosDone(0);
+    const n = prefs.count;
+    setVideoProgress({ done: 0, total: n });
+    try {
+      await onVideos(build(n), (d, total) => setVideoProgress({ done: d, total }));
+      setVideosDone(n);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setVideoProgress(null);
     }
   };
 
@@ -403,7 +424,22 @@ export function ListDeckView({
               </p>
             )}
 
-            <div className="flex justify-end">
+            {videosDone > 0 && !videoProgress && (
+              <p className="text-[12px] text-emerald-600 flex items-center gap-1">
+                <Check size={13} /> {videosDone} video{videosDone === 1 ? '' : 's'} exported.
+              </p>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                icon={videoProgress ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
+                onClick={submitVideos}
+                disabled={busy || !library || !!videoProgress}
+                title="Render the decks straight to video (3-6s per slide, male Characters music), skipping the queue. Keep this tab open."
+              >
+                {videoProgress ? `Rendering ${videoProgress.done}/${videoProgress.total}…` : `Generate ${prefs.count} video${prefs.count === 1 ? '' : 's'}`}
+              </Button>
               <Button
                 variant="primary"
                 icon={busy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}

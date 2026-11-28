@@ -26,7 +26,7 @@ export const FORMATS: Record<ListTool, { key: string; label: string; hint: strin
   meme: [
     { key: 'ladder', label: 'Mode ladder', hint: 'easy / normal / hard / monk mode' },
     { key: 'duo', label: 'Easy vs hard', hint: 'easy / hard / locked in / sigma, 5 modes' },
-    { key: 'rage', label: 'Ragebait', hint: 'npc mode, cope mode, goon overlord, simp, mogged...' },
+    { key: 'rage', label: 'Ragebait', hint: 'npc mode, cope mode, goon overlord, simp, mogger...' },
     { key: 'sponge', label: 'Spongebob modes', hint: 'Patrick, Squidward, office fish and real Spongebob as the modes' },
     { key: 'monkey', label: 'Monkey modes', hint: 'the same lists, but the pictures are monkeys doing human stuff' },
   ],
@@ -201,6 +201,18 @@ interface ModeDef {
 }
 
 // Always on GOON OVERLORD lists — specific names + widely-known facts that expose the gooner.
+// Always on MOGGER lists: the cash line.
+const MOGGER_CASH = [
+  'Cash Falls Out Of His Pockets', 'Pays For The Whole Table', 'Wallet Does Not Close',
+  'Cash On Cash On Cash', 'Counts Cash, Not Followers',
+];
+// The Upshift line in a MOGGER list: of course he blocks it.
+const MOGGER_UPSHIFT: Record<UpshiftTopic, string> = {
+  porn: 'Ofc He Blocks P*rn (Upshift productivity app)',
+  socials: 'Ofc He Blocks Socials (Upshift productivity app)',
+  both: 'Ofc He Blocks P*rn + Socials (Upshift productivity app)',
+};
+
 const OVERLORD_SIGNATURES = [
   'Knows Lana Rhoades Just By Her Tattoo',
   'Can Name Every Mia Khalifa Video In Order',
@@ -331,19 +343,20 @@ const MODES: Record<string, ModeDef> = {
     count: [6, 7],
   },
   mogged: {
-    title: 'GET MOGGED MODE:',
-    keys: ['npc-', 'cope-'],
+    title: 'MOGGER MODE:',
+    keys: ['sigma-', 'hard-'],
     pool: [
-      'Same Height As His GF', 'She Left For His Gym Partner',
-      'No Legs (2 Years)', 'Voice Cracks Talking To Her',
-      'Mogged The Second He Walked In', 'Jawline By Chips',
-      'Sat Next To A 6\'2" Guy', 'She\'s With The Guy He Bullied',
-      'Posture Of A Shrimp', 'Hairline On A Gap Year',
+      'Walks In. Room Goes Quiet', 'Gym Partner Is Her Ex',
+      'Shoulders Wider Than The Door', '6\'3" And Knows It',
+      'Jawline Cuts Glass', 'She Texts First',
+      'Hairline Sponsored By Genetics', 'Sits Next To You. You Shrink',
+      'Never Skips Leg Day', 'Her Friends Ask For His Number',
     ],
     count: [6, 7],
+    upshift: true,
   },
   cooked: {
-    title: 'YOU ARE COOKED MODE:',
+    title: 'COOKED MODE:',
     keys: ['cope-', 'npc-'],
     pool: [
       'Opens TikTok. Closes. Reopens', 'Read 2 Lines. Checked Phone',
@@ -608,7 +621,7 @@ const CAPTIONS: Record<ListTool, string[]> = {
   meme: [
     'which mode are you on? be honest.',
     'tag the friend who is stuck on easy mode 😭',
-    'hard mode is easier when your phone blocks the p*rn for you (Upshift)',
+    'hard mode is easier when your phone blocks the p*rn for you (Upshift productivity app)',
     'comment "again" if you have been here before',
   ],
 };
@@ -883,7 +896,7 @@ function buildMemeDeck(batch: Batch, theme: ThemeDef, format: string): { hook: s
     if (sorted.length >= 4) order = sorted;
   }
   // One global ranking, worst first, so no deck can come out in a different order.
-  const RANK = ['overlord', 'brainrot', 'cooked', 'mogged', 'simp', 'cope', 'npc', 'easy', 'normal', 'hard', 'locked', 'sigma', 'monk'];
+  const RANK = ['overlord', 'brainrot', 'cooked', 'simp', 'cope', 'npc', 'easy', 'normal', 'hard', 'locked', 'sigma', 'monk', 'mogged'];
   order = [...order].sort((a, b) => RANK.indexOf(a) - RANK.indexOf(b));
   // Single avoid list shared across hero and thumbs — no image ever appears twice in one deck.
   const used: string[] = [];
@@ -896,11 +909,12 @@ function buildMemeDeck(batch: Batch, theme: ThemeDef, format: string): { hook: s
     const n = randInt(def.count[0], def.count[1]);
     let items = shuffled(def.pool).slice(0, n);
     if (key === 'overlord') items = [rand(OVERLORD_SIGNATURES), ...items.slice(0, n - 1)];
+    if (key === 'mogged') items = [rand(MOGGER_CASH), ...items.filter((i) => !MOGGER_CASH.includes(i)).slice(0, n - 1)];
     let upshiftTopic: UpshiftTopic = 'porn';
     const withUpshift = idx === upshiftAt && !!batch.opts.upshift;
     if (withUpshift) {
       const up = batch.upshift.next()!;
-      items = [...items.slice(0, n - 1), up.text];
+      items = [...items.slice(0, n - 1), key === 'mogged' ? MOGGER_UPSHIFT[up.topic] : up.text];
       upshiftTopic = up.topic;
     }
     // Pictures sorted into this mode first; the old file-name guess only when none is sorted.
@@ -969,6 +983,7 @@ export function buildListDecks(opts: ListDeckOptions): { shows: Slideshow[] } {
       rationale: `${opts.tool === 'brain' ? 'Brain' : 'Meme'} · ${format} · ${theme.name}`,
       createdAt: new Date(stamp).toISOString(),
       slides,
+      kind: 'lists',
     });
   }
   return { shows };

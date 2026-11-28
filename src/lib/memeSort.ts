@@ -14,7 +14,7 @@ export const SORT_MODES: { key: string; label: string }[] = [
   { key: 'brainrot', label: 'BRAIN ROT' },
   { key: 'overlord', label: 'GOON OVERLORD' },
   { key: 'simp', label: 'SIMP' },
-  { key: 'mogged', label: 'GET MOGGED' },
+  { key: 'mogged', label: 'MOGGER' },
   { key: 'cooked', label: 'COOKED' },
   { key: 'trash', label: 'TRASH (never used)' },
 ];

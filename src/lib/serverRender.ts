@@ -211,7 +211,7 @@ export async function submitServerRender(
     }
     tracks.set(
       show.id,
-      await pickMusicTrack(opts.music, show.kind === 'characters' ? 'characters' : 'video'),
+      await pickMusicTrack(opts.music, show.kind === 'characters' || show.kind === 'lists' ? 'characters' : 'video'),
     );
   }
   const trackUrls = [
